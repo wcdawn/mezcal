@@ -51,15 +51,9 @@ MFEM_BUILD=$WD'/build/mfem'
 HYPRE_DIR=$WD'/hypre'
 METIS_DIR=$WD'/metis-5.1.0'
 
-cd $MFEM_DIR
-git reset --hard
-git pull
-
-cd $HYPRE_DIR
-git reset --hard
-git pull
-
-cd $WD
+git submodule update --init --recursive
+git submodule foreach --recursive 'git reset --hard'
+git pull --recurse-submodules
 
 # Make sure metis is built. This should already be build and unchanged.
 cd $METIS_DIR
@@ -105,13 +99,18 @@ fi
 
 if [ ! -d "$MFEM_BUILD" ]
 then
-  mkdir -p $MFEM_BUILD && cd $MFEM_BUILD
+  mkdir -p $MFEM_BUILD
+fi
+
+cd $MFEM_BUILD
+
+if [ ! -f "Makefile" ]
+then
   cmake $MFEM_DIR -DMFEM_USE_MPI=YES \
     -DMFEM_USE_METIS_5=YES -DMETIS_DIR=@MFEM_DIR@/../metis-5.1.0 \
     $CUDA
-else
-  cd $MFEM_BUILD
 fi
+
 make ${MAKE_FLAGS} || { echo "Error building MFEM."; exit 1; }
 
 cd $WD
