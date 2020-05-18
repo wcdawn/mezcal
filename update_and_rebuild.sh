@@ -17,7 +17,7 @@ check_dependency ()
   fi
 }
 
-DEPENDENCIES=('git' 'make' 'cmake' 'mpicxx')
+DEPENDENCIES=('git' 'make' 'mpicxx')
 for COMMAND in ${DEPENDENCIES[@]}
 do
   check_dependency $COMMAND
@@ -55,17 +55,19 @@ git submodule update --init --recursive
 git submodule foreach --recursive 'git reset --hard'
 git pull --recurse-submodules
 
+echo "BUILD METIS"
 # Make sure metis is built. This should already be build and unchanged.
 cd $METIS_DIR
 if ! [ "$(ls -A ./build)" ] # if the build director is empty
 then
   make config
+  make ${MAKE_FLAGS} || { echo "Error building METIS."; exit 1; }
+  # When using metis-5.1.0, we need to create a special link.
+  mkdir -p lib && cd lib
+  ln -sf ../build/*/libmetis/libmetis.a lib
 fi
-make ${MAKE_FLAGS} || { echo "Error building METIS."; exit 1; }
-# When using metis-5.1.0, we need to create a special link.
-mkdir -p lib && cd lib
-ln -sf ../build/*/libmetis/libmetis.a lib
 
+echo "BUILD HYPRE"
 # Rebuild hypre as necessary.
 cd $HYPRE_DIR/src
 
@@ -87,30 +89,27 @@ make ${MAKE_FLAGS} || { echo "Error building HYPRE."; exit 1; }
 ln -sf $HYPRE_DIR/../.gitignore_hypre $HYPRE_DIR/.gitignore
 
 # Rebuild MFEM as necessary.
-# Enable CUDA if available on the system.
-
-# If the nvcc compiler exists, enable a CUDA build.
-NVCC='nvcc'
-CUDA=''
-if [ -x "$(command -v $NVCC)" ]
+# configure MFEM if necessary
+if [ ! -f "$MFEM_BUILD/GNUmakefile" ]
 then
-  CUDA='-DMFEM_USE_CUDA=YES'
+
+  cd $MFEM_DIR
+
+  NVCC=nvcc
+  CUDA=''
+  if [ -x "$(command -v $NVCC)" ]
+  then
+    CUDA='MFEM_USE_CUDA=YES'
+  fi
+
+  make BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
+    MFEM_USE_METIS_5=YES METIS_DIR=@MFEM_DIR@/../metis-5.1.0 ${CUDA} \
+    config
+
 fi
 
-if [ ! -d "$MFEM_BUILD" ]
-then
-  mkdir -p $MFEM_BUILD
-fi
-
+echo "BUILD MFEM"
 cd $MFEM_BUILD
-
-if [ ! -f "Makefile" ]
-then
-  cmake $MFEM_DIR -DMFEM_USE_MPI=YES \
-    -DMFEM_USE_METIS_5=YES -DMETIS_DIR=@MFEM_DIR@/../metis-5.1.0 \
-    $CUDA
-fi
-
-make ${MAKE_FLAGS} || { echo "Error building MFEM."; exit 1; }
+make ${MAKE_FLAGS}
 
 cd $WD
