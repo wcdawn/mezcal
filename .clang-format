@@ -1,0 +1,60 @@
+# vim:set ft=yaml:
+
+# To disable, wrap a section with comments.
+# // clang-format off
+# UNFORMATTED CONTENT
+# // clang-format on
+
+BasedOnStyle: LLVM
+IndentWidth: 2
+
+Language: Cpp
+AlignConsecutiveAssignments: true
+AlignConsecutiveMacros: true
+AlignEscapedNewlines: Left
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+
+BreakBeforeBraces: Allman
+
+BreakConstructorInitializers: AfterColon
+BreakInheritanceList: AfterColon
+ColumnLimit: 80
+
+# regular expression that describec comments with special meaning, which should
+# not be split into lines or otherwise changed.
+CommentPragmas:  '^ IWYU pragma:'
+
+ConstructorInitializerIndentWidth: 2
+ContinuationIndentWidth: 2
+ExperimentalAutoDetectBinPacking: false
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
+    Priority:        2
+  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
+    Priority:        3
+  - Regex:           '.*'
+    Priority:        1
+    SortPriority:    0
+
+IndentCaseLabels: true
+IndentWrappedFunctionNames: true
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: All
+PointerAlignment: Left
+Standard: Latest
+StatementMacros:
+  - Q_UNUSED
+TabWidth: 2
+UseCRLF: false
+UseTab: Never
