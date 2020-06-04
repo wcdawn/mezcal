@@ -53,7 +53,7 @@ METIS_DIR=$WD'/metis-5.1.0'
 
 git submodule update --init --recursive
 git submodule foreach --recursive 'git reset --hard'
-git pull --recurse-submodules
+git submodule foreach --recursive 'git pull origin master'
 
 echo "BUILD METIS"
 # Make sure metis is built. This should already be build and unchanged.
