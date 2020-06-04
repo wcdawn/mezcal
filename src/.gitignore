@@ -1,0 +1,5 @@
+*.o
+
+version.hpp
+
+micro.x

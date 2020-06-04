@@ -27,7 +27,11 @@ else
 CXXFLAGS += -O3
 endif
 
-OBJ = main.o
+CPP_FILES = main.cpp
+
+HPP_FILES = 
+
+OBJ = $(CPP_FILES:.cpp=.o)
 
 EXEC = micro.x
 
@@ -51,21 +55,26 @@ $(EXEC) : $(OBJ)
 %.o : %.cpp
 	$(CXX) $(CXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
-version.cpp : version
-
-version : 
-	@echo "#ifndef VERSION" > version.cpp
-	@echo "#define VERSION" >> version.cpp
-	@echo "namespace Version" >> version.cpp
-	@echo "{" >> version.cpp
-	@echo "  constexpr char git_version[] = \"$(GIT_VERSION)\"" >> version.cpp
-	@echo "  constexpr char git_sha[] = \"$(GIT_SHA)\"" >> version.cpp
-	@echo "  constexpr char compiled_date[] = \"$(DATE)\"" >> version.cpp
-	@echo "  constexpr char compiled_host[] = \"$(HOST)\"" >> version.cpp
-	@echo "};" >> version.cpp
-	@echo "#endif" >> version.cpp
+version.hpp : 
+	@echo "#ifndef VERSION" > version.hpp
+	@echo "#define VERSION" >> version.hpp
+	@echo "" >> version.hpp
+	@echo "#include <string>" >> version.hpp
+	@echo "" >> version.hpp
+	@echo "namespace Version" >> version.hpp
+	@echo "{" >> version.hpp
+	@echo "  const std::string git_version   = \"$(GIT_VERSION)\";" >> version.hpp
+	@echo "  const std::string git_sha       = \"$(GIT_SHA)\";" >> version.hpp
+	@echo "  const std::string compiled_date = \"$(DATE)\";" >> version.hpp
+	@echo "  const std::string compiled_host = \"$(HOST)\";" >> version.hpp
+	@echo "}; // namespace Version" >> version.hpp
+	@echo "" >> version.hpp
+	@echo "#endif" >> version.hpp
 
 clean :
-	@$(RM) $(OBJ) $(EXEC) version.cpp
+	@$(RM) $(OBJ) $(EXEC) version.hpp
+
+format : $(CPP_FILES) $(HPP_FILES)
+	@clang-format -i --verbose $^
 
 main.o : $(MFEM_HEADER)
