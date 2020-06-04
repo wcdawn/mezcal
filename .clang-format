@@ -9,21 +9,44 @@ BasedOnStyle: LLVM
 IndentWidth: 2
 
 Language: Cpp
+AccessModifierOffset: -2
 AlignConsecutiveAssignments: true
 AlignConsecutiveMacros: true
 AlignEscapedNewlines: Left
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+AllowAllConstructorInitializersOnNextLine: true
+AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
-AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortFunctionsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: true
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: true
 BinPackParameters: true
-BreakBeforeBinaryOperators: None
+BreakBeforeBinaryOperators: NonAssignment
+BreakConstructorInitializers: BeforeColon
 
-BreakBeforeBraces: Allman
+BreakBeforeBraces: Custom
 
-BreakConstructorInitializers: AfterColon
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: true
+  BeforeCatch: true
+  BeforeElse: true
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+
+BreakConstructorInitializers: BeforeColon
 BreakInheritanceList: AfterColon
 ColumnLimit: 80
 
