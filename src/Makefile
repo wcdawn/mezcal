@@ -27,7 +27,7 @@ else
 CXXFLAGS += -O3
 endif
 
-CPP_FILES = main.cpp
+CPP_FILES = main.cpp analytic.cpp
 
 HPP_FILES = 
 
@@ -77,4 +77,5 @@ clean :
 format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
-main.o : $(MFEM_HEADER)
+main.o : analytic.o $(MFEM_HEADER)
+analytic.o : $(MFEM_HEADER) analytic.hpp
