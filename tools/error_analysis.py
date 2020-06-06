@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-data = np.loadtxt("out.csv", delimiter=',')
+data = np.loadtxt("../src/out.csv", delimiter=',')
 
 # format
 # x, y, z, fem, analytic, error
@@ -34,8 +34,8 @@ ax2 = ax1.twinx()
 
 ax2.plot(x, error)
 
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# ax.plot_trisurf(x, y, fem)
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_trisurf(x, y, fem)
 
 plt.show()

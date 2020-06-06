@@ -1,7 +1,7 @@
 # Makefile
 
-CXX = clang++
-CXXFLAGS = -Wall -pedantic-errors -std=c++11
+CXX = nvcc
+CXXFLAGS = -std=c++11 # -Wall -pedantic-errors -std=c++11
 
 MPICXX = mpicxx
 
