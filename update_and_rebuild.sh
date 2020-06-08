@@ -1,5 +1,21 @@
 #!/bin/bash
 
+# Here's the story for now:
+# Clang does great stuff. Good permissive license and great error messages.
+# The Clang linker also seems to perform better than GCC's. However, somewhere
+# in the CUDA codes used by NVCC, there are GNU extensions used that do not map
+# directly to Clang equivalents. Therefore *everything* gets compiled by Clang
+# *except* CUDA which needs g++.
+#
+# Programs using the MFEM library compiled as such should still use the clang++
+# compiler and associated linker.
+
+GPP=g++
+
+CXX=clang++
+CC=clang
+MPICXX=mpicxx
+
 usage ()
 {
   echo 'Usage:'
@@ -17,7 +33,7 @@ check_dependency ()
   fi
 }
 
-DEPENDENCIES=('git' 'make' 'mpicxx')
+DEPENDENCIES=('git' 'make' "${MPICXX}" "${CC}" "${CXX}")
 for COMMAND in ${DEPENDENCIES[@]}
 do
   check_dependency $COMMAND
@@ -60,7 +76,7 @@ echo "BUILD METIS"
 cd $METIS_DIR
 if ! [ "$(ls -A ./build)" ] # if the build director is empty
 then
-  make config
+  make config CC=${CC} CXX=${CXX}
   make ${MAKE_FLAGS} || { echo "Error building METIS."; exit 1; }
   # When using metis-5.1.0, we need to create a special link.
   mkdir -p lib && cd lib
@@ -73,8 +89,7 @@ cd $HYPRE_DIR/src
 
 if [ ! -f "./config/Makefile.config" ]
 then
-  ./configure --disable-fortran
-
+  ./configure --disable-fortran CXX=${CXX} CC=${CC}
 fi
 
 # Note: the Makefiles for hypre do a lot of copying even if all the targets
@@ -95,16 +110,19 @@ then
 
   cd $MFEM_DIR
 
+  MFEM_MPICXX="OMPI_CXX=${CXX} ${MPICXX}"
+
   NVCC=nvcc
   CUDA=''
   if [ -x "$(command -v $NVCC)" ]
   then
     CUDA='MFEM_USE_CUDA=YES'
+    MFEM_MPICXX="${MPICXX}"
   fi
 
-  make BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
-    MFEM_USE_METIS_5=YES METIS_DIR=@MFEM_DIR@/../metis-5.1.0 ${CUDA} \
-    config
+  make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX="OMPI_CXX=${GPP} nvcc" \
+    BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
+    MFEM_USE_METIS_5=YES METIS_DIR=@MFEM_DIR@/../metis-5.1.0 ${CUDA}
 
 fi
 
