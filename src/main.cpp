@@ -1,15 +1,13 @@
-#include "mfem.hpp"
-
 #include "analytic.hpp"
+#include "mfem.hpp"
 
 #include <fstream>
 #include <iostream>
-#include <string>
 #include <sstream>
+#include <string>
 
 using namespace std;
 using namespace mfem;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // SOLVER OPTIONS
@@ -30,14 +28,14 @@ constexpr int print_level{2}; // default 0
 constexpr int hypre_print_level{0};
 
 // maximum number of inner iterations
-constexpr int max_inner{400};  // default 1000
+constexpr int max_inner{400}; // default 1000
 
-// actual tolerance of r0 in the solver is max(nom*rel_tol*rel_tol, abs_tol*abs_tol)
-// if abs_tol=0, abs_tol is ignored
+// actual tolerance of r0 in the solver is max(nom*rel_tol*rel_tol,
+// abs_tol*abs_tol) if abs_tol=0, abs_tol is ignored
 
 // relative tolerance of inner Krylov solver
 constexpr double inner_rel_tol{1e-12}; // default 1e-12
-                             
+
 // absolute tolerance of inner Krylov solver
 constexpr double inner_abs_tol{1e-24}; // default 1e-24 // examples use 0.0 too
 
@@ -53,7 +51,7 @@ int main(int argc, char* argv[])
   vector<int> boundary_conditions; // 0 is essential, 1 is non-essential
 
   // reference problem
-  constexpr Analytic::Reference reference{Analytic::fixed_src};
+  constexpr Analytic::Reference reference{Analytic::square};
 
   // cross sections
   double sigma_tr{0.0};
@@ -65,18 +63,39 @@ int main(int argc, char* argv[])
   switch (reference)
   {
     case (Analytic::fixed_src):
-      fname_mesh = "../analytic/fixed_src/fixed_src_quad.msh";
+      fname_mesh          = "../analytic/fixed_src/fixed_src_quad.msh";
       boundary_conditions = {0, 1, 0, 1};
-      sigma_tr = 1.0 / 3.0;
-      sigma_r  = 1.0;
-      q_fixed  = 1.0;
+      sigma_tr            = 1.0 / 3.0;
+      sigma_r             = 1.0;
+      q_fixed             = 1.0;
       break;
     case (Analytic::oned_oneg):
-      fname_mesh = "../analytic/1d1g/1d1g_tri.msh";
+      fname_mesh          = "../analytic/1d1g/1d1g_tri.msh";
       boundary_conditions = {0, 1, 0, 1};
-      sigma_tr = 3.619027e-2;
-      sigma_r  = 1.532090e-1;
-      nusf     = 1.566769e-1;
+      sigma_tr            = 3.619027e-2;
+      sigma_r             = 1.532090e-1;
+      nusf                = 1.566769e-1;
+      break;
+    case (Analytic::twod_oneg):
+      fname_mesh          = "../analytic/2d1g/2d1g.msh";
+      boundary_conditions = {1, 1, 1, 1};
+      sigma_tr            = 3.619027e-2;
+      sigma_r             = 1.532090e-1;
+      nusf                = 1.566769e-1;
+      break;
+    case (Analytic::square):
+      fname_mesh          = "../analytic/square/square.mesh";
+      boundary_conditions = {1, 1, 1, 1};
+      sigma_tr            = 3.619027e-2;
+      sigma_r             = 1.532090e-1;
+      nusf                = 1.566769e-1;
+      break;
+    case (Analytic::finite_cyl):
+      fname_mesh          = "../analytic/finite_cyl/finite_cyl_tet.msh";
+      boundary_conditions = {1, 1, 1, 1};
+      sigma_tr            = 1.0 / 3.0;
+      sigma_r             = 1.0;
+      nusf                = 1.0;
       break;
   }
 
@@ -88,6 +107,7 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
   // 1. Parse command-line options.
+  // TODO add verbose option
   const char* mesh_file     = fname_mesh.c_str();
   int order                 = 1;
   bool static_cond          = false;
@@ -112,7 +132,8 @@ int main(int argc, char* argv[])
   args.Parse();
   if (!args.Good())
   {
-    if (myid == 0) args.PrintUsage(cout);
+    if (myid == 0)
+      args.PrintUsage(cout);
     MPI_Finalize();
     return 1;
   }
@@ -134,9 +155,9 @@ int main(int argc, char* argv[])
   //    largest number that gives a final mesh with no more than 50,000
   //    elements.
   {
-    int ref_levels = 
-      static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim));
-    for (int l{0}; l < ref_levels; ++l) { mesh->UniformRefinement(); }
+    const int ref_levels{
+      static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim))};
+    for (int lvl{0}; lvl < ref_levels; ++lvl) mesh->UniformRefinement();
   }
 
   // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
@@ -145,8 +166,8 @@ int main(int argc, char* argv[])
   auto pmesh{new ParMesh(MPI_COMM_WORLD, *mesh)};
   delete mesh;
   {
-    int par_ref_levels = 2;
-    for (int l = 0; l < par_ref_levels; ++l) { pmesh->UniformRefinement(); }
+    constexpr int par_ref_levels{2};
+    for (int lvl{0}; lvl < par_ref_levels; ++lvl) pmesh->UniformRefinement();
   }
 
   // 5. Define a finite element space on the mesh. Here we use continuous
@@ -160,15 +181,17 @@ int main(int argc, char* argv[])
   else if (pmesh->GetNodes())
   {
     fec = pmesh->GetNodes()->OwnFEC();
-    if (myid == 0) cout << "Using isoparametric FEs: " << fec->Name() << endl;
+    if (myid == 0)
+      cout << "Using isoparametric FEs: " << fec->Name() << endl;
   }
   else
   {
     fec = new H1_FECollection(order = 1, dim);
   }
   auto fespace = new ParFiniteElementSpace(pmesh, fec);
-  HYPRE_Int size{fespace->GlobalTrueVSize()};
-  if (myid == 0) cout << "Number of finite element unknowns: " << size << endl;
+  const HYPRE_Int size{fespace->GlobalTrueVSize()};
+  if (myid == 0)
+    cout << "Number of finite element unknowns: " << size << endl;
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
   //    In this example, the boundary conditions are defined by marking all
@@ -178,18 +201,11 @@ int main(int argc, char* argv[])
   Array<int> ess_bdr(pmesh->bdr_attributes.Max());
   // begin by setting all bcs to essential
   ess_bdr = 0;
+
+  // boundary conditions are baked into the matrix
   // go through and set boundary conditions based on user input
   for (int i{0}; (i < boundary_conditions.size()) && (i < ess_bdr.Size()); ++i)
     ess_bdr[i] = boundary_conditions[i];
-  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
-
-  // 7. Set up the linear form b(.) which corresponds to the right-hand side of
-  //    the FEM linear system, which in this case is (1,phi_i) where phi_i are
-  //    the basis functions in the finite element fespace.
-  auto b{new ParLinearForm(fespace)};
-  ConstantCoefficient source{q_fixed};
-  b->AddDomainIntegrator(new DomainLFIntegrator(source));
-  b->Assemble();
 
   // 8. Define the solution vector x as a finite element grid function
   //    corresponding to fespace. Initialize x with initial guess of zero,
@@ -211,50 +227,90 @@ int main(int argc, char* argv[])
   removal = sigma_r;
   PWConstCoefficient removal_func(removal);
 
+  // assemble fission coefficient
+  Vector fission(pmesh->attributes.Max()); // length is number of materials
+  fission = nusf;
+  PWConstCoefficient fission_func(fission);
+
   auto a{new ParBilinearForm(fespace)};
-  if (pa) { a->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
-  a->AddDomainIntegrator(new DiffusionIntegrator(removal_func));
+  auto m{new ParBilinearForm(fespace)};
+
+  if (pa)
+  {
+    a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+    m->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+  }
+
+  a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
   a->AddDomainIntegrator(new MassIntegrator(removal_func));
+  m->AddDomainIntegrator(new MassIntegrator(fission_func));
 
   // 10. Assemble the bilinear form and the corresponding linear system,
   //     applying any necessary transformations such as: eliminating boundary
   //     conditions, applying conforming constraints for non-conforming AMR,
   //     static condensation, etc.
-  if (static_cond) { a->EnableStaticCondensation(); }
+  if (static_cond)
+  {
+    a->EnableStaticCondensation();
+    m->EnableStaticCondensation();
+  }
+
   a->Assemble();
+  a->EliminateEssentialBCDiag(ess_bdr, 1.0);
+  a->Finalize();
 
-  OperatorPtr A;
-  Vector B, X;
-  a->FormLinearSystem(ess_tdof_list, x, *b, A, X, B);
+  m->Assemble();
+  // shift the eigenvalue corresponding to eliminated dofs to a large value
+  m->EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+  m->Finalize();
 
-  // 11. Solve the linear system A X = B.
+  HypreParMatrix* A = a->ParallelAssemble();
+  HypreParMatrix* M = m->ParallelAssemble();
+
+  delete a;
+  delete m;
+
+  // 11. Setup the preconditioner.
   Solver* prec{nullptr};
-   if (pa)
-   {
-      if (UsesTensorBasis(*fespace))
-      {
-         prec = new OperatorJacobiSmoother(*a, ess_tdof_list);
-      }
-   }
-   else
-   {
-     auto prec_move{new HypreBoomerAMG};
-     prec_move->SetPrintLevel(0);
-     prec = prec_move;
-   }
-   CGSolver cg(MPI_COMM_WORLD);
-   cg.SetRelTol(inner_rel_tol);
-   cg.SetAbsTol(inner_abs_tol);
-   cg.SetMaxIter(max_inner);
-   cg.SetPrintLevel(print_level);
-   if (prec) { cg.SetPreconditioner(*prec); }
-   cg.SetOperator(*A);
-   cg.Mult(B, X);
-   delete prec;
+  auto amg{new HypreBoomerAMG(*A)};
+  amg->SetPrintLevel(hypre_print_level);
+  prec = amg;
 
-  // 12. Recover the solution as a finite element grid function. This is the
-  //     local finite element solution on each processor.
-  a->RecoverFEMSolution(X, *b, x);
+  auto lobpcg{new HypreLOBPCG(MPI_COMM_WORLD)};
+  lobpcg->SetNumModes(1); // solve for nev eigenmodes // size will solve for *all* eigenmodes
+  // Random seed is set used to initialize the initial eigenvalues for the lopcg
+  // algorithm. This can significantly affect convergence time but convergence
+  // time remains bounded.
+  // No default provided by MFEM but this is used in one of the tutorials.
+  lobpcg->SetRandomSeed(1);
+  lobpcg->SetPreconditioner(*prec);
+  lobpcg->SetMaxIter(max_inner);
+  lobpcg->SetTol(inner_abs_tol);
+  lobpcg->SetPrecondUsageMode(1);
+  lobpcg->SetPrintLevel(hypre_print_level);
+  lobpcg->SetMassMatrix(*M);
+  lobpcg->SetOperator(*A);
+
+  // 9. Compute the eigenmodes and extract the array of eigenvalues. Define a
+  //    parallel grid function to represent each of the eigenmodes returned by
+  //    the solver.
+  Array<double> eigenvalues;
+  lobpcg->Solve();
+  lobpcg->GetEigenvalues(eigenvalues);
+  x = lobpcg->GetEigenvector(0); // this is the local solution on this process
+
+  if (myid == 0)
+  {
+    for (int i{0}; i < eigenvalues.Size(); ++i)
+    {
+      const auto previous_precision{cout.precision()};
+      cout << std::setprecision(20);
+      cout << "MODE " << i << '\n'
+           << "eigenvalue=" << eigenvalues[i] << '\n'
+           << "inveigenva=" << 1.0 / eigenvalues[i] << '\n';
+      cout << std::setprecision(previous_precision);
+    }
+  }
 
   // 13. Save the refined mesh and the solution. This output can be viewed later
   //     using GLVis: "glvis -np <np> -m refined.mesh -g sol.gf".
@@ -276,7 +332,7 @@ int main(int argc, char* argv[])
   // TODO this is wrong for parallel!
   if (myid == 0)
   {
-    constexpr double keff{1.0};
+    const double keff{1.0 / eigenvalues[0]};
     Analytic anal(reference, pmesh, x, keff);
     anal.analyze(cout);
     ofstream ofs{"out.csv"};
@@ -295,8 +351,8 @@ int main(int argc, char* argv[])
   }
 
   // 15. Free the used memory.
-  delete a;
-  delete b;
+  delete A;
+  delete M;
   delete fespace;
   if (order > 0) { delete fec; }
   delete pmesh;

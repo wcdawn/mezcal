@@ -1,7 +1,7 @@
 # Makefile
 
-CXX = nvcc
-CXXFLAGS = -std=c++11 # -Wall -pedantic-errors -std=c++11
+CXX = clang++
+CXXFLAGS = -Wall -pedantic-errors -std=c++17
 
 MPICXX = mpicxx
 
@@ -50,7 +50,7 @@ default : all
 all : $(EXEC)
 
 $(EXEC) : $(OBJ)
-	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
+	OMPI_CXX=$(CXX) $(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 
 %.o : %.cpp
 	$(CXX) $(CXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<

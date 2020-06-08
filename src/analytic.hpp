@@ -16,6 +16,9 @@ class Analytic
     {
       fixed_src,
       oned_oneg,
+      twod_oneg,
+      square,
+      finite_cyl
     };
 
     Analytic(Reference ref, const Mesh* const mesh, 
@@ -30,6 +33,9 @@ class Analytic
     int nDim;
     double keff;
 
+    // Zeroth zero of the first Bessel function of the first kind.
+    static constexpr double alpha0{2.404825557695772768622};
+
     std::vector<Vertex> node;
     Vector sol;
 
@@ -38,8 +44,12 @@ class Analytic
 
     double fixed_src_fun(const Vertex&) const;
     double oned_oneg_fun(const Vertex&) const;
+    double twod_oneg_fun(const Vertex&) const;
+    double finite_cyl_fun(const Vertex&) const;
 
     double oned_oneg_keff() const;
+    double twod_oneg_keff() const;
+    double finite_cyl_keff() const;
 };
 
 #endif
