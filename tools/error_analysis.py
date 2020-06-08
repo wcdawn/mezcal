@@ -32,10 +32,10 @@ plt.legend(["FEM", "Analytic"])
 ax1 = plt.gca()
 ax2 = ax1.twinx()
 
-ax2.plot(x, error)
+ax2.plot(x, error, color='g')
 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.plot_trisurf(x, y, fem)
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+# ax.plot_trisurf(x, y, fem)
 
 plt.show()
