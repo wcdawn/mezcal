@@ -19,13 +19,13 @@ using namespace mfem;
 // 2 prints the total number of iterations & average reduction factor
 // 3 prints first, last, and average reduction factor,
 // >= 4 prints only average reduction factor
-constexpr int print_level{2}; // default 0
+constexpr int print_level{0}; // default 0
 
 // <= 0 prints nothing
 // 1 prints a lot
 // idk about 2
 // 3 prints a lot and more
-constexpr int hypre_print_level{0};
+constexpr int hypre_print_level{1};
 
 // maximum number of inner iterations
 constexpr int max_inner{400}; // default 1000
@@ -51,52 +51,62 @@ int main(int argc, char* argv[])
   vector<int> boundary_conditions; // 0 is essential, 1 is non-essential
 
   // reference problem
-  constexpr Analytic::Reference reference{Analytic::square};
+  constexpr Analytic::Reference reference{Analytic::tworeg};
 
   // cross sections
-  double sigma_tr{0.0};
-  double sigma_r{0.0};
-  double nusf{0.0};
-  double q_fixed{0.0};
+  vector<double> sigma_tr;
+  vector<double> sigma_r;
+  vector<double> nusf;
+  vector<double> q_fixed;
 
   // actually fill in data
   switch (reference)
   {
     case (Analytic::fixed_src):
-      fname_mesh          = "../analytic/fixed_src/fixed_src_quad.msh";
+      fname_mesh = "../analytic/fixed_src/fixed_src_quad.msh";
       boundary_conditions = {0, 1, 0, 1};
-      sigma_tr            = 1.0 / 3.0;
-      sigma_r             = 1.0;
-      q_fixed             = 1.0;
+      sigma_tr.push_back(1.0 / 3.0);
+      sigma_r.push_back(1.0);
+      q_fixed.push_back(1.0);
       break;
     case (Analytic::oned_oneg):
-      fname_mesh          = "../analytic/1d1g/1d1g_tri.msh";
+      fname_mesh = "../analytic/1d1g/1d1g_tri.msh";
       boundary_conditions = {0, 1, 0, 1};
-      sigma_tr            = 3.619027e-2;
-      sigma_r             = 1.532090e-1;
-      nusf                = 1.566769e-1;
+      sigma_tr.push_back(3.619027e-2);
+      sigma_r.push_back(1.532090e-1);
+      nusf.push_back(1.566769e-1);
       break;
     case (Analytic::twod_oneg):
-      fname_mesh          = "../analytic/2d1g/2d1g.msh";
+      fname_mesh = "../analytic/2d1g/2d1g.msh";
       boundary_conditions = {1, 1, 1, 1};
-      sigma_tr            = 3.619027e-2;
-      sigma_r             = 1.532090e-1;
-      nusf                = 1.566769e-1;
+      sigma_tr.push_back(3.619027e-2);
+      sigma_r.push_back(1.532090e-1);
+      nusf.push_back(1.566769e-1);
       break;
     case (Analytic::square):
-      fname_mesh          = "../analytic/square/square.mesh";
+      fname_mesh = "../analytic/square/square.mesh";
       boundary_conditions = {1, 1, 1, 1};
-      sigma_tr            = 3.619027e-2;
-      sigma_r             = 1.532090e-1;
-      nusf                = 1.566769e-1;
+      sigma_tr.push_back(3.619027e-2);
+      sigma_r.push_back(1.532090e-1);
+      nusf.push_back(1.566769e-1);
       break;
     case (Analytic::finite_cyl):
-      fname_mesh          = "../analytic/finite_cyl/finite_cyl_tet.msh";
+      fname_mesh = "../analytic/finite_cyl/finite_cyl_tet.msh";
       boundary_conditions = {1, 1, 1, 1};
-      sigma_tr            = 1.0 / 3.0;
-      sigma_r             = 1.0;
-      nusf                = 1.0;
+      sigma_tr.push_back(1.0 / 3.0);
+      sigma_r.push_back(1.0);
+      nusf.push_back(1.0);
       break;
+    case (Analytic::tworeg):
+      fname_mesh = "../analytic/tworeg/tworeg_80.msh";
+      // MAT1
+      sigma_tr.push_back(1.0 / (3.0 * 1.2));
+      sigma_r.push_back(0.02);
+      nusf.push_back(0.02);
+      // MAT2
+      sigma_tr.push_back(1.0 / (3.0 * 0.7));
+      sigma_r.push_back(0.015);
+      nusf.push_back(0.0);
   }
 
   // Initialize MPI
@@ -126,9 +136,7 @@ int main(int argc, char* argv[])
                  "--no-partial-assembly", "Enable Partial Assembly.");
   args.AddOption(&device_config, "-d", "--device",
                  "Device configuration string, see Device::Configure().");
-  args.AddOption(&visualization, "-vis", "--visualization", "-no-vis",
-                 "--no-visualization",
-                 "Enable or disable GLVis visualization.");
+
   args.Parse();
   if (!args.Good())
   {
@@ -155,8 +163,9 @@ int main(int argc, char* argv[])
   //    largest number that gives a final mesh with no more than 50,000
   //    elements.
   {
-    const int ref_levels{
-      static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim))};
+    // const int ref_levels{
+    //   static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim))};
+    constexpr int ref_levels{1};
     for (int lvl{0}; lvl < ref_levels; ++lvl) mesh->UniformRefinement();
   }
 
@@ -166,7 +175,7 @@ int main(int argc, char* argv[])
   auto pmesh{new ParMesh(MPI_COMM_WORLD, *mesh)};
   delete mesh;
   {
-    constexpr int par_ref_levels{2};
+    constexpr int par_ref_levels{0};
     for (int lvl{0}; lvl < par_ref_levels; ++lvl) pmesh->UniformRefinement();
   }
 
@@ -198,6 +207,7 @@ int main(int argc, char* argv[])
   //    the boundary attributes from the mesh as essential (Dirichlet) and
   //    converting them to a list of true dofs.
   Array<int> ess_tdof_list;
+  cout << "SIZE: " << pmesh->bdr_attributes.Size() << endl;
   Array<int> ess_bdr(pmesh->bdr_attributes.Max());
   // begin by setting all bcs to essential
   ess_bdr = 0;
@@ -219,17 +229,20 @@ int main(int argc, char* argv[])
 
   // assemble leakage coefficient
   Vector leakage(pmesh->attributes.Max()); // length is number of materials
-  leakage = 1.0 / (3.0 * sigma_tr);
+  for (int i{0}; i < leakage.Size(); ++i)
+    leakage[i] = 1.0 / (3.0 * sigma_tr[i]);
   PWConstCoefficient leakage_func(leakage);
 
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
-  removal = sigma_r;
+  for (int i{0}; i < removal.Size(); ++i)
+    removal[i] = sigma_r[i];
   PWConstCoefficient removal_func(removal);
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
-  fission = nusf;
+  for (int i{0}; i < removal.Size(); ++i)
+    fission[i] = nusf[i];
   PWConstCoefficient fission_func(fission);
 
   auto a{new ParBilinearForm(fespace)};
@@ -299,36 +312,6 @@ int main(int argc, char* argv[])
   lobpcg->GetEigenvalues(eigenvalues);
   x = lobpcg->GetEigenvector(0); // this is the local solution on this process
 
-  if (myid == 0)
-  {
-    for (int i{0}; i < eigenvalues.Size(); ++i)
-    {
-      const auto previous_precision{cout.precision()};
-      cout << std::setprecision(20);
-      cout << "MODE " << i << '\n'
-           << "eigenvalue=" << eigenvalues[i] << '\n'
-           << "inveigenva=" << 1.0 / eigenvalues[i] << '\n';
-      cout << std::setprecision(previous_precision);
-    }
-  }
-
-  // 13. Save the refined mesh and the solution. This output can be viewed later
-  //     using GLVis: "glvis -np <np> -m refined.mesh -g sol.gf".
-  {
-    ostringstream mesh_name;
-    ostringstream sol_name;
-    mesh_name << "mesh." << setfill('0') << setw(6) << myid;
-    sol_name << "sol." << setfill('0') << setw(6) << myid;
-
-    ofstream mesh_ofs(mesh_name.str().c_str());
-    mesh_ofs.precision(8);
-    pmesh->Print(mesh_ofs);
-
-    ofstream sol_ofs(sol_name.str().c_str());
-    sol_ofs.precision(8);
-    x.Save(sol_ofs);
-  }
-
   // TODO this is wrong for parallel!
   if (myid == 0)
   {
@@ -338,6 +321,16 @@ int main(int argc, char* argv[])
     ofstream ofs{"out.csv"};
     anal.print(ofs);
   }
+
+  // TODO this is wrong for parallel!
+  // write vtk
+  if (myid == 0)
+  {
+    ofstream ofs{"out.vtk"};
+    pmesh->PrintVTK(ofs, 0);
+    x.SaveVTK(ofs, "solution", 0);
+  }
+
 
   // 14. Send the solution by socket to a GLVis server.
   if (visualization)

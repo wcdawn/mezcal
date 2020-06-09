@@ -1,5 +1,7 @@
 #include "analytic.hpp"
 
+#include <vector>
+
 #include <cmath>
 #define _USE_MATH_DEFINES
 
@@ -7,6 +9,7 @@
 
 // TODO remove this block
 using std::cout;
+using std::vector;
 
 Analytic::Analytic(Reference ref, const Mesh* const mesh, 
     const GridFunction& grid_sol, double k) : 
@@ -54,6 +57,10 @@ Analytic::Analytic(Reference ref, const Mesh* const mesh,
       fun = &Analytic::finite_cyl_fun;
       analytic_keff = &Analytic::finite_cyl_keff;
       break;
+    case (tworeg):
+      fun = &Analytic::tworeg_fun;
+      analytic_keff = &Analytic::tworeg_keff;
+      break;
     default:
       throw InvalidReferenceName{};
   }
@@ -93,7 +100,9 @@ void Analytic::analyze(std::ostream& os) const
   {
     const double kref{analytic_keff(this)};
     const auto previous_precision{os.precision()};
-    os << "kref = " << std::setprecision(20) << kref << '\n';
+    os << std::setprecision(20);
+    os << "keff = " << keff << '\n';
+    os << "kref = " << kref << '\n';
     os << "keff_err_[pcm] = " << (kref - keff) * 1e5 << '\n';
     os << std::setprecision(previous_precision);
   }
@@ -163,6 +172,31 @@ double Analytic::oned_oneg_keff() const
   return nusf / (diffusion * std::pow(M_PI / Lx, 2) + removal);
 }
 
+double Analytic::tworeg_fun(const Vertex& v) const
+{
+  static const vector<double> sigma_tr{1.0 / (3.0 * 1.2), 1.0 / (3.0 * 0.7)};
+  static const vector<double> sigma_r{0.02, 0.015};
+  static const vector<double> nusf{0.02, 0.0};
+
+  vector<double> diffusion(sigma_tr.size());
+  for (int i{0}; i < sigma_tr.size(); ++i)
+    diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
+
+  static constexpr double L_F{8e1};
+  static constexpr double L_R{1e2};
+  static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
+
+  const double x{v(0)}; // x is the zeroth coordinate
+
+  // indices are material indices, not group indices
+
+  static const double kappa{std::sqrt(sigma_r[1] / diffusion[1])};
+
+  if (x < L_F) return std::cos(BF * x);
+  return std::cos(BF * x) * (std::cosh(kappa * (x - L_F)) - 
+    (std::sinh(kappa * (x - L_F)) / std::tanh(kappa * (L_R - L_F))));
+}
+
 double Analytic::twod_oneg_keff() const
 {
   static constexpr double transport{3.619027e-2};
@@ -189,6 +223,24 @@ double Analytic::finite_cyl_keff() const
 
   static constexpr double diffusion{1.0 / (3.0 * transport)};
 
-  return nusf / (diffusion * (std::pow(alpha0 / R, 2) * std::pow(M_PI / H, 2))
+  return nusf / (diffusion * (std::pow(alpha0 / R, 2) + std::pow(M_PI / H, 2))
     + removal);
+}
+
+double Analytic::tworeg_keff() const
+{
+  static const vector<double> sigma_tr{1.0 / (3.0 * 1.2), 1.0 / (3.0 * 0.7)};
+  static const vector<double> sigma_r{0.02, 0.015};
+  static const vector<double> nusf{0.02, 0.0};
+
+  vector<double> diffusion(sigma_tr.size());
+  for (int i{0}; i < sigma_tr.size(); ++i)
+    diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
+
+  static constexpr double L_F{8e1};
+  static constexpr double L_R{1e2};
+  static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
+
+  // indices are material indices, not group indices
+  return nusf[0] / (diffusion[0] * std::pow(BF, 2) + sigma_r[0]);
 }

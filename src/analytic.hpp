@@ -18,7 +18,8 @@ class Analytic
       oned_oneg,
       twod_oneg,
       square,
-      finite_cyl
+      finite_cyl,
+      tworeg
     };
 
     Analytic(Reference ref, const Mesh* const mesh, 
@@ -46,10 +47,12 @@ class Analytic
     double oned_oneg_fun(const Vertex&) const;
     double twod_oneg_fun(const Vertex&) const;
     double finite_cyl_fun(const Vertex&) const;
+    double tworeg_fun(const Vertex&) const;
 
     double oned_oneg_keff() const;
     double twod_oneg_keff() const;
     double finite_cyl_keff() const;
+    double tworeg_keff() const;
 };
 
 #endif
