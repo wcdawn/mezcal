@@ -1,4 +1,5 @@
 #include "analytic.hpp"
+#include "xslibrary.hpp"
 #include "mfem.hpp"
 
 #include <fstream>
@@ -32,74 +33,106 @@ int main(int argc, char* argv[])
 
   // mesh
   string fname_mesh;
+  string fname_xs;
+
+  // cross sections
+  XSLibrary xs;
+  vector<double> q_fixed;
 
   // boundary conditions
   vector<int> boundary_conditions; // 0 is essential, 1 is non-essential
 
   // reference problem
-  constexpr Analytic::Reference reference{Analytic::threed_oneg};
+  constexpr Analytic::Reference reference{Analytic::tworeg};
 
   // cross sections
   vector<double> sigma_tr;
   vector<double> sigma_r;
   vector<double> nusf;
-  vector<double> q_fixed;
 
   // actually fill in data
   switch (reference)
   {
     case (Analytic::fixed_src):
       fname_mesh = "../analytic/fixed_src/fixed_src_quad.msh";
+      fname_xs   = "../analytic/fixed_src/fixed_src.xs";
+      xs.read_userxs(fname_xs);
       boundary_conditions = {0, 1, 0, 1};
-      sigma_tr.push_back(1.0 / 3.0);
-      sigma_r.push_back(1.0);
+      for (double val : xs.rec[0].sigma_tr)
+        sigma_tr.push_back(val);
+      for (double val : xs.rec[0].sigma_r)
+        sigma_r.push_back(val);
       q_fixed.push_back(1.0);
       break;
     case (Analytic::oned_oneg):
       fname_mesh = "../analytic/1d1g/1d1g_tri.msh";
+      fname_xs   = "../analytic/1d1g/1d1g.xs";
+      xs.read_userxs(fname_xs);
       boundary_conditions = {0, 1, 0, 1};
-      sigma_tr.push_back(3.619027e-2);
-      sigma_r.push_back(1.532090e-1);
-      nusf.push_back(1.566769e-1);
+
+      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[0].sigma_r[0]);
+      nusf.push_back(xs.rec[0].nusf[0]);
+
       break;
     case (Analytic::twod_oneg):
       fname_mesh = "../analytic/2d1g/2d1g.msh";
+      fname_xs   = "../analytic/2d1g/2d1g.xs";
+      xs.read_userxs(fname_xs);
       boundary_conditions = {1, 1, 1, 1};
-      sigma_tr.push_back(3.619027e-2);
-      sigma_r.push_back(1.532090e-1);
-      nusf.push_back(1.566769e-1);
+
+      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[0].sigma_r[0]);
+      nusf.push_back(xs.rec[0].nusf[0]);
+
       break;
     case (Analytic::threed_oneg):
       fname_mesh = "../analytic/3d1g/3d1g_tet.msh";
+      fname_xs   = "../analytic/3d1g/3d1g.xs";
+      xs.read_userxs(fname_xs);
       boundary_conditions = {1, 1, 1, 1, 1, 1};
-      sigma_tr.push_back(3.619027e-2);
-      sigma_r.push_back(1.532090e-1);
-      nusf.push_back(1.566769e-1);
+
+      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[0].sigma_r[0]);
+      nusf.push_back(xs.rec[0].nusf[0]);
+
       break;
     case (Analytic::square):
       fname_mesh = "../analytic/square/square.mesh";
+      fname_xs   = "../analytic/square/square.xs";
+      xs.read_userxs(fname_xs);
       boundary_conditions = {1, 1, 1, 1};
-      sigma_tr.push_back(3.619027e-2);
-      sigma_r.push_back(1.532090e-1);
-      nusf.push_back(1.566769e-1);
+
+      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[0].sigma_r[0]);
+      nusf.push_back(xs.rec[0].nusf[0]);
+
       break;
     case (Analytic::finite_cyl):
-      fname_mesh = "../analytic/finite_cyl/finite_cyl_tet_r0.msh";
+      fname_mesh = "../analytic/finite_cyl/finite_cyl.mesh";
+      fname_xs   = "../analytic/finite_cyl/finite_cyl.xs";
+      xs.read_userxs(fname_xs);
       boundary_conditions = {1, 1, 1, 1};
-      sigma_tr.push_back(1.0 / 3.0);
-      sigma_r.push_back(1.0);
-      nusf.push_back(1.0);
+
+      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[0].sigma_r[0]);
+      nusf.push_back(xs.rec[0].nusf[0]);
+
       break;
     case (Analytic::tworeg):
       fname_mesh = "../analytic/tworeg/tworeg_80.msh";
-      // MAT1
-      sigma_tr.push_back(1.0 / (3.0 * 1.2));
-      sigma_r.push_back(0.02);
-      nusf.push_back(0.02);
-      // MAT2
-      sigma_tr.push_back(1.0 / (3.0 * 0.7));
-      sigma_r.push_back(0.015);
-      nusf.push_back(0.0);
+      fname_xs   = "../analytic/tworeg/tworeg.xs";
+      boundary_conditions = {0, 0, 0, 1};
+      xs.read_userxs(fname_xs);
+
+      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[0].sigma_r[0]);
+      nusf.push_back(xs.rec[0].nusf[0]);
+
+      sigma_tr.push_back(xs.rec[1].sigma_tr[0]);
+      sigma_r.push_back(xs.rec[1].sigma_r[0]);
+      nusf.push_back(xs.rec[1].nusf[0]);
+      break;
   }
 
   // Initialize MPI
@@ -286,7 +319,7 @@ int main(int argc, char* argv[])
 
   auto lobpcg{new HypreLOBPCG(MPI_COMM_WORLD)};
   lobpcg->SetNumModes(1); // solve for nev eigenmodes
-  // Random seed is set used to initialize the initial eigenvalues for the lopcg
+  // Random seed is set used to initialize the initial eigenvalues for the lobpcg
   // algorithm. This can significantly affect convergence time but convergence
   // time remains bounded.
   // No default provided by MFEM but this is used in one of the tutorials.
