@@ -13,20 +13,6 @@ using namespace mfem;
 // SOLVER OPTIONS
 ////////////////////////////////////////////////////////////////////////////////
 
-// < 0 prints no information
-// 0 prints default based on what's "best",
-// 1 prints every inner iteration & average reduction factor,
-// 2 prints the total number of iterations & average reduction factor
-// 3 prints first, last, and average reduction factor,
-// >= 4 prints only average reduction factor
-constexpr int print_level{0}; // default 0
-
-// <= 0 prints nothing
-// 1 prints a lot
-// idk about 2
-// 3 prints a lot and more
-constexpr int hypre_print_level{1};
-
 // maximum number of inner iterations
 constexpr int max_inner{400}; // default 1000
 
@@ -51,7 +37,7 @@ int main(int argc, char* argv[])
   vector<int> boundary_conditions; // 0 is essential, 1 is non-essential
 
   // reference problem
-  constexpr Analytic::Reference reference{Analytic::tworeg};
+  constexpr Analytic::Reference reference{Analytic::threed_oneg};
 
   // cross sections
   vector<double> sigma_tr;
@@ -83,6 +69,13 @@ int main(int argc, char* argv[])
       sigma_r.push_back(1.532090e-1);
       nusf.push_back(1.566769e-1);
       break;
+    case (Analytic::threed_oneg):
+      fname_mesh = "../analytic/3d1g/3d1g_tet.msh";
+      boundary_conditions = {1, 1, 1, 1, 1, 1};
+      sigma_tr.push_back(3.619027e-2);
+      sigma_r.push_back(1.532090e-1);
+      nusf.push_back(1.566769e-1);
+      break;
     case (Analytic::square):
       fname_mesh = "../analytic/square/square.mesh";
       boundary_conditions = {1, 1, 1, 1};
@@ -91,7 +84,7 @@ int main(int argc, char* argv[])
       nusf.push_back(1.566769e-1);
       break;
     case (Analytic::finite_cyl):
-      fname_mesh = "../analytic/finite_cyl/finite_cyl_tet.msh";
+      fname_mesh = "../analytic/finite_cyl/finite_cyl_tet_r0.msh";
       boundary_conditions = {1, 1, 1, 1};
       sigma_tr.push_back(1.0 / 3.0);
       sigma_r.push_back(1.0);
@@ -117,13 +110,12 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
   // 1. Parse command-line options.
-  // TODO add verbose option
   const char* mesh_file     = fname_mesh.c_str();
   int order                 = 1;
   bool static_cond          = false;
   bool pa                   = false;
   const char* device_config = "cpu";
-  bool visualization        = true;
+  bool verbose{false};
 
   OptionsParser args(argc, argv);
   args.AddOption(&mesh_file, "-m", "--mesh", "Mesh file to use.");
@@ -136,6 +128,8 @@ int main(int argc, char* argv[])
                  "--no-partial-assembly", "Enable Partial Assembly.");
   args.AddOption(&device_config, "-d", "--device",
                  "Device configuration string, see Device::Configure().");
+  args.AddOption(&verbose, "-v", "--verbose", "-nv", "--noverbose",
+                 "Verbose solver output of inner and outer solvers");
 
   args.Parse();
   if (!args.Good())
@@ -146,6 +140,9 @@ int main(int argc, char* argv[])
     return 1;
   }
   if (myid == 0) args.PrintOptions(cout);
+
+  const int print_level{verbose ? 1 : 0};
+  const int hypre_print_level{verbose ? 1 : 0};
 
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
@@ -163,9 +160,8 @@ int main(int argc, char* argv[])
   //    largest number that gives a final mesh with no more than 50,000
   //    elements.
   {
-    // const int ref_levels{
-    //   static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim))};
-    constexpr int ref_levels{1};
+    const int ref_levels{
+      static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim))};
     for (int lvl{0}; lvl < ref_levels; ++lvl) mesh->UniformRefinement();
   }
 
@@ -207,7 +203,6 @@ int main(int argc, char* argv[])
   //    the boundary attributes from the mesh as essential (Dirichlet) and
   //    converting them to a list of true dofs.
   Array<int> ess_tdof_list;
-  cout << "SIZE: " << pmesh->bdr_attributes.Size() << endl;
   Array<int> ess_bdr(pmesh->bdr_attributes.Max());
   // begin by setting all bcs to essential
   ess_bdr = 0;
@@ -290,7 +285,7 @@ int main(int argc, char* argv[])
   prec = amg;
 
   auto lobpcg{new HypreLOBPCG(MPI_COMM_WORLD)};
-  lobpcg->SetNumModes(1); // solve for nev eigenmodes // size will solve for *all* eigenmodes
+  lobpcg->SetNumModes(1); // solve for nev eigenmodes
   // Random seed is set used to initialize the initial eigenvalues for the lopcg
   // algorithm. This can significantly affect convergence time but convergence
   // time remains bounded.
@@ -329,18 +324,8 @@ int main(int argc, char* argv[])
     ofstream ofs{"out.vtk"};
     pmesh->PrintVTK(ofs, 0);
     x.SaveVTK(ofs, "solution", 0);
-  }
-
-
-  // 14. Send the solution by socket to a GLVis server.
-  if (visualization)
-  {
-    constexpr char vishost[] = "localhost";
-    constexpr int visport    = 19916;
-    socketstream sol_sock(vishost, visport);
-    sol_sock << "parallel " << num_procs << " " << myid << "\n";
-    sol_sock.precision(8);
-    sol_sock << "solution\n" << *pmesh << x << flush;
+    ofstream ofs_mesh{"out.mesh"};
+    pmesh->Print(ofs_mesh);
   }
 
   // 15. Free the used memory.

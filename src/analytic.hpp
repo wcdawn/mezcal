@@ -14,9 +14,11 @@ class Analytic
 
     enum Reference
     {
+      invalid = -1,
       fixed_src,
       oned_oneg,
       twod_oneg,
+      threed_oneg,
       square,
       finite_cyl,
       tworeg
@@ -46,11 +48,13 @@ class Analytic
     double fixed_src_fun(const Vertex&) const;
     double oned_oneg_fun(const Vertex&) const;
     double twod_oneg_fun(const Vertex&) const;
+    double threed_oneg_fun(const Vertex&) const;
     double finite_cyl_fun(const Vertex&) const;
     double tworeg_fun(const Vertex&) const;
 
     double oned_oneg_keff() const;
     double twod_oneg_keff() const;
+    double threed_oneg_keff() const;
     double finite_cyl_keff() const;
     double tworeg_keff() const;
 };

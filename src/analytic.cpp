@@ -48,10 +48,14 @@ Analytic::Analytic(Reference ref, const Mesh* const mesh,
       fun = &Analytic::oned_oneg_fun;
       analytic_keff = &Analytic::oned_oneg_keff;
       break;
-    case (twod_oneg):
+    case (twod_oneg): // FALL THROUGH
     case (square):
       fun = &Analytic::twod_oneg_fun;
       analytic_keff = &Analytic::twod_oneg_keff;
+      break;
+    case (threed_oneg):
+      fun = &Analytic::threed_oneg_fun;
+      analytic_keff = &Analytic::threed_oneg_keff;
       break;
     case (finite_cyl):
       fun = &Analytic::finite_cyl_fun;
@@ -144,8 +148,19 @@ double Analytic::twod_oneg_fun(const Vertex& v) const
   static constexpr double Lx{100.0};
   static constexpr double Ly{100.0};
   const double x{v(0)}; // x is the zeroth coordinate
-  const double y{v(1)}; // x is the first coordinate
+  const double y{v(1)}; // y is the first coordinate
   return std::sin((M_PI / Lx) * x) * std::sin((M_PI / Ly) * y);
+}
+
+double Analytic::threed_oneg_fun(const Vertex& v) const
+{
+  static constexpr double Lx{100.0};
+  static constexpr double Ly{100.0};
+  static constexpr double Lz{100.0};
+  const double x{v(0)}; // x is the zeroth coordinate
+  const double y{v(1)}; // y is the first coordinate
+  const double z{v(2)}; // z is the first coordinate
+  return std::sin((M_PI / Lx) * x) * std::sin((M_PI / Ly) * y) * std::sin((M_PI / Lz) * z);
 }
 
 double Analytic::finite_cyl_fun(const Vertex& v) const
@@ -209,6 +224,23 @@ double Analytic::twod_oneg_keff() const
   static constexpr double diffusion{1.0 / (3.0 * transport)};
 
   return nusf / (diffusion * (std::pow(M_PI / Lx, 2) + std::pow(M_PI / Ly, 2))
+    + removal);
+}
+
+double Analytic::threed_oneg_keff() const
+{
+  static constexpr double transport{3.619027e-2};
+  static constexpr double removal{1.532090e-1};
+  static constexpr double nusf{1.566769e-1};
+
+  static constexpr double Lx{100.0};
+  static constexpr double Ly{100.0};
+  static constexpr double Lz{100.0};
+
+  static constexpr double diffusion{1.0 / (3.0 * transport)};
+
+  return nusf / (diffusion * 
+    (std::pow(M_PI / Lx, 2) + std::pow(M_PI / Ly, 2) + std::pow(M_PI / Lz, 2))
     + removal);
 }
 
