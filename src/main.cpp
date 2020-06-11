@@ -1,11 +1,13 @@
 #include "analytic.hpp"
 #include "xslibrary.hpp"
+#include "input.hpp"
 #include "mfem.hpp"
 
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cstring>
 
 using namespace std;
 using namespace mfem;
@@ -13,6 +15,10 @@ using namespace mfem;
 ////////////////////////////////////////////////////////////////////////////////
 // SOLVER OPTIONS
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr int max_outer{100};
+constexpr double phi_tol{1e-12};
+constexpr double k_tol{1e-12};
 
 // maximum number of inner iterations
 constexpr int max_inner{400}; // default 1000
@@ -28,12 +34,12 @@ constexpr double inner_abs_tol{1e-24}; // default 1e-24 // examples use 0.0 too
 
 int main(int argc, char* argv[])
 {
-
   // "input" from a file
 
   // mesh
   string fname_mesh;
   string fname_xs;
+  string fname_inp;
 
   // cross sections
   XSLibrary xs;
@@ -45,95 +51,40 @@ int main(int argc, char* argv[])
   // reference problem
   constexpr Analytic::Reference reference{Analytic::tworeg};
 
-  // cross sections
-  vector<double> sigma_tr;
-  vector<double> sigma_r;
-  vector<double> nusf;
-
   // actually fill in data
   switch (reference)
   {
+    case (Analytic::oned_oneg):
+      fname_inp = "../analytic/1d1g/1d1g.inp";
+      break;
+    case (Analytic::twod_oneg):
+      fname_inp = "../analytic/2d1g/2d1g.inp";
+      break;
+    case (Analytic::threed_oneg):
+      fname_inp = "../analytic/3d1g/3d1g.inp";
+      break;
+    case (Analytic::finite_cyl):
+      fname_inp = "../analytic/finite_cyl/finite_cyl.inp";
+      break;
     case (Analytic::fixed_src):
       fname_mesh = "../analytic/fixed_src/fixed_src_quad.msh";
       fname_xs   = "../analytic/fixed_src/fixed_src.xs";
       xs.read_userxs(fname_xs);
       boundary_conditions = {0, 1, 0, 1};
-      for (double val : xs.rec[0].sigma_tr)
-        sigma_tr.push_back(val);
-      for (double val : xs.rec[0].sigma_r)
-        sigma_r.push_back(val);
       q_fixed.push_back(1.0);
       break;
-    case (Analytic::oned_oneg):
-      fname_mesh = "../analytic/1d1g/1d1g_tri.msh";
-      fname_xs   = "../analytic/1d1g/1d1g.xs";
-      xs.read_userxs(fname_xs);
-      boundary_conditions = {0, 1, 0, 1};
-
-      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[0].sigma_r[0]);
-      nusf.push_back(xs.rec[0].nusf[0]);
-
-      break;
-    case (Analytic::twod_oneg):
-      fname_mesh = "../analytic/2d1g/2d1g.msh";
-      fname_xs   = "../analytic/2d1g/2d1g.xs";
-      xs.read_userxs(fname_xs);
-      boundary_conditions = {1, 1, 1, 1};
-
-      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[0].sigma_r[0]);
-      nusf.push_back(xs.rec[0].nusf[0]);
-
-      break;
-    case (Analytic::threed_oneg):
-      fname_mesh = "../analytic/3d1g/3d1g_tet.msh";
-      fname_xs   = "../analytic/3d1g/3d1g.xs";
-      xs.read_userxs(fname_xs);
-      boundary_conditions = {1, 1, 1, 1, 1, 1};
-
-      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[0].sigma_r[0]);
-      nusf.push_back(xs.rec[0].nusf[0]);
-
-      break;
     case (Analytic::square):
-      fname_mesh = "../analytic/square/square.mesh";
-      fname_xs   = "../analytic/square/square.xs";
-      xs.read_userxs(fname_xs);
-      boundary_conditions = {1, 1, 1, 1};
-
-      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[0].sigma_r[0]);
-      nusf.push_back(xs.rec[0].nusf[0]);
-
-      break;
-    case (Analytic::finite_cyl):
-      fname_mesh = "../analytic/finite_cyl/finite_cyl.mesh";
-      fname_xs   = "../analytic/finite_cyl/finite_cyl.xs";
-      xs.read_userxs(fname_xs);
-      boundary_conditions = {1, 1, 1, 1};
-
-      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[0].sigma_r[0]);
-      nusf.push_back(xs.rec[0].nusf[0]);
-
+      fname_inp = "../analytic/square/square.inp";
       break;
     case (Analytic::tworeg):
-      fname_mesh = "../analytic/tworeg/tworeg_80.msh";
-      fname_xs   = "../analytic/tworeg/tworeg.xs";
-      boundary_conditions = {0, 0, 0, 1};
-      xs.read_userxs(fname_xs);
-
-      sigma_tr.push_back(xs.rec[0].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[0].sigma_r[0]);
-      nusf.push_back(xs.rec[0].nusf[0]);
-
-      sigma_tr.push_back(xs.rec[1].sigma_tr[0]);
-      sigma_r.push_back(xs.rec[1].sigma_r[0]);
-      nusf.push_back(xs.rec[1].nusf[0]);
+      fname_inp = "../analytic/tworeg/tworeg.inp";
       break;
   }
+
+  Input inp{fname_inp};
+  inp.read_core();
+  inp.read_state();
+  xs.read_userxs(inp.xs_file());
 
   // Initialize MPI
   int num_procs;
@@ -143,7 +94,8 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
   // 1. Parse command-line options.
-  const char* mesh_file     = fname_mesh.c_str();
+  fname_mesh = inp.mesh_file();
+  const char* mesh_file = fname_mesh.c_str();
   int order                 = 1;
   bool static_cond          = false;
   bool pa                   = false;
@@ -152,6 +104,8 @@ int main(int argc, char* argv[])
 
   OptionsParser args(argc, argv);
   args.AddOption(&mesh_file, "-m", "--mesh", "Mesh file to use.");
+  args.AddOption(&device_config, "-d", "--device",
+                 "Device configuration string, see Device::Configure().");
   args.AddOption(&order, "-o", "--order",
                  "Finite element order (polynomial degree) or -1 for"
                  " isoparametric space.");
@@ -159,22 +113,21 @@ int main(int argc, char* argv[])
                  "--no-static-condensation", "Enable static condensation.");
   args.AddOption(&pa, "-pa", "--partial-assembly", "-no-pa",
                  "--no-partial-assembly", "Enable Partial Assembly.");
-  args.AddOption(&device_config, "-d", "--device",
-                 "Device configuration string, see Device::Configure().");
   args.AddOption(&verbose, "-v", "--verbose", "-nv", "--noverbose",
                  "Verbose solver output of inner and outer solvers");
 
+  // parse again and overwrite
   args.Parse();
   if (!args.Good())
   {
-    if (myid == 0)
-      args.PrintUsage(cout);
+    if (myid == 0) args.PrintUsage(cout);
     MPI_Finalize();
     return 1;
   }
+
   if (myid == 0) args.PrintOptions(cout);
 
-  const int print_level{verbose ? 1 : 0};
+  const int mfem_print_level{verbose ? 1 : 0};
   const int hypre_print_level{verbose ? 1 : 0};
 
   // 2. Enable hardware devices such as GPUs, and programming models such as
@@ -203,6 +156,7 @@ int main(int argc, char* argv[])
   //    parallel mesh is defined, the serial mesh can be deleted.
   auto pmesh{new ParMesh(MPI_COMM_WORLD, *mesh)};
   delete mesh;
+
   {
     constexpr int par_ref_levels{0};
     for (int lvl{0}; lvl < par_ref_levels; ++lvl) pmesh->UniformRefinement();
@@ -242,8 +196,9 @@ int main(int argc, char* argv[])
 
   // boundary conditions are baked into the matrix
   // go through and set boundary conditions based on user input
-  for (int i{0}; (i < boundary_conditions.size()) && (i < ess_bdr.Size()); ++i)
-    ess_bdr[i] = boundary_conditions[i];
+  for (size_t i{0}; 
+    (i < inp.boundary_conditions().size()) && (i < ess_bdr.Size()); ++i)
+    ess_bdr[i] = inp.boundary_conditions()[i];
 
   // 8. Define the solution vector x as a finite element grid function
   //    corresponding to fespace. Initialize x with initial guess of zero,
@@ -258,19 +213,19 @@ int main(int argc, char* argv[])
   // assemble leakage coefficient
   Vector leakage(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * sigma_tr[i]);
+    leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[0]);
   PWConstCoefficient leakage_func(leakage);
 
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = sigma_r[i];
+    removal[i] = xs.rec[i].sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < removal.Size(); ++i)
-    fission[i] = nusf[i];
+    fission[i] = xs.rec[i].nusf[0];
   PWConstCoefficient fission_func(fission);
 
   auto a{new ParBilinearForm(fespace)};
@@ -325,8 +280,8 @@ int main(int argc, char* argv[])
   // No default provided by MFEM but this is used in one of the tutorials.
   lobpcg->SetRandomSeed(1);
   lobpcg->SetPreconditioner(*prec);
-  lobpcg->SetMaxIter(max_inner);
-  lobpcg->SetTol(inner_abs_tol);
+  lobpcg->SetMaxIter(max_outer);
+  lobpcg->SetTol(phi_tol);
   lobpcg->SetPrecondUsageMode(1);
   lobpcg->SetPrintLevel(hypre_print_level);
   lobpcg->SetMassMatrix(*M);
@@ -337,14 +292,20 @@ int main(int argc, char* argv[])
   //    the solver.
   Array<double> eigenvalues;
   lobpcg->Solve();
+
+  // store solution
   lobpcg->GetEigenvalues(eigenvalues);
   x = lobpcg->GetEigenvector(0); // this is the local solution on this process
 
+  // free memory from solver
+  delete lobpcg;
+  delete prec; // don't also delete amg or that would be double delete
+
   // TODO this is wrong for parallel!
-  if (myid == 0)
+  if ((myid == 0) && (inp.reference() != Analytic::invalid))
   {
     const double keff{1.0 / eigenvalues[0]};
-    Analytic anal(reference, pmesh, x, keff);
+    Analytic anal(inp.reference(), pmesh, x, keff);
     anal.analyze(cout);
     ofstream ofs{"out.csv"};
     anal.print(ofs);
@@ -369,6 +330,7 @@ int main(int argc, char* argv[])
   delete pmesh;
 
   MPI_Finalize();
+
 
   return 0;
 }

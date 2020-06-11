@@ -30,6 +30,10 @@ class Analytic
     void analyze(std::ostream& os) const;
     void print(std::ostream& os) const;
 
+    // helper functions for dealing with Reference enum
+    static Reference reference_str_to_enum(std::string str); 
+    static std::string reference_enum_to_str(Reference ref); 
+
   private:
     Reference reference_solution;
     int nVert;

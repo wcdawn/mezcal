@@ -77,6 +77,8 @@ class XSLibrary
 
     void initialize_records();
 
+    static constexpr char comment_char{'#'};
+
     static void read_vector(std::ifstream&, std::vector<double>&);
 };
 

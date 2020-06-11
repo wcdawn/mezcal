@@ -7,9 +7,11 @@
 
 #include <iostream>
 
+#include <string>
+
 // TODO remove this block
-using std::cout;
 using std::vector;
+using std::string;
 
 Analytic::Analytic(Reference ref, const Mesh* const mesh, 
     const GridFunction& grid_sol, double k) : 
@@ -70,17 +72,6 @@ Analytic::Analytic(Reference ref, const Mesh* const mesh,
   }
 }
 
-void Analytic::print(std::ostream& os) const
-{
-  for (int i{0}; i < nVert; ++i)
-  {
-    const double val{fun(this, node[i])};
-    const double err{std::abs(sol[i] - val)};
-    os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << sol[i] 
-       << ',' << val << ',' << err << '\n';
-  }
-}
-
 void Analytic::analyze(std::ostream& os) const
 {
   double L1norm{0.0};
@@ -98,7 +89,8 @@ void Analytic::analyze(std::ostream& os) const
 
   const double rmserr{L2norm / nVert};
 
-  cout << "\n=== ANALYZE ===\n";
+  os << "\n=== ANALYZE ===\n";
+  os << "reference: " << reference_enum_to_str(reference_solution) << '\n';
 
   if (reference_solution != fixed_src)
   {
@@ -115,7 +107,53 @@ void Analytic::analyze(std::ostream& os) const
   os << "L2norm = " << L2norm << '\n';
   os << "rmserr = " << rmserr << '\n';
   os << "inferr = " << inferr << '\n';
-  cout << '\n';
+  os << '\n';
+}
+
+void Analytic::print(std::ostream& os) const
+{
+  for (int i{0}; i < nVert; ++i)
+  {
+    const double val{fun(this, node[i])};
+    const double err{std::abs(sol[i] - val)};
+    os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << sol[i] 
+       << ',' << val << ',' << err << '\n';
+  }
+}
+
+Analytic::Reference Analytic::reference_str_to_enum(string str)
+{
+  if (str == "oned_oneg") return oned_oneg;
+  if (str == "twod_oneg") return twod_oneg;
+  if (str == "threed_oneg") return threed_oneg;
+  if (str == "finite_cyl") return finite_cyl;
+  if (str == "fixed_src") return fixed_src;
+  if (str == "square") return square;
+  if (str == "tworeg") return tworeg;
+  return invalid;
+}
+
+string Analytic::reference_enum_to_str(Analytic::Reference ref)
+{
+  switch (ref)
+  {
+    case (oned_oneg):
+      return "oned_oneg";
+    case (twod_oneg):
+      return "twod_oneg";
+    case (threed_oneg):
+        return "threed_oneg";
+    case (finite_cyl):
+        return "finite_cyl";
+    case (fixed_src):
+        return "fixed_src";
+    case (square):
+        return "square";
+    case (tworeg):
+      return "tworeg";
+    default:
+      return "INVALID";
+  }
 }
 
 double Analytic::fixed_src_fun(const Vertex& v) const

@@ -1,8 +1,5 @@
 #include "xslibrary.hpp"
 
-#include <iostream>
-using std::cout;
-
 #include <string>
 #include <fstream>
 #include <vector>
@@ -13,7 +10,6 @@ using std::vector;
 
 void XSLibrary::read_userxs(std::string fname)
 {
-  static constexpr char comment_char{'#'};
   ifstream ifs{fname};
   if (!ifs) throw Invalid_file_name{fname};
   string card;

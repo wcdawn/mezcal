@@ -1,9 +1,9 @@
 # Makefile
 
-CXX = clang++
+CXX = g++
 CXXFLAGS = -Wall -pedantic-errors -std=c++17
 
-MPICXX = mpicxx
+MPICXX = /opt/mpich/bin/mpicxx
 
 LD = nvcc
 LDFLAGS = --expt-extended-lambda -arch=sm_60 -ccbin $(MPICXX)
@@ -27,9 +27,14 @@ else
 CXXFLAGS += -O3
 endif
 
-CPP_FILES = main.cpp analytic.cpp xslibrary.cpp
+CPP_FILES = main.cpp \
+			analytic.cpp \
+			input.cpp \
+			xslibrary.cpp
 
-HPP_FILES = analytic.hpp xslibrary.hpp
+HPP_FILES = analytic.hpp \
+			input.hpp \
+			xslibrary.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
 
@@ -50,10 +55,10 @@ default : all
 all : $(EXEC)
 
 $(EXEC) : $(OBJ)
-	OMPI_CXX=$(CXX) $(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
+	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 
 %.o : %.cpp
-	$(CXX) $(CXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
+	$(MPICXX) $(CXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
 version.hpp : 
 	@echo "#ifndef VERSION" > version.hpp
@@ -77,6 +82,7 @@ clean :
 format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
-main.o : analytic.o xslibrary.o $(MFEM_HEADER)
+main.o : analytic.o input.o xslibrary.o $(MFEM_HEADER)
 analytic.o : $(MFEM_HEADER) analytic.hpp
 xslibrary.o : xslibrary.hpp
+input.o : analytic.o input.hpp
