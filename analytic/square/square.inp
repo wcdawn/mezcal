@@ -1,0 +1,10 @@
+[CORE]
+
+mesh_file square.mesh
+boundary_conditions 1 1 1 1
+xs_file square.xs
+
+reference square
+
+[STATE]
+# default options

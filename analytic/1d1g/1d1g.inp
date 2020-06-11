@@ -1,0 +1,10 @@
+[CORE]
+
+mesh_file 1d1g_tri.msh
+xs_file 1d1g.xs
+boundary_conditions 0 1 0 1
+
+reference oned_oneg
+
+[STATE]
+# default options

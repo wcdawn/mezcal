@@ -1,0 +1,15 @@
+[CORE]
+
+mesh_file tworeg_80.msh
+boundary_conditions 0 0 0 1
+
+xs_file tworeg.xs
+
+refine_serial 0
+refine_parallel 0
+
+reference tworeg
+
+[STATE]
+
+verbose 0

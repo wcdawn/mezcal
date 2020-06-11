@@ -1,0 +1,10 @@
+[STATE]
+
+mesh_file finite_cyl.mesh
+boundary_conditions 1 1 1
+xs_file finite_cyl.xs
+
+reference finite_cyl
+
+[STATE]
+# default options
