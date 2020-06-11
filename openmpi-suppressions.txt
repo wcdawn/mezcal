@@ -1,0 +1,250 @@
+{
+   openmpi:000 Addr4 orte_init
+   Memcheck:Addr4
+   fun:opal_os_dirpath_create
+   fun:orte_session_dir
+   ...
+   fun:orte_init
+   ...
+   fun:main
+}
+{
+   openmpi:001 Param sched_setaffinity
+   Memcheck:Param
+   sched_setaffinity(mask)
+   fun:syscall
+   ...
+   fun:opal_init
+   ...
+   fun:main
+}
+{
+   openmpi:002 Param mca_oob_tcp_msg_send_handler writev modified
+   Memcheck:Param
+   writev(vector[...])
+   fun:writev
+   fun:mca_oob_tcp_msg_send_handler
+   ...
+   fun:ompi_mpi_init
+   ...
+   fun:main
+}
+{
+   openmpi:003 Leak orterun calloc
+   Memcheck:Leak
+   fun:calloc
+   ...
+   fun:orterun
+   fun:main
+}
+{
+   openmpi:004 Leak orterun malloc
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:orterun
+   fun:main
+}
+{
+   openmpi:005 Leak orterun realloc
+   Memcheck:Leak
+   fun:realloc
+   ...
+   fun:orterun
+   fun:main
+}
+{
+   openmpi:006 Leak ompi_mpi_init calloc modified
+   Memcheck:Leak
+   fun:calloc
+   ...
+   fun:ompi_mpi_init
+   ...
+   fun:main
+}
+{
+   openmpi:007 Leak ompi_mpi_init malloc modified
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:ompi_mpi_init
+   ...
+   fun:main
+}
+{
+   openmpi:008 Leak ompi_mpi_init realloc modified
+   Memcheck:Leak
+   fun:realloc
+   ...
+   fun:ompi_mpi_init
+   ...
+   fun:main
+}
+{
+   openmpi:009 Leak ompi_mpi_finalize ompi_proc_all
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_proc_all
+   ...
+   fun:ompi_mpi_finalize
+   ...
+   fun:main
+}
+{
+   openmpi:010 Leak _gfortrani_init_units _gfortrani_get_mem malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:_gfortrani_get_mem
+   ...
+   fun:_gfortrani_init_units
+   fun:init
+   ...
+}
+{
+   openmpi:011 Leak _gfortrani_get_mem malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:_gfortrani_get_mem
+   ...
+   fun:main
+}
+{
+   openmpi:012 Leak MPI_Bcast mca_coll_sync_bcast malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_coll_tuned_topo_build_bmtree
+   fun:ompi_coll_tuned_bcast_intra_binomial
+   fun:ompi_coll_tuned_bcast_intra_dec_fixed
+   fun:mca_coll_sync_bcast
+   fun:PMPI_Bcast
+   ...
+   fun:main
+}
+{
+   openmpi:013 Leak MPI_Bcast ompi_free_list_grow malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Bcast
+   ...
+   fun:main
+}
+{
+   openmpi:014 Leak MPI_Type_commit malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_ddt_optimize_short.constprop.0
+   fun:ompi_ddt_commit
+   fun:PMPI_Type_commit
+   ...
+   fun:main
+}
+{
+   openmpi:015 Leak MPI_Allreduce malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Allreduce
+   fun:mpi_allreduce
+   ...
+   fun:main
+}
+{
+   openmpi:016 Leak ompi_attr_create_keyval ompi_attr_create_keyval_impl malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_attr_create_keyval_impl
+   fun:ompi_attr_create_keyval
+   ...
+   fun:main
+}
+{
+   openmpi:017 Leak PMPI_Allreduce ompi_free_list_grow
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Allreduce
+   ...
+}
+{
+   openmpi:018 Leak ompi_comm_dup ompi_comm_set malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_comm_set
+   fun:ompi_comm_dup
+   ...
+   fun:main
+}
+{
+   openmpi:019 Leak opal_hash_table_set_value_uint32 malloc
+   Memcheck:Leak
+   fun:malloc
+   fun:opal_hash_table_set_value_uint32
+   ...
+   fun:main
+}
+{
+   openmpi:020 Leak orte_daemon malloc
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:orte_daemon
+   fun:main
+}
+{
+   openmpi:021 Leak orte_daemon realloc
+   Memcheck:Leak
+   fun:realloc
+   ...
+   fun:orte_daemon
+   fun:main
+}
+{
+   openmpi:022 Leak PMPI_Bsend
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Bsend
+   ...
+   fun:main
+}
+{
+   openmpi:023 PMPI_Reduce_scatter
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Reduce_scatter
+   ...
+}
+{
+   openmpi:024 PMPI_Barrier
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Barrier
+   ...
+}
+{
+   openmpi:025 PMPI_Send
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Send
+   ...
+}
+{
+   openmpi:026 PMPI_Isend
+   Memcheck:Leak
+   fun:malloc
+   fun:ompi_free_list_grow
+   ...
+   fun:PMPI_Isend
+   ...
+}

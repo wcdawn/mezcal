@@ -1,0 +1,111 @@
+{
+   mpich 001 HYDU_getcwd
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:strdup
+   fun:HYDU_getcwd
+   ...
+}
+
+{
+   mpich 002 HYDU_sock_forward_stdio
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:alloc_fwd_hash
+   fun:HYDU_sock_forward_stdio
+   fun:HYDT_bscu_stdio_cb
+   fun:HYDT_dmxu_poll_wait_for_event
+   fun:HYDT_bscu_wait_for_completion
+   fun:HYDT_bsci_wait_for_completion
+   fun:HYD_pmci_wait_for_completion
+   fun:main
+}
+
+{
+   mpich 003 MPIU_Find_local_and_external
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:MPIU_Find_local_and_external
+   fun:MPIR_Comm_commit
+   ...
+}
+
+{
+   mpich 004 MPID_VCRT_Create
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:MPID_VCRT_Create
+   ...
+}
+
+{
+   mpich 005 HYD_pmci_wait_for_completion
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:control_cb
+   fun:HYDT_dmxu_poll_wait_for_event
+   fun:HYD_pmci_wait_for_completion
+   fun:main
+   ...
+}
+
+{
+   mpich 006 PMPI_Cart_sub
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:MPIDI_VCRT_Create
+   fun:dup_vcrt
+   fun:MPIDI_CH3I_Comm_create_hook
+   fun:MPIR_Comm_commit
+   fun:MPIR_Comm_split_impl
+   fun:PMPI_Cart_sub
+   fun:mpi_cart_sub
+   fun:__parallelenv_MOD_init_parenvtype
+   ...
+}
+
+{
+   mpich 007 MPIDI_VCRT_Create
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:MPIDI_VCRT_Create
+   ...
+}
+
+{
+   mpich 008 MPIR_Group_create
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:MPIR_Group_create
+   ...
+}
+
+{
+   mpich 009 MPID_Init
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   fun:set_collops.part.0
+   fun:MPIR_Comm_commit
+   fun:MPID_Init
+   ...
+}
+
+{
+   mpich 010 mpi_cart_sub
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:PMPI_Cart_sub
+   fun:mpi_car_sub
+   ...
+}
+
