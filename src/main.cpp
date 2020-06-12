@@ -250,21 +250,24 @@ int main(int argc, char* argv[])
   // 9. Compute the eigenmodes and extract the array of eigenvalues. Define a
   //    parallel grid function to represent each of the eigenmodes returned by
   //    the solver.
-  Array<double> eigenvalues;
   lobpcg->Solve();
 
   // store solution
+  Array<double> eigenvalues;
   lobpcg->GetEigenvalues(eigenvalues);
+  const double keff{1.0 / eigenvalues[0]};
   x = lobpcg->GetEigenvector(0); // this is the local solution on this process
 
   // free memory from solver
   delete lobpcg;
   delete prec; // don't also delete amg or that would be double delete
 
+  const auto old_precision{cout.precision()};
+  cout << "keff = " << setprecision(20) << keff << setprecision(old_precision) << '\n';
+
   // TODO this is wrong for parallel!
   if ((myid == 0) && (inp.ref != Analytic::invalid))
   {
-    const double keff{1.0 / eigenvalues[0]};
     Analytic anal(inp.ref, pmesh, x, keff);
     anal.analyze(cout);
     ofstream ofs{"out.csv"};
