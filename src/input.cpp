@@ -5,7 +5,7 @@ using std::strcpy;
 using std::strlen;
 
 #include <iostream>
-using std::cout;
+using std::cerr;
 
 using std::string;
 using std::ifstream;
