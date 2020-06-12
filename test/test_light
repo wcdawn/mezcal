@@ -1,0 +1,156 @@
+#!/bin/python3
+
+import driver
+import unittest
+import os
+import numpy as np
+
+class Test_light(unittest.TestCase):
+
+    dirname = os.path.dirname(__file__)
+    executable = os.path.join(dirname, "../src/micro.x")
+
+    # tolerance is as input or sqrt(eps)
+    def assert_relative_equal(self, a, b, *args, **kwargs):
+        tol = kwargs.get('tol', np.sqrt(np.finfo(float).eps))
+        return self.assertTrue((np.abs(a - b) / np.max([a, b])) <= tol)
+
+    # tolerance is as input or sqrt(eps)
+    def assert_absolute_equal(self, a, b, *args, **kwargs):
+        tol = kwargs.get('tol', np.sqrt(np.finfo(float).eps))
+        return self.assertTrue(np.abs(a - b)  <= tol)
+
+    def test_1d1g(self):
+        input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
+        data = driver.run_code(self.executable, input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.96505010141496050391
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.000109262
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.000386792
+        self.assert_relative_equal(inferr, infref)
+
+    def test_2d1g(self):
+        input_file = os.path.join(self.dirname, "../analytic/2d1g/2d1g.inp")
+        data = driver.run_code(self.executable, input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.91299824502564963513
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.001056
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.00269834
+        self.assert_relative_equal(inferr, infref)
+
+    def test_3d1g_tet(self):
+        # tetrahedron mesh is the default
+        input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
+        data = driver.run_code(self.executable, input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.85139733903936820614
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.00597059
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.0287594
+        self.assert_relative_equal(inferr, infref)
+
+    def test_3d1g_hex(self):
+        input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
+        mesh_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g_hex.msh")
+        data = driver.run_code(self.executable, input_file, "-m", mesh_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.86333873559636176154
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.0169517
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.0658824
+        self.assert_relative_equal(inferr, infref)
+
+    def test_3d1g_wedge(self):
+        input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
+        mesh_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g_wedge.mesh")
+        data = driver.run_code(self.executable, input_file, "-m", mesh_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.86650435942038217529
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.000704023
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.00269757
+        self.assert_relative_equal(inferr, infref)
+
+    def test_finite_cyl(self):
+        input_file = os.path.join(self.dirname,
+            "../analytic/finite_cyl/finite_cyl.inp")
+        data = driver.run_code(self.executable, input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.99649456324013208075
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 3.91594e-06
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 6.73026e-06
+        self.assert_relative_equal(inferr, infref)
+
+    def test_square(self):
+        input_file = os.path.join(self.dirname, "../analytic/square/square.inp")
+        data = driver.run_code(self.executable, input_file, "-rs", "2")
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.91290372036753897333
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 4.0199e-07
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 9.7277e-07
+        self.assert_relative_equal(inferr, infref)
+
+    def test_tworeg(self):
+        input_file = os.path.join(self.dirname, "../analytic/tworeg/tworeg.inp")
+        data = driver.run_code(self.executable, input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.98239946349658546776
+        self.assert_absolute_equal(keff, kref, 1e-6)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.00443707
+        self.assert_relative_equal(rmserr, rmsref)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.0110106
+        self.assert_relative_equal(inferr, infref)
+
+if (__name__ == "__main__"):
+    unittest.main()
