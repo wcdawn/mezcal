@@ -2,13 +2,13 @@ import subprocess
 import sys
 import numpy as np
 
-# runs executable with argument "-i input_file"
+# runs executable with argument "input_file"
 # expecting input_file to be a file name
 # any additional arguments may be listed as well
 # returns --- stdout & stderr as a list split into lines
 def run_code(executable, input_file, *args):
 
-    exec_list = [executable, "-i", input_file]
+    exec_list = [executable, input_file]
     for arg in args:
         exec_list.append(arg)
 

@@ -25,7 +25,7 @@ class Test_light(unittest.TestCase):
 
     def test_1d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
-        data = driver.run_code(self.executable, input_file)
+        data = driver.run_code(self.executable, "-i", input_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.96505010141496050391
@@ -41,7 +41,7 @@ class Test_light(unittest.TestCase):
 
     def test_2d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/2d1g/2d1g.inp")
-        data = driver.run_code(self.executable, input_file)
+        data = driver.run_code(self.executable, "-i", input_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.91299824502564963513
@@ -58,7 +58,7 @@ class Test_light(unittest.TestCase):
     def test_3d1g_tet(self):
         # tetrahedron mesh is the default
         input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
-        data = driver.run_code(self.executable, input_file)
+        data = driver.run_code(self.executable, "-i", input_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.85139733903936820614
@@ -75,7 +75,7 @@ class Test_light(unittest.TestCase):
     def test_3d1g_hex(self):
         input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
         mesh_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g_hex.msh")
-        data = driver.run_code(self.executable, input_file, "-m", mesh_file)
+        data = driver.run_code(self.executable, "-i", input_file, "-m", mesh_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.86333873559636176154
@@ -92,7 +92,7 @@ class Test_light(unittest.TestCase):
     def test_3d1g_wedge(self):
         input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
         mesh_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g_wedge.mesh")
-        data = driver.run_code(self.executable, input_file, "-m", mesh_file)
+        data = driver.run_code(self.executable, "-i", input_file, "-m", mesh_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.86650435942038217529
@@ -109,7 +109,7 @@ class Test_light(unittest.TestCase):
     def test_finite_cyl(self):
         input_file = os.path.join(self.dirname,
             "../analytic/finite_cyl/finite_cyl.inp")
-        data = driver.run_code(self.executable, input_file)
+        data = driver.run_code(self.executable, "-i", input_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.99649456324013208075
@@ -125,7 +125,7 @@ class Test_light(unittest.TestCase):
 
     def test_square(self):
         input_file = os.path.join(self.dirname, "../analytic/square/square.inp")
-        data = driver.run_code(self.executable, input_file, "-rs", "2")
+        data = driver.run_code(self.executable, "-i", input_file, "-rs", "2")
 
         keff = driver.get_value(data, "keff")
         kref = 0.91290372036753897333
@@ -141,7 +141,7 @@ class Test_light(unittest.TestCase):
 
     def test_tworeg(self):
         input_file = os.path.join(self.dirname, "../analytic/tworeg/tworeg.inp")
-        data = driver.run_code(self.executable, input_file)
+        data = driver.run_code(self.executable, "-i", input_file)
 
         keff = driver.get_value(data, "keff")
         kref = 0.98239946349655526969
@@ -154,6 +154,22 @@ class Test_light(unittest.TestCase):
         inferr = driver.get_value(data, "inferr")
         infref = 0.0110106
         self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+
+    def test_valgrind_1d1g(self):
+        input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
+        data = driver.run_code("valgrind", self.executable, "-i", input_file)
+
+        definitely_lost = any("definitely lost: 0 bytes in 0 blocks" in s for s in data)
+        self.assertTrue(definitely_lost)
+
+        indirectly_lost = any("indirectly lost: 0 bytes in 0 blocks" in s for s in data)
+        self.assertTrue(indirectly_lost)
+
+        possibly_lost = any("possibly lost: 0 bytes in 0 blocks" in s for s in data)
+        self.assertTrue(possibly_lost)
+
+        error_check = any("ERROR SUMMARY: 0 errors from 0 contexts" in s for s in data)
+        self.assertTrue(error_check)
 
 if (__name__ == "__main__"):
     unittest.main()
