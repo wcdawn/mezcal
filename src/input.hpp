@@ -2,11 +2,13 @@
 #define INPUT
 
 #include "analytic.hpp"
+#include "mfem.hpp" // Array<int>
 
 #include <string>
 #include <vector>
 #include <fstream>
 #include <exception>
+
 
 struct Tolerance_control
 {
@@ -19,12 +21,13 @@ struct Tolerance_control
   double inner_abs{1e-24};
 };
 
-class Input
+struct Input
 {
   public:
     Input(std::string fname);
+    Input(const char* fname);
 
-    void open(std::string fname);
+    void open();
     void read_core();
     void read_state();
     void echo(std::ostream& os) const;
@@ -74,61 +77,48 @@ class Input
         std::string msg;
     };
 
+  public:
+    // general
+    const char* input_file;
+
     // CORE
-    std::string mesh_file() const { return fname_mesh; }
-    std::string xs_file() const { return fname_xs; }
-    int refine_serial() const { return rs; }
-    int refine_parallel() const { return rp; }
-    std::vector<int> boundary_conditions() const { return bc;}
-    Analytic::Reference reference() const { return ref; }
+    const char* mesh_file{""};
+    mfem::Array<int> boundary_conditions;
+    int order{1};
+    int refine_serial{0};
+    int refine_parallel{0};
+    const char* xs_file{""};
+    const char* reference{""};
+    const char* device{"cpu"};
+    bool static_condensation{false};
+    bool partial_assembly{false};
+
+    // actual enum value
+    Analytic::Reference ref{Analytic::invalid};
 
     // STATE
-    bool verbose() const { return verb; }
-    int max_inner() const { return tol.max_inner; }
-    double inner_rel_tol() const { return tol.inner_rel; }
-    double inner_abs_tol() const { return tol.inner_abs; }
-    int max_outer() const { return tol.max_outer; }
-    double k_tol() const { return tol.k; }
-    double phi_tol() const { return tol.phi; }
+    bool verbose{false};
+    Tolerance_control tol;
 
   private:
     static constexpr char comment_char{'#'};
-    bool read_core_done{false};
     std::ifstream ifs;
 
+    // strings corresponding to const char*
+    std::string input_file_str;
+    std::string mesh_file_str;
+    std::string xs_file_str;
+    std::string device_str;
+    std::string reference_str;
+
     std::string stub;
-
-    // CORE
-    std::string fname_mesh; // mesh_file
-    std::string fname_xs; // xs_file
-    std::vector<int> bc; // boundary_conditions
-    int rs; // refine_serial
-    int rp; // refine_parallel
-    Analytic::Reference ref{Analytic::invalid}; // reference problem
-
-    // STATE
-    bool verb; // verbose
-    Tolerance_control tol;
-
     std::string path_stub(std::string path);
 
     static void reset_state(std::ifstream& ifs);
     static bool read_bool(std::ifstream& ifs);
-    static void read_vector(std::ifstream& ifs, std::vector<int>& vec);
+    static void read_vector(std::ifstream& ifs, mfem::Array<int>& vec);
 };
 
-struct Arguments
-{
-  Arguments(const Input& inp);
-
-  const char* mesh_file{nullptr};
-  const char* device_config{nullptr};
-
-  int order;
-
-  bool verbose;
-  bool static_cond; // static condensation
-  bool pa; // partial assembly
-};
+OptionsParser custom_arguments(Input& inp, int argc, char* argv[]);
 
 #endif

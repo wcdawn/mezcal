@@ -232,7 +232,7 @@ double Analytic::tworeg_fun(const Vertex& v) const
   static const vector<double> nusf{0.02, 0.0};
 
   vector<double> diffusion(sigma_tr.size());
-  for (int i{0}; i < sigma_tr.size(); ++i)
+  for (size_t i{0}; i < sigma_tr.size(); ++i)
     diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
 
   static constexpr double L_F{8e1};
@@ -304,7 +304,7 @@ double Analytic::tworeg_keff() const
   static const vector<double> nusf{0.02, 0.0};
 
   vector<double> diffusion(sigma_tr.size());
-  for (int i{0}; i < sigma_tr.size(); ++i)
+  for (size_t i{0}; i < sigma_tr.size(); ++i)
     diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
 
   static constexpr double L_F{8e1};

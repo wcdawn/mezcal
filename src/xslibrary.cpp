@@ -8,6 +8,12 @@ using std::string;
 using std::ifstream;
 using std::vector;
 
+void XSLibrary::read_userxs(const char* fname)
+{
+  const string fname_str{fname};
+  read_userxs(fname_str);
+}
+
 void XSLibrary::read_userxs(std::string fname)
 {
   ifstream ifs{fname};

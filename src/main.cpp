@@ -37,7 +37,6 @@ int main(int argc, char* argv[])
   // "input" from a file
 
   // mesh
-  string fname_mesh;
   string fname_xs;
   string fname_inp;
 
@@ -49,43 +48,6 @@ int main(int argc, char* argv[])
   vector<int> boundary_conditions; // 0 is essential, 1 is non-essential
 
   // reference problem
-  constexpr Analytic::Reference reference{Analytic::tworeg};
-
-  // actually fill in data
-  switch (reference)
-  {
-    case (Analytic::oned_oneg):
-      fname_inp = "../analytic/1d1g/1d1g.inp";
-      break;
-    case (Analytic::twod_oneg):
-      fname_inp = "../analytic/2d1g/2d1g.inp";
-      break;
-    case (Analytic::threed_oneg):
-      fname_inp = "../analytic/3d1g/3d1g.inp";
-      break;
-    case (Analytic::finite_cyl):
-      fname_inp = "../analytic/finite_cyl/finite_cyl.inp";
-      break;
-    case (Analytic::fixed_src):
-      fname_mesh = "../analytic/fixed_src/fixed_src_quad.msh";
-      fname_xs   = "../analytic/fixed_src/fixed_src.xs";
-      xs.read_userxs(fname_xs);
-      boundary_conditions = {0, 1, 0, 1};
-      q_fixed.push_back(1.0);
-      break;
-    case (Analytic::square):
-      fname_inp = "../analytic/square/square.inp";
-      break;
-    case (Analytic::tworeg):
-      fname_inp = "../analytic/tworeg/tworeg.inp";
-      break;
-  }
-
-  Input inp{fname_inp};
-  inp.read_core();
-  inp.read_state();
-  xs.read_userxs(inp.xs_file());
-
   // Initialize MPI
   int num_procs;
   int myid;
@@ -94,30 +56,33 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
   // 1. Parse command-line options.
-  fname_mesh = inp.mesh_file();
-  const char* mesh_file = fname_mesh.c_str();
-  int order                 = 1;
-  bool static_cond          = false;
-  bool pa                   = false;
-  const char* device_config = "cpu";
-  bool verbose{false};
+  // Do our own parsing to get the input file name.
+  string input_file;
+  for (int i{1}; i < argc; ++i)
+  {
+    if (((strcmp(argv[i], "-i") == 0)  || (strcmp(argv[i], "--input") == 0)) 
+      && (argc >= (i+1)))
+    {
+      input_file = argv[i+1];
+      break;
+    }
+  }
 
-  OptionsParser args(argc, argv);
-  args.AddOption(&mesh_file, "-m", "--mesh", "Mesh file to use.");
-  args.AddOption(&device_config, "-d", "--device",
-                 "Device configuration string, see Device::Configure().");
-  args.AddOption(&order, "-o", "--order",
-                 "Finite element order (polynomial degree) or -1 for"
-                 " isoparametric space.");
-  args.AddOption(&static_cond, "-sc", "--static-condensation", "-no-sc",
-                 "--no-static-condensation", "Enable static condensation.");
-  args.AddOption(&pa, "-pa", "--partial-assembly", "-no-pa",
-                 "--no-partial-assembly", "Enable Partial Assembly.");
-  args.AddOption(&verbose, "-v", "--verbose", "-nv", "--noverbose",
-                 "Verbose solver output of inner and outer solvers");
+  // read the input file
+  Input inp{input_file};
+  if (!input_file.empty())
+  {
+    inp.open();
+    inp.read_core();
+    inp.read_state();
+  }
+
+  // parse command-line options using MFEM
+  OptionsParser args{custom_arguments(inp, argc, argv)};
 
   // parse again and overwrite
   args.Parse();
+
   if (!args.Good())
   {
     if (myid == 0) args.PrintUsage(cout);
@@ -125,50 +90,45 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  if (myid == 0) args.PrintOptions(cout);
+  const int mfem_print_level{inp.verbose ? 1 : 0};
+  const int hypre_print_level{inp.verbose ? 1 : 0};
 
-  const int mfem_print_level{verbose ? 1 : 0};
-  const int hypre_print_level{verbose ? 1 : 0};
+  if ((myid == 0) && mfem_print_level) args.PrintOptions(cout);
+
+  // input is finalized, you can read cross sections
+  xs.read_userxs(inp.xs_file);
 
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
-  Device device(device_config);
+  Device device(inp.device);
   if (myid == 0) device.Print();
 
   // 3. Read the mesh from the given mesh file. We can handle triangular,
   //    quadrilateral, tetrahedral, hexahedral, surface and volume meshes with
   //    the same code.
-  auto mesh{new Mesh(mesh_file, 1, 1)};
+  auto mesh{new Mesh(inp.mesh_file, 1, 1)};
   int dim = mesh->Dimension();
 
   // 4. Refine the mesh to increase the resolution. In this example we do
   //    'ref_levels' of uniform refinement. We choose 'ref_levels' to be the
   //    largest number that gives a final mesh with no more than 50,000
   //    elements.
-  {
-    const int ref_levels{
-      static_cast<int>(floor(log(5e4 / mesh->GetNE()) / log(2.) / dim))};
-    for (int lvl{0}; lvl < ref_levels; ++lvl) mesh->UniformRefinement();
-  }
+  for (int lvl{0}; lvl < inp.refine_serial; ++lvl) mesh->UniformRefinement();
 
   // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
   //    this mesh further in parallel to increase the resolution. Once the
   //    parallel mesh is defined, the serial mesh can be deleted.
   auto pmesh{new ParMesh(MPI_COMM_WORLD, *mesh)};
   delete mesh;
-
-  {
-    constexpr int par_ref_levels{0};
-    for (int lvl{0}; lvl < par_ref_levels; ++lvl) pmesh->UniformRefinement();
-  }
+  for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh->UniformRefinement();
 
   // 5. Define a finite element space on the mesh. Here we use continuous
   //    Lagrange finite elements of the specified order. If order < 1, we
   //    instead use an isoparametric/isogeometric space.
   FiniteElementCollection* fec;
-  if (order > 0)
+  if (inp.order > 0)
   {
-    fec = new H1_FECollection(order, dim);
+    fec = new H1_FECollection(inp.order, dim);
   }
   else if (pmesh->GetNodes())
   {
@@ -178,7 +138,7 @@ int main(int argc, char* argv[])
   }
   else
   {
-    fec = new H1_FECollection(order = 1, dim);
+    fec = new H1_FECollection(inp.order = 1, dim);
   }
   auto fespace = new ParFiniteElementSpace(pmesh, fec);
   const HYPRE_Int size{fespace->GlobalTrueVSize()};
@@ -196,9 +156,9 @@ int main(int argc, char* argv[])
 
   // boundary conditions are baked into the matrix
   // go through and set boundary conditions based on user input
-  for (size_t i{0}; 
-    (i < inp.boundary_conditions().size()) && (i < ess_bdr.Size()); ++i)
-    ess_bdr[i] = inp.boundary_conditions()[i];
+  for (int i{0}; 
+      (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
+    ess_bdr[i] = inp.boundary_conditions[i];
 
   // 8. Define the solution vector x as a finite element grid function
   //    corresponding to fespace. Initialize x with initial guess of zero,
@@ -231,7 +191,7 @@ int main(int argc, char* argv[])
   auto a{new ParBilinearForm(fespace)};
   auto m{new ParBilinearForm(fespace)};
 
-  if (pa)
+  if (inp.partial_assembly)
   {
     a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
     m->SetAssemblyLevel(AssemblyLevel::PARTIAL);
@@ -245,7 +205,7 @@ int main(int argc, char* argv[])
   //     applying any necessary transformations such as: eliminating boundary
   //     conditions, applying conforming constraints for non-conforming AMR,
   //     static condensation, etc.
-  if (static_cond)
+  if (inp.static_condensation)
   {
     a->EnableStaticCondensation();
     m->EnableStaticCondensation();
@@ -302,10 +262,10 @@ int main(int argc, char* argv[])
   delete prec; // don't also delete amg or that would be double delete
 
   // TODO this is wrong for parallel!
-  if ((myid == 0) && (inp.reference() != Analytic::invalid))
+  if ((myid == 0) && (inp.ref != Analytic::invalid))
   {
     const double keff{1.0 / eigenvalues[0]};
-    Analytic anal(inp.reference(), pmesh, x, keff);
+    Analytic anal(inp.ref, pmesh, x, keff);
     anal.analyze(cout);
     ofstream ofs{"out.csv"};
     anal.print(ofs);
@@ -326,7 +286,7 @@ int main(int argc, char* argv[])
   delete A;
   delete M;
   delete fespace;
-  if (order > 0) { delete fec; }
+  if (inp.order > 0) { delete fec; }
   delete pmesh;
 
   MPI_Finalize();

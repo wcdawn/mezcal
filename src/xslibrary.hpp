@@ -38,6 +38,7 @@ class XSLibrary
     int niso() { return N; }
 
     void read_userxs(std::string fname);
+    void read_userxs(const char* fname);
 
     class Invalid_input_card : std::exception
     {

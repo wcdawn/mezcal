@@ -12,22 +12,26 @@ using std::ifstream;
 using std::ostream;
 using std::vector;
 
-Input::Input(std::string fname)
+Input::Input(std::string fname) : input_file_str{fname}
 {
-  open(fname);
+  input_file = input_file_str.c_str();
 }
 
-void Input::open(string fname)
+Input::Input(const char* fname) : input_file_str{fname}
 {
-  ifs.open(fname);
-  if (!ifs) throw Invalid_file_name{fname};
-  stub = path_stub(fname);
+  input_file = input_file_str.c_str();
+}
+
+void Input::open()
+{
+  ifs.open(input_file_str);
+  if (!ifs) throw Invalid_file_name{input_file_str};
+  stub = path_stub(input_file_str);
 }
 
 
 void Input::read_core()
 {
-  if (read_core_done) throw Invalid_reread_input{};
   string card;
 
   ifs >> card;
@@ -49,37 +53,56 @@ void Input::read_core()
     }
     else if (card == "mesh_file")
     {
-      ifs >> fname_mesh;
-      fname_mesh = stub + fname_mesh;
+      ifs >> mesh_file_str;
+      mesh_file_str = stub + mesh_file_str;
+      mesh_file = mesh_file_str.c_str();
     }
     else if (card == "boundary_conditions")
     {
-      read_vector(ifs, bc);
+      read_vector(ifs, boundary_conditions);
+    }
+    else if (card == "order")
+    {
+      ifs >> order;
     }
     else if (card == "refine_serial")
     {
-      ifs >> rs;
+      ifs >> refine_serial;
     }
     else if (card == "refine_parallel")
     {
-      ifs >> rp;
-    }
-    else if (card == "reference")
-    {
-      string reference_name;
-      ifs >> reference_name;
-      ref = Analytic::reference_str_to_enum(reference_name);
+      ifs >> refine_parallel;
     }
     else if (card == "xs_file")
     {
-      ifs >> fname_xs;
-      fname_xs = stub + fname_xs;
+      ifs >> xs_file_str;
+      xs_file_str = stub + xs_file_str;
+      xs_file = xs_file_str.c_str();
+    }
+    else if (card == "reference")
+    {
+      ifs >> reference_str;
+      ref = Analytic::reference_str_to_enum(reference_str);
+      reference = reference_str.c_str();
+    }
+    else if (card == "device")
+    {
+      ifs >> device_str;
+      device = device_str.c_str();
+    }
+    else if (card == "static_condensation")
+    {
+      static_condensation = read_bool(ifs);
+    }
+    else if (card == "partial_assembly")
+    {
+      partial_assembly = read_bool(ifs);
     }
     else
+    {
       throw Invalid_input_card{card};
+    }
   }
-
-  read_core_done = true;
 }
 
 void Input::read_state()
@@ -129,7 +152,7 @@ void Input::read_state()
     }
     else if (card == "verbose")
     {
-      verb = read_bool(ifs);
+      verbose = read_bool(ifs);
     }
     else
     {
@@ -142,21 +165,26 @@ void Input::echo(ostream& os) const
 {
   os << "[CORE]\n";
 
-  os << "mesh_file " << fname_mesh << '\n';
+  os << "mesh_file " << mesh_file << '\n';
   os << "boundary_conditions";
-  for (int i : bc)
-    os << ' ' << i;
+  for (int i{0}; i < boundary_conditions.Size(); ++i)
+    os << ' ' << boundary_conditions[i];
   os << '\n';
-  if (rs > 0) os << "refine_serial " << rs << '\n';
-  if (rp > 0) os << "refine_parallel " << rp << '\n';
+  os << "order " << order << '\n';
+  os << "refine_serial " << refine_serial << '\n';
+  os << "refine_parallel " << refine_parallel << '\n';
 
-  os << "xs_file " << fname_xs << '\n';
+  os << "xs_file " << xs_file << '\n';
 
   if (ref != Analytic::invalid) 
-    os << "reference " << Analytic::reference_enum_to_str(ref) << '\n';
+    os << "reference " << reference << '\n';
+
+  os << "device " << device << '\n';
+  os << "static_condensation " << static_condensation << '\n';
+  os << "partial_assembly " << static_condensation << '\n';
 
   os << "\n[STATE]\n";
-  if (verb) os << "verbatim " << verb << '\n';
+  os << "verbose " << verbose << '\n';
   os << "max_inner " << tol.max_inner << '\n';
   os << "inner_rel_tol " << tol.inner_rel << '\n';
   os << "inner_abs_tol " << tol.inner_abs << '\n';
@@ -179,7 +207,7 @@ string Input::path_stub(string path)
 
 void Input::reset_state(ifstream& ifs)
 {
-  for (int i{0}; i < strlen("[STATE]"); ++i)
+  for (size_t i{0}; i < strlen("[STATE]"); ++i)
     ifs.unget();
 }
 
@@ -192,25 +220,57 @@ bool Input::read_bool(ifstream& ifs)
   return ((str == "1") || (str == "t") || (str == "true"));
 }
 
-void Input::read_vector(ifstream& ifs, vector<int>& vec)
+void Input::read_vector(ifstream& ifs, Array<int>& arr)
 {
   for (int val; ifs >> val; )
-    vec.push_back(val);
+    arr.Append(val);
   ifs.unget();
   ifs.clear();
 }
 
-// copy input data to an arguments data structure
-Arguments::Arguments(const Input& inp) : order{1}, 
-  verbose{inp.verbose()}, static_cond{false}, pa{false}
+OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
 {
-  // The const_cast is necessary.
-  // MFEM argument parsing requires a const char* and the variable is declared
-  // as such.
-  // strcpy (logically) requires a non-const char*.
-  // Therefore, the const is discarded here and retained at MFEM parsing.
-  /*
-  strcpy(dynamic_cast<char*>(mesh_file), inp.mesh_file().c_str());
-  strcpy(const_cast<char*>(device_config), device.c_str());
-  */
+  OptionsParser args(argc, argv);
+
+  // general
+  args.AddOption(&inp.input_file, "-i", "--input", "Input file.", true); // required
+  // CORE
+  args.AddOption(&inp.mesh_file, "-m", "--mesh", "Mesh file to use.");
+  args.AddOption(&inp.boundary_conditions, "-bc", "--boundary-conditions", 
+                 "Boundary conditions associated with mesh.");
+  args.AddOption(&inp.order, "-o", "--order",
+                 "Finite element order (polynomial degree) or -1 for"
+                 " isoparametric space.");
+  args.AddOption(&inp.refine_serial, "-rs", "--refine-serial",
+                 "Refinements to perform on serial mesh.");
+  args.AddOption(&inp.refine_parallel, "-rp", "--refine-parallel",
+                 "Refinements to perform on parallel mesh.");
+  args.AddOption(&inp.xs_file, "-xs", "--xs-file",
+                 "Cross section data file.");
+  args.AddOption(&inp.reference, "-ref", "--reference",
+                 "Analytic reference solution.");
+  args.AddOption(&inp.device, "-d", "--device",
+                 "Device configuration string, see Device::Configure().");
+  args.AddOption(&inp.static_condensation, "-sc", "--static-condensation", 
+                 "-no-sc", "--no-static-condensation", 
+                 "Enable static condensation.");
+  args.AddOption(&inp.partial_assembly, "-pa", "--partial-assembly", "-no-pa",
+                 "--no-partial-assembly", "Enable Partial Assembly.");
+  // STATE
+  args.AddOption(&inp.verbose, "-v", "--verbose", "-no-v", "--no-verbose",
+                 "Verbose solver output of inner and outer solvers");
+  args.AddOption(&inp.tol.max_outer, "-mo", "--max-outer",
+                 "Maximum number of outer iterations.");
+  args.AddOption(&inp.tol.k, "-kt", "--k-tol",
+                 "keff tolerance.");
+  args.AddOption(&inp.tol.phi, "-phit", "--phi-tol",
+                 "Scalar flux tolerance.");
+  args.AddOption(&inp.tol.max_inner, "-mi", "--max-inner",
+                 "Maximum number of inner iterations.");
+  args.AddOption(&inp.tol.inner_rel, "-irt", "--inner-rel-tol",
+                 "Inner solver relative tolerance.");
+  args.AddOption(&inp.tol.inner_abs, "-iat", "--inner-abs-tol",
+                 "Inner solver absolute tolerance.");
+
+  return args;
 }

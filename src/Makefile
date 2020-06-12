@@ -85,4 +85,4 @@ format : $(CPP_FILES) $(HPP_FILES)
 main.o : analytic.o input.o xslibrary.o $(MFEM_HEADER)
 analytic.o : $(MFEM_HEADER) analytic.hpp
 xslibrary.o : xslibrary.hpp
-input.o : analytic.o input.hpp
+input.o : analytic.o input.hpp $(MFEM_HEADER)
