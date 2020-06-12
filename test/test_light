@@ -141,11 +141,11 @@ class Test_light(unittest.TestCase):
         data = driver.run_code(self.executable, input_file)
 
         keff = driver.get_value(data, "keff")
-        kref = 0.98239946349658546776
+        kref = 0.98239946349655526969
         self.assert_absolute_equal(keff, kref, 1e-6)
 
         rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.00443707
+        rmsref = 0.00443685
         self.assert_relative_equal(rmserr, rmsref)
 
         inferr = driver.get_value(data, "inferr")
