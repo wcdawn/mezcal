@@ -12,26 +12,6 @@
 using namespace std;
 using namespace mfem;
 
-////////////////////////////////////////////////////////////////////////////////
-// SOLVER OPTIONS
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr int max_outer{100};
-constexpr double phi_tol{1e-12};
-constexpr double k_tol{1e-12};
-
-// maximum number of inner iterations
-constexpr int max_inner{400}; // default 1000
-
-// actual tolerance of r0 in the solver is max(nom*rel_tol*rel_tol,
-// abs_tol*abs_tol) if abs_tol=0, abs_tol is ignored
-
-// relative tolerance of inner Krylov solver
-constexpr double inner_rel_tol{1e-12}; // default 1e-12
-
-// absolute tolerance of inner Krylov solver
-constexpr double inner_abs_tol{1e-24}; // default 1e-24 // examples use 0.0 too
-
 int main(int argc, char* argv[])
 {
   // "input" from a file
@@ -238,10 +218,10 @@ int main(int argc, char* argv[])
   // algorithm. This can significantly affect convergence time but convergence
   // time remains bounded.
   // No default provided by MFEM but this is used in one of the tutorials.
-  lobpcg->SetRandomSeed(1);
+  lobpcg->SetRandomSeed(730);
   lobpcg->SetPreconditioner(*prec);
-  lobpcg->SetMaxIter(max_outer);
-  lobpcg->SetTol(phi_tol);
+  lobpcg->SetMaxIter(inp.tol.max_outer);
+  lobpcg->SetTol(inp.tol.k * inp.tol.phi);
   lobpcg->SetPrecondUsageMode(1);
   lobpcg->SetPrintLevel(hypre_print_level);
   lobpcg->SetMassMatrix(*M);
