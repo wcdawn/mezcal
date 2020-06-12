@@ -100,6 +100,8 @@ void Input::read_core()
     }
     else
     {
+      cerr << "INVALID CARD\n";
+      cerr << card << '\n';
       throw Invalid_input_card{card};
     }
   }
@@ -156,6 +158,8 @@ void Input::read_state()
     }
     else
     {
+      cerr << "INVALID CARD\n";
+      cerr << card << '\n';
       throw Invalid_input_card{card};
     }
   }
