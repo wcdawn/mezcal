@@ -30,10 +30,12 @@ endif
 CPP_FILES = main.cpp \
 			analytic.cpp \
 			input.cpp \
+			solver.cpp \
 			xslibrary.cpp
 
 HPP_FILES = analytic.hpp \
 			input.hpp \
+			solver.hpp \
 			xslibrary.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
@@ -54,8 +56,8 @@ default : all
 
 all : $(EXEC)
 
-$(EXEC) : $(OBJ)
-	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
+$(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
+	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) || $(RM) $(EXEC)
 
 %.o : %.cpp
 	$(MPICXX) $(CXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
@@ -82,7 +84,8 @@ clean :
 format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
-main.o : analytic.o input.o xslibrary.o $(MFEM_HEADER)
+main.o : analytic.o input.o solver.o xslibrary.o $(MFEM_HEADER)
 analytic.o : $(MFEM_HEADER) analytic.hpp
 xslibrary.o : xslibrary.hpp
 input.o : analytic.o input.hpp $(MFEM_HEADER)
+solver.o : solver.hpp $(MFEM_HEADER)

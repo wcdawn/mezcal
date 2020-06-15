@@ -2,65 +2,66 @@
 #define ANALYTIC
 
 #include "mfem.hpp"
+
 #include <functional>
 
 using namespace mfem;
 
 class Analytic
 {
-  public:
+public:
+  class InvalidReferenceName
+  {};
 
-    class InvalidReferenceName{};
+  enum Reference
+  {
+    invalid = -1,
+    fixed_src,
+    oned_oneg,
+    twod_oneg,
+    threed_oneg,
+    square,
+    finite_cyl,
+    tworeg
+  };
 
-    enum Reference
-    {
-      invalid = -1,
-      fixed_src,
-      oned_oneg,
-      twod_oneg,
-      threed_oneg,
-      square,
-      finite_cyl,
-      tworeg
-    };
+  Analytic(Reference ref, const Mesh* const mesh, const GridFunction& grid_sol,
+           double k);
 
-    Analytic(Reference ref, const Mesh* const mesh, 
-             const GridFunction& grid_sol, double k);
+  void analyze(std::ostream& os) const;
+  void print(std::ostream& os) const;
 
-    void analyze(std::ostream& os) const;
-    void print(std::ostream& os) const;
+  // helper functions for dealing with Reference enum
+  static Reference reference_str_to_enum(std::string str);
+  static std::string reference_enum_to_str(Reference ref);
 
-    // helper functions for dealing with Reference enum
-    static Reference reference_str_to_enum(std::string str); 
-    static std::string reference_enum_to_str(Reference ref); 
+private:
+  Reference reference_solution;
+  int nVert;
+  int nDim;
+  double keff;
 
-  private:
-    Reference reference_solution;
-    int nVert;
-    int nDim;
-    double keff;
+  // Zeroth zero of the first Bessel function of the first kind.
+  static constexpr double alpha0{2.404825557695772768622};
 
-    // Zeroth zero of the first Bessel function of the first kind.
-    static constexpr double alpha0{2.404825557695772768622};
+  std::vector<Vertex> node;
+  Vector sol;
 
-    std::vector<Vertex> node;
-    Vector sol;
+  std::function<double(const Analytic*, const Vertex&)> fun;
+  std::function<double(const Analytic*)> analytic_keff;
 
-    std::function<double(const Analytic*, const Vertex&)> fun;
-    std::function<double(const Analytic*)> analytic_keff;
+  double fixed_src_fun(const Vertex&) const;
+  double oned_oneg_fun(const Vertex&) const;
+  double twod_oneg_fun(const Vertex&) const;
+  double threed_oneg_fun(const Vertex&) const;
+  double finite_cyl_fun(const Vertex&) const;
+  double tworeg_fun(const Vertex&) const;
 
-    double fixed_src_fun(const Vertex&) const;
-    double oned_oneg_fun(const Vertex&) const;
-    double twod_oneg_fun(const Vertex&) const;
-    double threed_oneg_fun(const Vertex&) const;
-    double finite_cyl_fun(const Vertex&) const;
-    double tworeg_fun(const Vertex&) const;
-
-    double oned_oneg_keff() const;
-    double twod_oneg_keff() const;
-    double threed_oneg_keff() const;
-    double finite_cyl_keff() const;
-    double tworeg_keff() const;
+  double oned_oneg_keff() const;
+  double twod_oneg_keff() const;
+  double threed_oneg_keff() const;
+  double finite_cyl_keff() const;
+  double tworeg_keff() const;
 };
 
 #endif

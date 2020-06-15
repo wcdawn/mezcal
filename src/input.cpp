@@ -7,9 +7,9 @@ using std::strlen;
 #include <iostream>
 using std::cerr;
 
-using std::string;
 using std::ifstream;
 using std::ostream;
+using std::string;
 using std::vector;
 
 Input::Input(std::string fname) : input_file_str{fname}
@@ -25,17 +25,17 @@ Input::Input(const char* fname) : input_file_str{fname}
 void Input::open()
 {
   ifs.open(input_file_str);
-  if (!ifs) throw Invalid_file_name{input_file_str};
+  if (!ifs)
+    throw Invalid_file_name{input_file_str};
   stub = path_stub(input_file_str);
 }
-
 
 void Input::read_core()
 {
   string card;
 
   ifs >> card;
-  if (card != "[CORE]") 
+  if (card != "[CORE]")
     throw Invalid_input_card{"Expected [CORE]. Got: " + card};
 
   while (ifs >> card)
@@ -43,8 +43,7 @@ void Input::read_core()
     if (card[0] == comment_char)
     {
       // eat until newline
-      for (char c{0}; (ifs.get(c)) && (c != '\n'); )
-      continue;
+      for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
     }
     else if (card == "[STATE]")
     {
@@ -55,7 +54,7 @@ void Input::read_core()
     {
       ifs >> mesh_file_str;
       mesh_file_str = stub + mesh_file_str;
-      mesh_file = mesh_file_str.c_str();
+      mesh_file     = mesh_file_str.c_str();
     }
     else if (card == "boundary_conditions")
     {
@@ -77,12 +76,12 @@ void Input::read_core()
     {
       ifs >> xs_file_str;
       xs_file_str = stub + xs_file_str;
-      xs_file = xs_file_str.c_str();
+      xs_file     = xs_file_str.c_str();
     }
     else if (card == "reference")
     {
       ifs >> reference_str;
-      ref = Analytic::reference_str_to_enum(reference_str);
+      ref       = Analytic::reference_str_to_enum(reference_str);
       reference = reference_str.c_str();
     }
     else if (card == "device")
@@ -120,8 +119,7 @@ void Input::read_state()
     if (card[0] == comment_char)
     {
       // eat until newline
-      for (char c{0}; (ifs.get(c)) && (c != '\n'); )
-      continue;
+      for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
     }
     else if (card == "[STATE]")
     {
@@ -180,7 +178,7 @@ void Input::echo(ostream& os) const
 
   os << "xs_file " << xs_file << '\n';
 
-  if (ref != Analytic::invalid) 
+  if (ref != Analytic::invalid)
     os << "reference " << reference << '\n';
 
   os << "device " << device << '\n';
@@ -195,39 +193,36 @@ void Input::echo(ostream& os) const
   os << "max_outer " << tol.max_outer << '\n';
   os << "k_tol " << tol.k << '\n';
   os << "phi_tol " << tol.phi << '\n';
-
 }
 
 string Input::path_stub(string path)
 {
   string stub;
   // assume absolute paths start with ~ or /
-  if ((path[0] == '~') || (path[0] == '/')) return stub;
+  if ((path[0] == '~') || (path[0] == '/'))
+    return stub;
   // return up-to-and-including the final /
   const auto final_slash{path.find_last_of('/')};
-  stub = path.substr(0,final_slash+1);
+  stub = path.substr(0, final_slash + 1);
   return stub;
 }
 
 void Input::reset_state(ifstream& ifs)
 {
-  for (size_t i{0}; i < strlen("[STATE]"); ++i)
-    ifs.unget();
+  for (size_t i{0}; i < strlen("[STATE]"); ++i) ifs.unget();
 }
 
 bool Input::read_bool(ifstream& ifs)
 {
   string str;
   ifs >> str;
-  for (char& c : str)
-    c = tolower(c);
+  for (char& c : str) c = tolower(c);
   return ((str == "1") || (str == "t") || (str == "true"));
 }
 
 void Input::read_vector(ifstream& ifs, Array<int>& arr)
 {
-  for (int val; ifs >> val; )
-    arr.Append(val);
+  for (int val; ifs >> val;) arr.Append(val);
   ifs.unget();
   ifs.clear();
 }
@@ -237,10 +232,11 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
   OptionsParser args(argc, argv);
 
   // general
-  args.AddOption(&inp.input_file, "-i", "--input", "Input file.", true); // required
+  args.AddOption(&inp.input_file, "-i", "--input", "Input file.",
+                 true); // required
   // CORE
   args.AddOption(&inp.mesh_file, "-m", "--mesh", "Mesh file to use.");
-  args.AddOption(&inp.boundary_conditions, "-bc", "--boundary-conditions", 
+  args.AddOption(&inp.boundary_conditions, "-bc", "--boundary-conditions",
                  "Boundary conditions associated with mesh.");
   args.AddOption(&inp.order, "-o", "--order",
                  "Finite element order (polynomial degree) or -1 for"
@@ -249,14 +245,13 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
                  "Refinements to perform on serial mesh.");
   args.AddOption(&inp.refine_parallel, "-rp", "--refine-parallel",
                  "Refinements to perform on parallel mesh.");
-  args.AddOption(&inp.xs_file, "-xs", "--xs-file",
-                 "Cross section data file.");
+  args.AddOption(&inp.xs_file, "-xs", "--xs-file", "Cross section data file.");
   args.AddOption(&inp.reference, "-ref", "--reference",
                  "Analytic reference solution.");
   args.AddOption(&inp.device, "-d", "--device",
                  "Device configuration string, see Device::Configure().");
-  args.AddOption(&inp.static_condensation, "-sc", "--static-condensation", 
-                 "-no-sc", "--no-static-condensation", 
+  args.AddOption(&inp.static_condensation, "-sc", "--static-condensation",
+                 "-no-sc", "--no-static-condensation",
                  "Enable static condensation.");
   args.AddOption(&inp.partial_assembly, "-pa", "--partial-assembly", "-no-pa",
                  "--no-partial-assembly", "Enable Partial Assembly.");
@@ -265,10 +260,8 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
                  "Verbose solver output of inner and outer solvers");
   args.AddOption(&inp.tol.max_outer, "-mo", "--max-outer",
                  "Maximum number of outer iterations.");
-  args.AddOption(&inp.tol.k, "-kt", "--k-tol",
-                 "keff tolerance.");
-  args.AddOption(&inp.tol.phi, "-phit", "--phi-tol",
-                 "Scalar flux tolerance.");
+  args.AddOption(&inp.tol.k, "-kt", "--k-tol", "keff tolerance.");
+  args.AddOption(&inp.tol.phi, "-phit", "--phi-tol", "Scalar flux tolerance.");
   args.AddOption(&inp.tol.max_inner, "-mi", "--max-inner",
                  "Maximum number of inner iterations.");
   args.AddOption(&inp.tol.inner_rel, "-irt", "--inner-rel-tol",
