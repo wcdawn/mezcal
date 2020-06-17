@@ -29,6 +29,7 @@ public:
   void open();
   void read_core();
   void read_state();
+  void reconcile_enums();
   void echo(std::ostream& os) const;
 
   class Invalid_input_card : std::exception
@@ -61,7 +62,6 @@ public:
     std::string msg;
   };
 
-public:
   // general
   const char* input_file;
 
@@ -72,7 +72,7 @@ public:
   int refine_serial{0};
   int refine_parallel{0};
   const char* xs_file{""};
-  const char* reference{""};
+  const char* reference{"invalid"};
   const char* device{"cpu"};
   bool static_condensation{false};
   bool partial_assembly{false};
@@ -83,17 +83,30 @@ public:
   // STATE
   bool verbose{false};
   Tolerance_control tol;
+  const char* solver{"lobpcg"};
+
+  enum Solver_choice
+  {
+    invalid = -1,
+    power_iteration,
+    lobpcg
+  };
+
+  Solver_choice sol{lobpcg};
 
 private:
   static constexpr char comment_char{'#'};
   std::ifstream ifs;
 
   // strings corresponding to const char*
+  // [CORE]
   std::string input_file_str;
   std::string mesh_file_str;
   std::string xs_file_str;
   std::string device_str;
   std::string reference_str;
+  // [STATE]
+  std::string solver_str;
 
   std::string stub;
   std::string path_stub(std::string path);
@@ -101,6 +114,9 @@ private:
   static void reset_state(std::ifstream& ifs);
   static bool read_bool(std::ifstream& ifs);
   static void read_vector(std::ifstream& ifs, mfem::Array<int>& vec);
+
+  static std::string solver_choice_enum_to_str(const Solver_choice& solver);
+  static Solver_choice solver_choice_str_to_enum(const std::string& solver);
 };
 
 OptionsParser custom_arguments(Input& inp, int argc, char* argv[]);

@@ -5,6 +5,10 @@
 using namespace mfem;
 using std::numeric_limits;
 
+using std::cout;
+using std::endl;
+using std::flush;
+
 Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
                         const Array<int>& ess_bdr, const ParMesh* const pmesh,
                         ParFiniteElementSpace* const fespace)
@@ -25,8 +29,7 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
 
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < removal.Size(); ++i) 
-    removal[i] = xs.rec[i].sigma_r[0];
+  for (int i{0}; i < removal.Size(); ++i) removal[i] = xs.rec[i].sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -111,12 +114,139 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   return res;
 }
 
+// this will not work AT ALL for parallel problems
 Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
                                  const Array<int>& ess_bdr,
                                  const ParMesh* const pmesh,
                                  ParFiniteElementSpace* const fespace)
 {
-  Result res{fespace};
+  const int hypre_print_level{inp.verbose ? 1 : 0};
+  const int mfem_print_level{inp.verbose ? 1 : 0};
+
+  auto a{new ParBilinearForm(fespace)};
+  if (inp.partial_assembly)
+    a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+
+  Vector leakage(pmesh->attributes.Max());
+  for (int i{0}; i < leakage.Size(); ++i)
+    leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[0]);
+  PWConstCoefficient leakage_func{leakage};
+
+  Vector removal(pmesh->attributes.Max());
+  for (int i{0}; i < removal.Size(); ++i)
+    removal[i] = xs.rec[i].sigma_r[0];
+  PWConstCoefficient removal_func{removal};
+
+  a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
+  a->AddDomainIntegrator(new MassIntegrator(removal_func));
+
+  if (inp.static_condensation)
+    a->EnableStaticCondensation();
+
+  a->Assemble();
+
+  Solver* prec{nullptr};
+  auto amg{new HypreBoomerAMG};
+  amg->SetPrintLevel(hypre_print_level);
+  prec = amg;
+
+  CGSolver cg(MPI_COMM_WORLD);
+  cg.SetRelTol(inp.tol.inner_rel);
+  cg.SetAbsTol(inp.tol.inner_abs);
+  cg.SetMaxIter(inp.tol.max_inner);
+  cg.SetPrintLevel(mfem_print_level);
+  if (prec)
+    cg.SetPreconditioner(*prec);
+
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  Result res(fespace);
+  res.phi = 0.0;
+
+  OperatorPtr A;
+  Vector B;
+  Vector X;
+
+  double keff_old{res.keff};
+  double fiss_sum{1.0};
+  double fiss_sum_old{1.0};
+
+  double k_conv{inp.tol.k * 1e1 + 1e-5};
+  double phi_conv{inp.tol.phi * 1e1 + 1e-5};
+
+  ParGridFunction phi_old(fespace);
+  phi_old = 1.0;
+  
+  Vector fission(pmesh->attributes.Max()); // length is number of materials
+  for (int i{0}; i < fission.Size(); ++i) fission[i] = xs.rec[i].nusf[0];
+  PWConstCoefficient fiss_func(fission);
+
+  GridFunctionCoefficient phi_func(&res.phi);
+  ProductCoefficient fiss_term(fiss_func, phi_func);
+
+  int iter{0};
+  for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
+                 || (phi_conv > inp.tol.phi)); ++iter)
+  {
+    // construct source
+    auto b{new ParLinearForm(fespace)};
+    if (iter == 0)
+      b->AddDomainIntegrator(new DomainLFIntegrator(fiss_func));
+    else
+      b->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
+    b->Assemble();
+    *b /= res.keff;
+
+    b->Print();
+
+    // Solve this fixed source problem.
+    // Note that FormLinearSystem is designed to be called multiple times.
+    a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
+    cg.SetOperator(*A);
+    cg.Mult(B, X); // solve
+    a->RecoverFEMSolution(X, *b, res.phi);
+
+    // Calculate fission sum.
+    // I think this is what's killing the timing.
+    auto fiss{new ParLinearForm(fespace)};
+    fiss->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
+    fiss->Assemble();
+    fiss_sum = fiss->Sum();
+    delete fiss;
+
+    // update keff
+    if (iter > 0) res.keff = res.keff * (fiss_sum / fiss_sum_old);
+
+    // update convergence criteria
+    k_conv = std::abs(res.keff - keff_old);
+    phi_old -= res.phi;
+    phi_conv = phi_old.Normlinf();
+
+    // copy old values
+    keff_old = res.keff;
+    fiss_sum_old = fiss_sum;
+    phi_old = res.phi;
+
+    cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv 
+         << " dphi=" << phi_conv << endl;
+
+    delete b;
+  }
+
+  delete prec;
+  delete a;
+
+  if (iter == inp.tol.max_outer)
+  {
+    cout << "Failed to converge in maximum allowed power iterations.\n"
+         << "max_outer = " << inp.tol.max_outer << "\n"
+         << "(k_tol, k_conv) = "
+         << "(" << inp.tol.k << ", " << k_conv << ")\n"
+         << "(phi_tol, phi_conv) = "
+         << "(" << inp.tol.phi << ", " << phi_conv << ")\n";
+  }
+
   return res;
 }
 
@@ -130,7 +260,8 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   const int hypre_print_level{inp.verbose ? 1 : 0};
 
   auto a{new ParBilinearForm(fespace)};
-  if (inp.partial_assembly) a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+  if (inp.partial_assembly)
+    a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
 
   Vector leakage(pmesh->attributes.Max());
   for (int i{0}; i < leakage.Size(); ++i)
@@ -138,35 +269,36 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   PWConstCoefficient leakage_func(leakage);
 
   Vector removal(pmesh->attributes.Max());
-  for (int i{0}; i < removal.Size(); ++i) 
-    removal[i] = xs.rec[i].sigma_r[0];
+  for (int i{0}; i < removal.Size(); ++i) removal[i] = xs.rec[i].sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
   a->AddDomainIntegrator(new MassIntegrator(removal_func));
 
+  if (inp.static_condensation)
+    a->EnableStaticCondensation();
+
+  a->Assemble();
+
   auto b{new ParLinearForm(fespace)};
 
   Vector source(pmesh->attributes.Max());
-  for (int i{0}; i < source.Size(); ++i)
-    source[i] = xs.rec[i].source[0];
-  PWConstCoefficient source_func(source);
+  for (int i{0}; i < source.Size(); ++i) source[i] = xs.rec[i].source[0];
+  PWConstCoefficient source_func{source};
 
   b->AddDomainIntegrator(new DomainLFIntegrator(source_func));
 
-  if (inp.static_condensation) a->EnableStaticCondensation();
-
-  a->Assemble();
   b->Assemble();
 
   OperatorPtr A;
   Vector B;
   Vector X;
 
-  Result res{fespace};
-
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  Result res{fespace};
+  res.phi = 0.0; // important initial guess
   a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
 
   Solver* prec{nullptr};
@@ -174,12 +306,13 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   amg->SetPrintLevel(hypre_print_level);
   prec = amg;
 
-  CGSolver cg(MPI_COMM_WORLD); // in namespace mfem
+  CGSolver cg(MPI_COMM_WORLD);
   cg.SetRelTol(inp.tol.inner_rel);
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
   cg.SetPrintLevel(mfem_print_level);
-  if (prec) cg.SetPreconditioner(*prec);
+  if (prec)
+    cg.SetPreconditioner(*prec);
   cg.SetOperator(*A);
   cg.Mult(B, X);
   delete prec;
@@ -191,4 +324,3 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
 
   return res;
 }
-

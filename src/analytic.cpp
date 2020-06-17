@@ -25,10 +25,10 @@ using std::sin;
 using std::sinh;
 using std::tanh;
 
-Analytic::Analytic(Reference ref, const Mesh* const mesh,
-                   const GridFunction& grid_sol, double k)
+Analytic::Analytic(Reference ref, const Result& res, const XSLibrary& xslib,
+                   const Mesh* const mesh)
   : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
-    keff{k}
+    keff{res.keff}, xs{&xslib}
 {
   // set node
   Vector vec_node;
@@ -46,7 +46,7 @@ Analytic::Analytic(Reference ref, const Mesh* const mesh,
   }
 
   // set sol
-  grid_sol.GetNodalValues(sol, 1); // vdim=1
+  res.phi.GetNodalValues(sol, 1); // vdim=1
   if (reference_solution != fixed_src)
   {
     for (int i{0}; i < sol.Size(); ++i) sol[i] = abs(sol[i]);
@@ -90,7 +90,7 @@ void Analytic::analyze(ostream& os) const
 
   for (int i{0}; i < nVert; ++i)
   {
-    const double val{fun(this, node[i])};
+    const double val{fun(this, node[i], *xs)};
     const double err{abs(sol[i] - val)};
     L1norm += err;
     L2norm += err * err;
@@ -105,7 +105,7 @@ void Analytic::analyze(ostream& os) const
 
   if (reference_solution != fixed_src)
   {
-    const double kref{analytic_keff(this)};
+    const double kref{analytic_keff(this, *xs)};
     const auto previous_precision{os.precision()};
     os << setprecision(20);
     os << "keff = " << keff << '\n';
@@ -125,7 +125,7 @@ void Analytic::print(ostream& os) const
 {
   for (int i{0}; i < nVert; ++i)
   {
-    const double val{fun(this, node[i])};
+    const double val{fun(this, node[i], *xs)};
     const double err{abs(sol[i] - val)};
     os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << sol[i]
        << ',' << val << ',' << err << '\n';
@@ -162,19 +162,19 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
     case (fixed_src): return "fixed_src";
     case (square): return "square";
     case (tworeg): return "tworeg";
-    default: return "INVALID";
+    default: return "invalid";
   }
 }
 
-double Analytic::fixed_src_fun(const Vertex& v) const
+double Analytic::fixed_src_fun(const Vertex& v, const XSLibrary& xs) const
 {
   // TODO these need to come as input to the constructor
-  static constexpr double sigma_tr{1.0 / 3.0};
-  static constexpr double sigma_r{1.0};
-  static constexpr double q_fixed{1.0};
+  const double sigma_tr{xs.rec[0].sigma_tr[0]};
+  const double sigma_r{xs.rec[0].sigma_r[0]};
+  const double q_fixed{xs.rec[0].source[0]};
 
   static constexpr double Lx_small{1.0};
-  static constexpr double diffusion{1.0 / (3.0 * sigma_tr)};
+  const double diffusion{1.0 / (3.0 * sigma_tr)};
 
   const double kappa{sqrt(sigma_r / diffusion)};
   const double x{v(0)}; // x is the zeroth coordinate
@@ -185,14 +185,14 @@ double Analytic::fixed_src_fun(const Vertex& v) const
                 * sinh(kappa * x));
 }
 
-double Analytic::oned_oneg_fun(const Vertex& v) const
+double Analytic::oned_oneg_fun(const Vertex& v, const XSLibrary&) const
 {
   static constexpr double Lx{100.0};
   const double x{v(0)}; // x is the zeroth coordinate
   return sin((M_PI / Lx) * x);
 }
 
-double Analytic::twod_oneg_fun(const Vertex& v) const
+double Analytic::twod_oneg_fun(const Vertex& v, const XSLibrary&) const
 {
   static constexpr double Lx{100.0};
   static constexpr double Ly{100.0};
@@ -201,7 +201,7 @@ double Analytic::twod_oneg_fun(const Vertex& v) const
   return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y);
 }
 
-double Analytic::threed_oneg_fun(const Vertex& v) const
+double Analytic::threed_oneg_fun(const Vertex& v, const XSLibrary&) const
 {
   static constexpr double Lx{100.0};
   static constexpr double Ly{100.0};
@@ -212,7 +212,7 @@ double Analytic::threed_oneg_fun(const Vertex& v) const
   return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y) * sin((M_PI / Lz) * z);
 }
 
-double Analytic::finite_cyl_fun(const Vertex& v) const
+double Analytic::finite_cyl_fun(const Vertex& v, const XSLibrary&) const
 {
   static constexpr double R{50.0};
   static constexpr double H{100.0};
@@ -223,24 +223,11 @@ double Analytic::finite_cyl_fun(const Vertex& v) const
   return cyl_bessel_j(0, (alpha0 / R) * r) * sin((M_PI / H) * z);
 }
 
-double Analytic::oned_oneg_keff() const
+double Analytic::tworeg_fun(const Vertex& v, const XSLibrary& xs) const
 {
-  static constexpr double transport{3.619027e-2};
-  static constexpr double removal{1.532090e-1};
-  static constexpr double nusf{1.566769e-1};
-
-  static constexpr double Lx{100.0};
-
-  static constexpr double diffusion{1.0 / (3.0 * transport)};
-
-  return nusf / (diffusion * pow(M_PI / Lx, 2) + removal);
-}
-
-double Analytic::tworeg_fun(const Vertex& v) const
-{
-  static const vector<double> sigma_tr{1.0 / (3.0 * 1.2), 1.0 / (3.0 * 0.7)};
-  static const vector<double> sigma_r{0.02, 0.015};
-  static const vector<double> nusf{0.02, 0.0};
+  const vector<double> sigma_tr{xs.rec[0].sigma_tr[0], xs.rec[1].sigma_tr[0]};
+  const vector<double> sigma_r{xs.rec[0].sigma_r[0], xs.rec[1].sigma_r[0]};
+  const vector<double> nusf{xs.rec[0].nusf[1], xs.rec[1].nusf[0]};
 
   vector<double> diffusion(sigma_tr.size());
   for (size_t i{0}; i < sigma_tr.size(); ++i)
@@ -254,7 +241,7 @@ double Analytic::tworeg_fun(const Vertex& v) const
 
   // indices are material indices, not group indices
 
-  static const double kappa{sqrt(sigma_r[1] / diffusion[1])};
+  const double kappa{sqrt(sigma_r[1] / diffusion[1])};
 
   if (x <= L_F)
     return cos(BF * x);
@@ -264,31 +251,44 @@ double Analytic::tworeg_fun(const Vertex& v) const
             - sinh(kappa * (x - L_F)) / tanh(kappa * (L_R - L_F)));
 }
 
-double Analytic::twod_oneg_keff() const
+double Analytic::oned_oneg_keff(const XSLibrary& xs) const
 {
-  static constexpr double transport{3.619027e-2};
-  static constexpr double removal{1.532090e-1};
-  static constexpr double nusf{1.566769e-1};
+  const double transport{xs.rec[0].sigma_tr[0]};
+  const double removal{xs.rec[0].sigma_r[0]};
+  const double nusf{xs.rec[0].nusf[0]};
+
+  static constexpr double Lx{100.0};
+
+  const double diffusion{1.0 / (3.0 * transport)};
+
+  return nusf / (diffusion * pow(M_PI / Lx, 2) + removal);
+}
+
+double Analytic::twod_oneg_keff(const XSLibrary& xs) const
+{
+  const double transport{xs.rec[0].sigma_tr[0]};
+  const double removal{xs.rec[0].sigma_r[0]};
+  const double nusf{xs.rec[0].nusf[0]};
 
   static constexpr double Lx{100.0};
   static constexpr double Ly{100.0};
 
-  static constexpr double diffusion{1.0 / (3.0 * transport)};
+  const double diffusion{1.0 / (3.0 * transport)};
 
   return nusf / (diffusion * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2)) + removal);
 }
 
-double Analytic::threed_oneg_keff() const
+double Analytic::threed_oneg_keff(const XSLibrary& xs) const
 {
-  static constexpr double transport{3.619027e-2};
-  static constexpr double removal{1.532090e-1};
-  static constexpr double nusf{1.566769e-1};
+  const double transport{xs.rec[0].sigma_tr[0]};
+  const double removal{xs.rec[0].sigma_r[0]};
+  const double nusf{xs.rec[0].nusf[0]};
 
   static constexpr double Lx{100.0};
   static constexpr double Ly{100.0};
   static constexpr double Lz{100.0};
 
-  static constexpr double diffusion{1.0 / (3.0 * transport)};
+  const double diffusion{1.0 / (3.0 * transport)};
 
   return nusf
          / (diffusion
@@ -296,25 +296,25 @@ double Analytic::threed_oneg_keff() const
             + removal);
 }
 
-double Analytic::finite_cyl_keff() const
+double Analytic::finite_cyl_keff(const XSLibrary& xs) const
 {
-  static constexpr double transport{1.0 / 3.0};
-  static constexpr double removal{1.0};
-  static constexpr double nusf{1.0};
+  const double transport{xs.rec[0].sigma_tr[0]};
+  const double removal{xs.rec[0].sigma_r[0]};
+  const double nusf{xs.rec[0].nusf[0]};
 
   static constexpr double R{50.0};
   static constexpr double H{100.0};
 
-  static constexpr double diffusion{1.0 / (3.0 * transport)};
+  const double diffusion{1.0 / (3.0 * transport)};
 
   return nusf / (diffusion * (pow(alpha0 / R, 2) + pow(M_PI / H, 2)) + removal);
 }
 
-double Analytic::tworeg_keff() const
+double Analytic::tworeg_keff(const XSLibrary& xs) const
 {
-  static const vector<double> sigma_tr{1.0 / (3.0 * 1.2), 1.0 / (3.0 * 0.7)};
-  static const vector<double> sigma_r{0.02, 0.015};
-  static const vector<double> nusf{0.02, 0.0};
+  const vector<double> sigma_tr{xs.rec[0].sigma_tr[0], xs.rec[1].sigma_tr[0]};
+  const vector<double> sigma_r{xs.rec[0].sigma_r[0], xs.rec[1].sigma_r[0]};
+  const vector<double> nusf{xs.rec[0].nusf[1], xs.rec[1].nusf[0]};
 
   vector<double> diffusion(sigma_tr.size());
   for (size_t i{0}; i < sigma_tr.size(); ++i)

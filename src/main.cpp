@@ -1,6 +1,7 @@
 #include "analytic.hpp"
 #include "input.hpp"
 #include "mfem.hpp"
+#include "result.hpp"
 #include "solver.hpp"
 #include "xslibrary.hpp"
 
@@ -71,6 +72,9 @@ int main(int argc, char* argv[])
     MPI_Finalize();
     return 1;
   }
+
+  // need to reconcile enums to match their const char* counterparts
+  inp.reconcile_enums();
 
   const int mfem_print_level{inp.verbose ? 1 : 0};
   // const int hypre_print_level{inp.verbose ? 1 : 0};
@@ -146,40 +150,41 @@ int main(int argc, char* argv[])
   }
   else
   {
-    res = diffusion_lobpcg(inp, xs, ess_bdr, pmesh, fespace);
+    switch (inp.sol)
+    {
+      case (Input::lobpcg):
+        res = diffusion_lobpcg(inp, xs, ess_bdr, pmesh, fespace);
+        break;
+      case (Input::power_iteration):
+        res = diffusion_power_iteration(inp, xs, ess_bdr, pmesh, fespace);
+        break;
+      default:
+        cerr << "Invalid solver choice.\n";
+        MPI_Finalize();
+        return 1;
+    }
   }
 
   const auto old_precision{cout.precision()};
-  if (myid == 0)
+  if ((myid == 0) && (inp.ref != Analytic::fixed_src))
     cout << "keff = " << setprecision(20) << res.keff
          << setprecision(old_precision) << '\n';
 
   // TODO this is wrong for parallel!
   if ((myid == 0) && (inp.ref != Analytic::invalid))
   {
-    Analytic anal(inp.ref, pmesh, res.phi, res.keff);
+    Analytic anal(inp.ref, res, xs, pmesh);
     anal.analyze(cout);
     ofstream ofs{"out.csv"};
     anal.print(ofs);
   }
 
-  // TODO this is wrong for parallel!
-  // write vtk
-  if (myid == 0)
-  {
-    ofstream ofs{"out.vtk"};
-    pmesh->PrintVTK(ofs, 0);
-    res.phi.SaveVTK(ofs, "solution", 0);
-    ofstream ofs_mesh{"out.mesh"};
-    pmesh->Print(ofs_mesh);
-  }
+  ParaViewDataCollection output("output_dir", pmesh);
+  output.RegisterField("flux", &res.phi);
+  output.SetFormat(DataCollection::PARALLEL_FORMAT);
+  output.Save();
 
   // 15. Free the used memory.
-
-  /*
-  delete A;
-  delete M;
-  */
 
   delete fespace;
   if (inp.order > 0)

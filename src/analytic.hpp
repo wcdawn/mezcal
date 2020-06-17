@@ -2,6 +2,8 @@
 #define ANALYTIC
 
 #include "mfem.hpp"
+#include "result.hpp"
+#include "xslibrary.hpp"
 
 #include <functional>
 
@@ -25,8 +27,8 @@ public:
     tworeg
   };
 
-  Analytic(Reference ref, const Mesh* const mesh, const GridFunction& grid_sol,
-           double k);
+  Analytic(Reference ref, const Result& res, const XSLibrary& xs,
+           const Mesh* const mesh);
 
   void analyze(std::ostream& os) const;
   void print(std::ostream& os) const;
@@ -40,6 +42,7 @@ private:
   int nVert;
   int nDim;
   double keff;
+  const XSLibrary* xs;
 
   // Zeroth zero of the first Bessel function of the first kind.
   static constexpr double alpha0{2.404825557695772768622};
@@ -47,21 +50,21 @@ private:
   std::vector<Vertex> node;
   Vector sol;
 
-  std::function<double(const Analytic*, const Vertex&)> fun;
-  std::function<double(const Analytic*)> analytic_keff;
+  std::function<double(const Analytic*, const Vertex&, const XSLibrary&)> fun;
+  std::function<double(const Analytic*, const XSLibrary&)> analytic_keff;
 
-  double fixed_src_fun(const Vertex&) const;
-  double oned_oneg_fun(const Vertex&) const;
-  double twod_oneg_fun(const Vertex&) const;
-  double threed_oneg_fun(const Vertex&) const;
-  double finite_cyl_fun(const Vertex&) const;
-  double tworeg_fun(const Vertex&) const;
+  double fixed_src_fun(const Vertex&, const XSLibrary&) const;
+  double oned_oneg_fun(const Vertex&, const XSLibrary&) const;
+  double twod_oneg_fun(const Vertex&, const XSLibrary&) const;
+  double threed_oneg_fun(const Vertex&, const XSLibrary&) const;
+  double finite_cyl_fun(const Vertex&, const XSLibrary&) const;
+  double tworeg_fun(const Vertex&, const XSLibrary&) const;
 
-  double oned_oneg_keff() const;
-  double twod_oneg_keff() const;
-  double threed_oneg_keff() const;
-  double finite_cyl_keff() const;
-  double tworeg_keff() const;
+  double oned_oneg_keff(const XSLibrary& xs) const;
+  double twod_oneg_keff(const XSLibrary& xs) const;
+  double threed_oneg_keff(const XSLibrary& xs) const;
+  double finite_cyl_keff(const XSLibrary& xs) const;
+  double tworeg_keff(const XSLibrary& xs) const;
 };
 
 #endif

@@ -3,10 +3,11 @@
 CXX = g++
 CXXFLAGS = -Wall -pedantic-errors -std=c++17
 
-MPICXX = /opt/mpich/bin/mpicxx
+MPICXX = /opt/mpich/bin/mpicxx -cxx=$(CXX)
+MPICXXFLAGS = $(CXXFLAGS)
 
-LD = nvcc
-LDFLAGS = --expt-extended-lambda -arch=sm_60 -ccbin $(MPICXX)
+LD = $(MPICXX) 
+LDFLAGS = -std=c++17
 
 MFEM_DIR = ../build/mfem
 MFEM_INCLUDE = $(MFEM_DIR)
@@ -20,6 +21,9 @@ HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 METIS_DIR = ../metis-5.1.0
 METIS_INCLUDE = $(METIS_DIR)/include
 METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
+
+CUDA_DIR = /opt/cuda
+CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread
 
 ifeq ($(METHOD), dbg)
 CXXFLAGS += -O0 -g
@@ -57,10 +61,11 @@ default : all
 all : $(EXEC)
 
 $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
-	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) || $(RM) $(EXEC)
+	@# delete any existing executable if linking fails
+	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) || $(RM) $(EXEC)
 
 %.o : %.cpp
-	$(MPICXX) $(CXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
+	$(MPICXX) $(MPICXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
 version.hpp : 
 	@echo "#ifndef VERSION" > version.hpp

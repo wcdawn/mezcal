@@ -154,6 +154,12 @@ void Input::read_state()
     {
       verbose = read_bool(ifs);
     }
+    else if (card == "solver")
+    {
+      ifs >> solver_str;
+      sol    = solver_choice_str_to_enum(solver_str);
+      solver = solver_str.c_str();
+    }
     else
     {
       cerr << "INVALID CARD\n";
@@ -161,6 +167,17 @@ void Input::read_state()
       throw Invalid_input_card{card};
     }
   }
+}
+
+// The MFEM command-line argument parser can set the const char* values but this
+// does not update the local strings or the enums themselves.
+void Input::reconcile_enums()
+{
+  reference_str = reference;
+  ref           = Analytic::reference_str_to_enum(reference_str);
+
+  solver_str = solver;
+  sol        = solver_choice_str_to_enum(solver_str);
 }
 
 void Input::echo(ostream& os) const
@@ -227,6 +244,25 @@ void Input::read_vector(ifstream& ifs, Array<int>& arr)
   ifs.clear();
 }
 
+std::string Input::solver_choice_enum_to_str(const Solver_choice& solver)
+{
+  switch (solver)
+  {
+    case (power_iteration): return "power_iteration";
+    case (lobpcg): return "lobpcg";
+    default: return "invalid";
+  }
+}
+
+Input::Solver_choice Input::solver_choice_str_to_enum(const string& solver)
+{
+  if (solver == "power_iteration")
+    return power_iteration;
+  if (solver == "lobpcg")
+    return lobpcg;
+  return invalid;
+}
+
 OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
 {
   OptionsParser args(argc, argv);
@@ -234,6 +270,7 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
   // general
   args.AddOption(&inp.input_file, "-i", "--input", "Input file.",
                  true); // required
+
   // CORE
   args.AddOption(&inp.mesh_file, "-m", "--mesh", "Mesh file to use.");
   args.AddOption(&inp.boundary_conditions, "-bc", "--boundary-conditions",
@@ -268,6 +305,8 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
                  "Inner solver relative tolerance.");
   args.AddOption(&inp.tol.inner_abs, "-iat", "--inner-abs-tol",
                  "Inner solver absolute tolerance.");
+  args.AddOption(&inp.solver, "-s", "--solver",
+                 "Solver method. Either 'power_iteration' or 'lobpcg'.");
 
   return args;
 }

@@ -66,7 +66,7 @@ echo "BUILD METIS"
 cd $METIS_DIR
 if ! [ "$(ls -A ./build)" ] # if the build director is empty
 then
-  make config CC=${MPICC} CXX=${MPICXX}
+  make config CC="${MPICC} -cc=${CC}" CXX="${MPICXX} -cxx=${CXX}"
   make ${MAKE_FLAGS} || { echo "Error building METIS."; exit 1; }
   # When using metis-5.1.0, we need to create a special link.
   mkdir -p lib && cd lib
@@ -79,7 +79,7 @@ cd $HYPRE_DIR/src
 
 if [ ! -f "./config/Makefile.config" ]
 then
-  ./configure --disable-fortran CXX=${MPICXX} CC=${MPICC}
+  ./configure --disable-fortran CC="${MPICC} -cc=${CC}" CXX="${MPICXX} -cxx=${CXX}"
 fi
 
 # Note: the Makefiles for hypre do a lot of copying even if all the targets
@@ -100,7 +100,7 @@ then
 
   cd $MFEM_DIR
 
-  MFEM_MPICXX="${MPICXX}"
+  MFEM_MPICXX="${MPICXX} -cxx=${CXX}"
 
   NVCC=nvcc
   CUDA=''
@@ -110,9 +110,9 @@ then
     MFEM_MPICXX="${MPICXX}"
   fi
 
-  make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX="nvcc" \
+  make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX='nvcc' \
     BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
-    MFEM_USE_METIS_5=YES METIS_DIR=@MFEM_DIR@/../metis-5.1.0 ${CUDA}
+    MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis-5.1.0' ${CUDA}
 
 fi
 

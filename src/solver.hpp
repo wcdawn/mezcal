@@ -3,18 +3,8 @@
 
 #include "input.hpp"
 #include "mfem.hpp"
+#include "result.hpp"
 #include "xslibrary.hpp"
-
-struct Result
-{
-  Result(mfem::ParFiniteElementSpace* fespace) 
-  { 
-    phi.SetSpace(fespace); 
-    phi = 0.0;
-  }
-  mfem::ParGridFunction phi;
-  double keff{1.0};
-};
 
 Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
                         const mfem::Array<int>& ess_bdr,

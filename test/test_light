@@ -23,7 +23,7 @@ class Test_light(unittest.TestCase):
         tol = kwargs.get('tol', np.sqrt(np.finfo(float).eps))
         return self.assertTrue(np.abs(a - b)  <= tol)
 
-    def test_1d1g(self):
+    def test_1d1g_tri(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
         data = driver.run_code(self.executable, "-i", input_file)
 
@@ -39,6 +39,22 @@ class Test_light(unittest.TestCase):
         infref = 0.000386792
         self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
 
+    def test_1d1g_quad(self):
+        input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
+        mesh_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g_quad.msh")
+        data = driver.run_code(self.executable, "-i", input_file, "-m", mesh_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.96492462196008410569
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.00155072
+        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.00480584
+        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
     def test_2d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/2d1g/2d1g.inp")
         data = driver.run_code(self.executable, "-i", input_file)
@@ -154,6 +170,23 @@ class Test_light(unittest.TestCase):
         inferr = driver.get_value(data, "inferr")
         infref = 0.0110106
         self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+
+    def test_tworeg(self):
+        input_file = os.path.join(self.dirname, "../analytic/tworeg/tworeg.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.98239946349655526969
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.00443685
+        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.0110106
+        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+
 
     def test_valgrind_1d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")

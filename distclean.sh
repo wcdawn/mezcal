@@ -10,7 +10,7 @@ cd ${MFEM_DIR}
 make distclean
 
 cd ${MFEM_BUILD}
-rm GNUmakefile
+rm -f GNUmakefile
 
 cd ${HYPRE_DIR}/src
 make distclean
