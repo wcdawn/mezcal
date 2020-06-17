@@ -187,7 +187,6 @@ class Test_light(unittest.TestCase):
         infref = 0.0110106
         self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
 
-
     def test_valgrind_1d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
         data = driver.run_code("valgrind", self.executable, "-i", input_file)
@@ -203,6 +202,35 @@ class Test_light(unittest.TestCase):
 
         error_check = any("ERROR SUMMARY: 0 errors from 0 contexts" in s for s in data)
         self.assertTrue(error_check)
+
+    def test_fixed_src_tri(self):
+        input_file = os.path.join(self.dirname,
+            "../analytic/fixed_src/fixed_src.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 9.73385e-05
+        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.000326181
+        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+
+    def test_fixed_src_quad(self):
+        input_file = os.path.join(self.dirname,
+            "../analytic/fixed_src/fixed_src.inp")
+        mesh_file = os.path.join(self.dirname,
+            "../analytic/fixed_src/fixed_src_quad.msh")
+        data = driver.run_code(self.executable, "-i", input_file, "-m",
+            mesh_file)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.000214008
+        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.000701988
+        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
 
 if (__name__ == "__main__"):
     unittest.main()
