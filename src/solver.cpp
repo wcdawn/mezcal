@@ -162,7 +162,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
   Result res(fespace);
-  res.phi = 0.0;
 
   OperatorPtr A;
   Vector B;
@@ -298,7 +297,6 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
   Result res{fespace};
-  res.phi = 0.0; // important initial guess
   a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
 
   Solver* prec{nullptr};
