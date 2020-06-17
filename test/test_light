@@ -232,5 +232,22 @@ class Test_light(unittest.TestCase):
         infref = 0.000701988
         self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
 
+    def test_1d1g_tri_power_iteration(self):
+        input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
+        data = driver.run_code(self.executable, "-i", input_file, "--solver",
+            "power_iteration")
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.96504876081259760578
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+        rmserr = driver.get_value(data, "rmserr")
+        rmsref = 0.00010637
+        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+
+        inferr = driver.get_value(data, "inferr")
+        infref = 0.000379678
+        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+
 if (__name__ == "__main__"):
     unittest.main()

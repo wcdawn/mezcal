@@ -190,19 +190,22 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   GridFunctionCoefficient phi_func(&res.phi);
   ProductCoefficient fiss_term(fiss_func, phi_func);
 
+  auto b{new ParLinearForm(fespace)};
+  b->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
+    
+  auto fiss{new ParLinearForm(fespace)};
+  fiss->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
+    
+  int myid;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+
   int iter{0};
   for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
                  || (phi_conv > inp.tol.phi)); ++iter)
   {
     // construct source
-    auto b{new ParLinearForm(fespace)};
-    b->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
     b->Assemble();
     *b /= res.keff;
-
-    res.phi.Print();
-
-    // b->Print();
 
     // Solve this fixed source problem.
     // Note that FormLinearSystem is designed to be called multiple times.
@@ -211,13 +214,13 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     cg.Mult(B, X); // solve
     a->RecoverFEMSolution(X, *b, res.phi);
 
+    // TODO the remainder of this loop needs to be accumulated accross
+    // processors
+
     // Calculate fission sum.
     // I think this is what's killing the timing.
-    auto fiss{new ParLinearForm(fespace)};
-    fiss->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
     fiss->Assemble();
     fiss_sum = fiss->Sum();
-    delete fiss;
 
     // update keff
     if (iter > 0) res.keff = res.keff * (fiss_sum / fiss_sum_old);
@@ -232,12 +235,16 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     fiss_sum_old = fiss_sum;
     phi_old = res.phi;
 
-    cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv 
-         << " dphi=" << phi_conv << endl;
+    if (myid == 0)
+    {
+      cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv 
+           << " dphi=" << phi_conv << endl;
+    }
 
-    delete b;
   }
 
+  delete fiss;
+  delete b;
   delete prec;
   delete a;
 
