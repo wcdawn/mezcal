@@ -143,7 +143,9 @@ int main(int argc, char* argv[])
     ess_bdr[i] = inp.boundary_conditions[i];
 
   // do the solving
-  Result res{fespace};
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+  Result res{fespace, ess_tdof_list};
   if (inp.ref == Analytic::fixed_src)
   {
     res = diffusion_fixed_src(inp, xs, ess_bdr, pmesh, fespace);

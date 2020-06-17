@@ -98,7 +98,10 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   delete A;
   delete M;
 
-  Result res(fespace);
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  Result res(fespace, ess_tdof_list);
 
   // store solution
   Array<double> eigenvalues;
@@ -161,7 +164,10 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  Result res(fespace);
+  Result res(fespace, ess_tdof_list);
+  res.phi = 1.0;
+  for (int i{0}; i < ess_tdof_list.Size(); ++i)
+    res.phi[ess_tdof_list[i]] = 0.0;
 
   OperatorPtr A;
   Vector B;
@@ -190,14 +196,13 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   {
     // construct source
     auto b{new ParLinearForm(fespace)};
-    if (iter == 0)
-      b->AddDomainIntegrator(new DomainLFIntegrator(fiss_func));
-    else
-      b->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
+    b->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
     b->Assemble();
     *b /= res.keff;
 
-    b->Print();
+    res.phi.Print();
+
+    // b->Print();
 
     // Solve this fixed source problem.
     // Note that FormLinearSystem is designed to be called multiple times.
@@ -296,7 +301,7 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  Result res{fespace};
+  Result res{fespace, ess_tdof_list};
   a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
 
   Solver* prec{nullptr};
