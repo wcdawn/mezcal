@@ -203,24 +203,15 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
 
     // construct source
     b->Assemble();
-    MPI_Barrier(MPI_COMM_WORLD);
-
     *b /= res.keff;
-    MPI_Barrier(MPI_COMM_WORLD);
 
     // Solve this fixed source problem.
     // Note that FormLinearSystem is designed to be called multiple times.
     a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
-    MPI_Barrier(MPI_COMM_WORLD);
 
     cg.SetOperator(*A);
-    MPI_Barrier(MPI_COMM_WORLD);
-
     cg.Mult(B, X); // solve
-    MPI_Barrier(MPI_COMM_WORLD);
-
     a->RecoverFEMSolution(X, *b, res.phi);
-    MPI_Barrier(MPI_COMM_WORLD);
 
     // Calculate fission sum.
     if (iter == 0)
@@ -235,61 +226,34 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     else
     {
       fiss->Assemble();
-      MPI_Barrier(MPI_COMM_WORLD);
-
       local_fiss_sum = fiss->Sum();
-      MPI_Barrier(MPI_COMM_WORLD);
-
       MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-      MPI_Barrier(MPI_COMM_WORLD);
     }
     
     // update keff
     res.keff = res.keff * (fiss_sum / fiss_sum_old);
-    MPI_Barrier(MPI_COMM_WORLD);
 
     // update convergence criteria
     k_conv = std::abs(res.keff - keff_old);
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    MPI_Bcast(&res.keff, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    MPI_Bcast(&k_conv, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
 
     phi_old -= res.phi;
-    MPI_Barrier(MPI_COMM_WORLD);
-
     local_phi_conv = phi_old.Normlinf();
-    MPI_Barrier(MPI_COMM_WORLD);
-
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    phi_old = res.phi;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    MPI_Bcast(&phi_conv, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
 
     // copy old values
     keff_old = res.keff;
-    MPI_Barrier(MPI_COMM_WORLD);
-
     fiss_sum_old = fiss_sum;
-    MPI_Barrier(MPI_COMM_WORLD);
+    phi_old = res.phi;
 
     if (myid == 0)
     {
       cout << "iter=" << iter << " keff=" << res.keff 
            << " dk=" << k_conv << " dphi=" << phi_conv << endl;
     }
-    MPI_Barrier(MPI_COMM_WORLD);
   }
 
   delete fiss;
-  //delete b;
+  delete b;
   delete prec;
   delete a;
 
