@@ -5,14 +5,11 @@
 
 struct Result
 {
-  Result(mfem::ParFiniteElementSpace* fespace, const mfem::Array<int>& ess_tdof_list)
+  Result(mfem::ParFiniteElementSpace* fespace)
   { 
     phi.SetSpace(fespace); 
-
-    // the following block sets phi=1 and phi=0 at essential bcs
-    phi = 1.0;
-    for (int i{0}; i < ess_tdof_list.Size(); ++i)
-      phi[ess_tdof_list[i]] = 0.0;
+    // must be zero to enforce zero-flux (essential) boundary conditions
+    phi = 0.0;
   }
   mfem::ParGridFunction phi;
   double keff{1.0};

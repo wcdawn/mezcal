@@ -65,7 +65,7 @@ $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) || $(RM) $(EXEC)
 
 %.o : %.cpp
-	$(MPICXX) $(MPICXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
+	$(MPICXX) $(MPICXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $< || $(RM) $(EXEC)
 
 version.hpp : 
 	@echo "#ifndef VERSION" > version.hpp

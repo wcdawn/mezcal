@@ -134,7 +134,7 @@ int main(int argc, char* argv[])
   //    converting them to a list of true dofs.
   Array<int> ess_bdr(pmesh->bdr_attributes.Max());
   // begin by setting all bcs to essential
-  ess_bdr = 0;
+  ess_bdr = 1;
 
   // boundary conditions are baked into the matrix
   // go through and set boundary conditions based on user input
@@ -143,9 +143,7 @@ int main(int argc, char* argv[])
     ess_bdr[i] = inp.boundary_conditions[i];
 
   // do the solving
-  Array<int> ess_tdof_list;
-  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
-  Result res{fespace, ess_tdof_list};
+  Result res{fespace};
   if (inp.ref == Analytic::fixed_src)
   {
     res = diffusion_fixed_src(inp, xs, ess_bdr, pmesh, fespace);
