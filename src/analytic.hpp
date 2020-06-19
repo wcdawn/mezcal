@@ -7,8 +7,6 @@
 
 #include <functional>
 
-using namespace mfem;
-
 namespace Analytic_solutions
 {
   extern const XSLibrary* xs_global;
@@ -16,12 +14,12 @@ namespace Analytic_solutions
   // Zeroth zero of the first Bessel function of the first kind.
   static constexpr double alpha0{2.404825557695772768622};
 
-  double fixed_src_fun(const Vector&);
-  double oned_oneg_fun(const Vector&);
-  double twod_oneg_fun(const Vector&);
-  double threed_oneg_fun(const Vector&);
-  double finite_cyl_fun(const Vector&);
-  double tworeg_fun(const Vector&);
+  double fixed_src_fun(const mfem::Vector&);
+  double oned_oneg_fun(const mfem::Vector&);
+  double twod_oneg_fun(const mfem::Vector&);
+  double threed_oneg_fun(const mfem::Vector&);
+  double finite_cyl_fun(const mfem::Vector&);
+  double tworeg_fun(const mfem::Vector&);
 
   double oned_oneg_keff();
   double twod_oneg_keff();
@@ -50,7 +48,7 @@ public:
   };
 
   Analytic(const Reference ref, Result& res, const XSLibrary& xs,
-           const Mesh* const mesh);
+           const mfem::Mesh* const mesh);
 
   void analyze(std::ostream& os) const;
   void print(std::ostream& os) const;
@@ -69,10 +67,10 @@ private:
   double keff;
   const XSLibrary* const xs;
 
-  std::vector<Vertex> node;
-  GridFunction* phi{nullptr};
+  std::vector<mfem::Vertex> node;
+  mfem::GridFunction* phi{nullptr};
 
-  typedef double mfem_function(const Vector&);
+  typedef double mfem_function(const mfem::Vector&);
   typedef double keff_function();
   mfem_function* fun;
   keff_function* analytic_keff;

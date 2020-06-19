@@ -119,6 +119,6 @@ private:
   static Solver_choice solver_choice_str_to_enum(const std::string& solver);
 };
 
-OptionsParser custom_arguments(Input& inp, int argc, char* argv[]);
+mfem::OptionsParser custom_arguments(Input& inp, int argc, char* argv[]);
 
 #endif

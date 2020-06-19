@@ -12,6 +12,8 @@ using std::ostream;
 using std::string;
 using std::vector;
 
+using namespace mfem;
+
 Input::Input(std::string fname) : input_file_str{fname}
 {
   input_file = input_file_str.c_str();

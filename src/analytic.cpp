@@ -7,6 +7,8 @@
 #include <iostream>
 #include <string>
 
+using namespace mfem;
+
 using std::ostream;
 using std::setprecision;
 

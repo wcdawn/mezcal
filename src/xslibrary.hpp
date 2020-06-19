@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "mfem.hpp"
+
 struct XSRecord
 {
   XSRecord() {}
@@ -29,6 +31,8 @@ struct XSRecord
   std::vector<double> nusf;
   std::vector<double> chi;
   std::vector<double> source; // fixed source
+
+  mfem::SparseMatrix sigma_s;
 };
 
 class XSLibrary
