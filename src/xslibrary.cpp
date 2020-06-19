@@ -4,6 +4,13 @@
 #include <string>
 #include <vector>
 
+// TODO
+using std::cerr;
+using std::cout;
+using std::endl;
+
+using namespace mfem;
+
 using std::ifstream;
 using std::string;
 using std::vector;
@@ -62,8 +69,24 @@ void XSLibrary::read_userxs(std::string fname)
     {
       read_vector(ifs, rec[mat_count].source);
     }
+    else if (card == "scatter")
+    {
+      SparseMatrix tmp_sparse(G,G);
+      double val;
+      for (int i{0}; i < G; ++i)
+      {
+        for (int j{0}; j < G; ++j)
+        {
+          ifs >> val;
+          if (abs(val) > 0.0)
+            tmp_sparse.Set(i, j, val);
+        }
+      }
+      rec[mat_count].sigma_s = tmp_sparse; // hopefully a move operation
+    }
     else
     {
+      cerr << card << '\n';
       throw Invalid_input_card{card};
     }
   }
