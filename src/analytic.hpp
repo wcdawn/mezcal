@@ -27,7 +27,7 @@ public:
     tworeg
   };
 
-  Analytic(Reference ref, const Result& res, const XSLibrary& xs,
+  Analytic(const Reference ref, Result& res, const XSLibrary& xs,
            const Mesh* const mesh);
 
   void analyze(std::ostream& os) const;
@@ -49,6 +49,7 @@ private:
 
   std::vector<Vertex> node;
   Vector sol;
+  GridFunction* phi{nullptr};
 
   std::function<double(const Analytic*, const Vertex&, const XSLibrary&)> fun;
   std::function<double(const Analytic*, const XSLibrary&)> analytic_keff;

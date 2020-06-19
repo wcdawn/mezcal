@@ -25,7 +25,9 @@ using std::sin;
 using std::sinh;
 using std::tanh;
 
-Analytic::Analytic(Reference ref, const Result& res, const XSLibrary& xslib,
+double oned_oneg_c_fun(const Vector& v);
+
+Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
                    const Mesh* const mesh)
   : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
     keff{res.keff}, xs{&xslib}
@@ -50,7 +52,21 @@ Analytic::Analytic(Reference ref, const Result& res, const XSLibrary& xslib,
   if (reference_solution != fixed_src)
   {
     for (int i{0}; i < sol.Size(); ++i) sol[i] = abs(sol[i]);
-    sol /= sol.Max(); // normalize to maximal value 1 ($\phi_0$ = 1)
+  }
+
+  // store a writable pointer
+  phi = &res.phi;
+  if (reference_solution != fixed_src)
+  {
+    for (int i{0}; i < phi->Size(); ++i)
+    {
+      phi->GetData()[i] = abs(phi->GetData()[i]);
+    }
+    const double local_phi_max{phi->Max()};
+    double phi_max;
+    MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    *phi /= phi_max;
+    sol /= phi_max;
   }
 
   // set fun to appropriate solution function
@@ -84,41 +100,70 @@ Analytic::Analytic(Reference ref, const Result& res, const XSLibrary& xslib,
 
 void Analytic::analyze(ostream& os) const
 {
-  double L1norm{0.0};
-  double L2norm{0.0};
-  double inferr{0.0};
+  Vector err(sol.Size());
+  for (int i{0}; i < err.Size(); ++i)
+    err[i] = fun(this, node[i], *xs);
+  err -= sol;
 
-  for (int i{0}; i < nVert; ++i)
-  {
-    const double val{fun(this, node[i], *xs)};
-    const double err{abs(sol[i] - val)};
-    L1norm += err;
-    L2norm += err * err;
-    inferr = max(inferr, err);
-  }
+  // These are computed as they are in LUPINE and are here for compatibility.
+  // This method does not account properly for differently sized elements.
+  const double local_L1norm{err.Norml1()};
+  const double local_infnorm{err.Normlinf()};
+  double local_L2norm{err.Norml2()};
+  local_L2norm *= local_L2norm;
+
+  double L1norm;
+  double L2norm;
+  double infnorm;
+  double rmsnorm;
+  int total_nVert;
+
+  MPI_Allreduce(&local_L1norm, &L1norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_L2norm, &L2norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&nVert, &total_nVert, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_infnorm, &infnorm, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
   L2norm = sqrt(L2norm);
-  const double rmserr{L2norm / sqrt(nVert)};
+  rmsnorm = L2norm / sqrt(nVert);
 
-  os << "\n=== ANALYZE ===\n";
-  os << "reference: " << reference_enum_to_str(reference_solution) << '\n';
+  // These are computed according to the FEM definitions of these and are truly
+  // "norms"/integral values defined in the space.
+  FunctionCoefficient exact_sol(oned_oneg_c_fun);
+  const double L1error{phi->ComputeL1Error(exact_sol)};
+  const double L2error{phi->ComputeL2Error(exact_sol)};
+  const double inferror{phi->ComputeMaxError(exact_sol)};
 
-  if (reference_solution != fixed_src)
+  int myid;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (myid == 0)
   {
-    const double kref{analytic_keff(this, *xs)};
-    const auto previous_precision{os.precision()};
-    os << setprecision(20);
-    os << "keff = " << keff << '\n';
-    os << "kref = " << kref << '\n';
-    os << "keff_err_[pcm] = " << (kref - keff) * 1e5 << '\n';
-    os << setprecision(previous_precision);
-  }
+    os << "\n=== ANALYZE ===\n";
+    os << "reference: " << reference_enum_to_str(reference_solution) << '\n';
 
-  os << "L1norm = " << L1norm << '\n';
-  os << "L2norm = " << L2norm << '\n';
-  os << "rmserr = " << rmserr << '\n';
-  os << "inferr = " << inferr << '\n';
-  os << '\n';
+    if (reference_solution != fixed_src)
+    {
+      const double kref{analytic_keff(this, *xs)};
+      const auto previous_precision{os.precision()};
+      os << setprecision(20);
+      os << "keff = " << keff << '\n';
+      os << "kref = " << kref << '\n';
+      os << "keff_err_[pcm] = " << (kref - keff) * 1e5 << '\n';
+      os << setprecision(previous_precision);
+    }
+
+    os << "(norms do not account for element sizes)\n";
+    os << "L1norm  = " << L1norm  << '\n';
+    os << "L2norm  = " << L2norm  << '\n';
+    os << "rmsnorm = " << rmsnorm << '\n';
+    os << "infnorm = " << infnorm << '\n';
+    os << "(errors are true FEM errors)\n";
+    os << "L1error  = " << L1error  << '\n';
+    os << "L2error  = " << L2error  << '\n';
+    os << "inferror = " << inferror << '\n';
+    os << '\n';
+  }
 }
 
 void Analytic::print(ostream& os) const
@@ -324,4 +369,11 @@ double Analytic::tworeg_keff(const XSLibrary& xs) const
 
   // indices are material indices, not group indices
   return nusf[0] / (diffusion[0] * pow(BF, 2) + sigma_r[0]);
+}
+
+double oned_oneg_c_fun(const Vector& v)
+{
+  static constexpr double Lx{100.0};
+  const double x{v[0]};
+  return sin((M_PI/Lx) * x);
 }

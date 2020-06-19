@@ -199,8 +199,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
                  || (phi_conv > inp.tol.phi)); ++iter)
   {
-    MPI_Barrier(MPI_COMM_WORLD);
-
     // construct source
     b->Assemble();
     *b /= res.keff;

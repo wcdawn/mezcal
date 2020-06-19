@@ -14,6 +14,11 @@
 using namespace std;
 using namespace mfem;
 
+#include <cmath>
+using std::sin;
+using std::abs;
+double oned_oneg_c_fun(const Vector& v);
+
 int main(int argc, char* argv[])
 {
   // "input" from a file
@@ -171,11 +176,13 @@ int main(int argc, char* argv[])
          << setprecision(old_precision) << '\n';
 
   // TODO this is wrong for parallel!
-  if ((myid == 0) && (inp.ref != Analytic::invalid))
+  if (inp.ref != Analytic::invalid)
   {
     Analytic anal(inp.ref, res, xs, pmesh);
     anal.analyze(cout);
-    ofstream ofs{"out.csv"};
+    ostringstream analysis_fname;
+    analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
+    ofstream ofs{analysis_fname.str()};
     anal.print(ofs);
   }
 
