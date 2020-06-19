@@ -102,8 +102,6 @@ void Analytic::analyze(ostream& os) const
     v[1] = node[i](1);
     if (nDim == 3)
       v[2] = node[i](2);
-    else
-      v[2] = 0.0;
     err[i] = fun(v);
   }
   err -= *phi;
@@ -179,8 +177,6 @@ void Analytic::print(ostream& os) const
     v[1] = node[i](1);
     if (nDim == 3)
       v[2] = node[i](2);
-    else
-      v[2] = 0.0;
     const double val{fun(v)};
     const double err{abs(*access - val)};
     os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << *access
