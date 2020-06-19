@@ -2,7 +2,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-data = np.loadtxt("../src/out.csv", delimiter=',')
+data = np.zeros([0,6]);
+i = 0;
+while (True):
+    try:
+        this_data = np.loadtxt("../src/out_{:06d}.csv".format(i), delimiter=',')
+        print("../src/out_{:06d}.csv".format(i))
+    except:
+        print("last file")
+        print(i)
+        break
+    data = np.concatenate((data, this_data), axis=0)
+    i = i + 1;
 
 # format
 # x, y, z, fem, analytic, error
