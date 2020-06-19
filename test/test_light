@@ -11,7 +11,7 @@ class Test_light(unittest.TestCase):
     executable = os.path.join(dirname, "../src/micro.x")
 
     k_tol   = 1e-6 # absolute tolerance
-    err_tol = 1e-5 # absolute tolerance
+    err_tol = 1e-4 # absolute tolerance
 
     # tolerance is as input or sqrt(eps)
     def assert_relative_equal(self, a, b, *args, **kwargs):
@@ -31,13 +31,13 @@ class Test_light(unittest.TestCase):
         kref = 0.96505010141496050391
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.000109262
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.000109262
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.000386792
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.000386792
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_1d1g_quad(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
@@ -48,13 +48,14 @@ class Test_light(unittest.TestCase):
         kref = 0.96492462196008410569
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.00155072
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.00155072
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.00480584
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.00480584
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
+
     def test_2d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/2d1g/2d1g.inp")
         data = driver.run_code(self.executable, "-i", input_file)
@@ -63,13 +64,13 @@ class Test_light(unittest.TestCase):
         kref = 0.91299824502564963513
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.001056
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.001056
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.00269834
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.00269834
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_3d1g_tet(self):
         # tetrahedron mesh is the default
@@ -80,13 +81,13 @@ class Test_light(unittest.TestCase):
         kref = 0.85139733903936820614
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.00597059
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.00597059
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.0287594
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.0287594
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_3d1g_hex(self):
         input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
@@ -97,13 +98,13 @@ class Test_light(unittest.TestCase):
         kref = 0.86333873559636176154
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.0169517
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.0169517
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.0658824
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.0658824
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_3d1g_wedge(self):
         input_file = os.path.join(self.dirname, "../analytic/3d1g/3d1g.inp")
@@ -114,13 +115,13 @@ class Test_light(unittest.TestCase):
         kref = 0.86650435942038217529
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.000704023
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.000704023
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.00269757
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.00269757
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_finite_cyl(self):
         input_file = os.path.join(self.dirname,
@@ -131,13 +132,13 @@ class Test_light(unittest.TestCase):
         kref = 0.99649456324013208075
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 3.91594e-06
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 3.91594e-06
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 6.73026e-06
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 6.73026e-06
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_square(self):
         input_file = os.path.join(self.dirname, "../analytic/square/square.inp")
@@ -147,29 +148,13 @@ class Test_light(unittest.TestCase):
         kref = 0.91290372036753897333
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 4.0199e-07
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 4.0199e-07
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 9.7277e-07
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
-
-    def test_tworeg(self):
-        input_file = os.path.join(self.dirname, "../analytic/tworeg/tworeg.inp")
-        data = driver.run_code(self.executable, "-i", input_file)
-
-        keff = driver.get_value(data, "keff")
-        kref = 0.98239946349655526969
-        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
-
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.00443685
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
-
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.0110106
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 9.7277e-07
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_tworeg(self):
         input_file = os.path.join(self.dirname, "../analytic/tworeg/tworeg.inp")
@@ -179,13 +164,29 @@ class Test_light(unittest.TestCase):
         kref = 0.98239946349655526969
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.00443685
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.00443685
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.0110106
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.0110106
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
+
+    def test_tworeg(self):
+        input_file = os.path.join(self.dirname, "../analytic/tworeg/tworeg.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.98239946349655526969
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.00443685
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
+
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.0110106
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_valgrind_1d1g(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
@@ -208,13 +209,13 @@ class Test_light(unittest.TestCase):
             "../analytic/fixed_src/fixed_src.inp")
         data = driver.run_code(self.executable, "-i", input_file)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 9.73385e-05
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 9.73385e-05
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.000326181
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.000326181
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_fixed_src_quad(self):
         input_file = os.path.join(self.dirname,
@@ -224,13 +225,13 @@ class Test_light(unittest.TestCase):
         data = driver.run_code(self.executable, "-i", input_file, "-m",
             mesh_file)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.000214008
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.000214008
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.000701988
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.000701988
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
     def test_1d1g_tri_power_iteration(self):
         input_file = os.path.join(self.dirname, "../analytic/1d1g/1d1g.inp")
@@ -241,13 +242,13 @@ class Test_light(unittest.TestCase):
         kref = 0.96504876081259760578
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
-        rmserr = driver.get_value(data, "rmserr")
-        rmsref = 0.00010637
-        self.assert_absolute_equal(rmserr, rmsref, tol=self.err_tol)
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.00010637
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
 
-        inferr = driver.get_value(data, "inferr")
-        infref = 0.000379678
-        self.assert_absolute_equal(inferr, infref, tol=self.err_tol)
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.000379678
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
 if (__name__ == "__main__"):
     unittest.main()
