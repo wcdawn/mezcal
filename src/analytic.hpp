@@ -67,7 +67,6 @@ private:
   const XSLibrary* const xs;
 
   std::vector<Vertex> node;
-  Vector sol;
   GridFunction* phi{nullptr};
 
   typedef double mfem_function(const Vector&);

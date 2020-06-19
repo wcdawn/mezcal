@@ -47,26 +47,17 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
       node.push_back(Vertex{vec_node[0 * nVert + i], vec_node[1 * nVert + i]});
   }
 
-  // set sol
-  res.phi.GetNodalValues(sol, 1); // vdim=1
-  if (reference_solution != fixed_src)
-  {
-    for (int i{0}; i < sol.Size(); ++i) sol[i] = abs(sol[i]);
-  }
-
   // store a writable pointer
   phi = &res.phi;
   if (reference_solution != fixed_src)
   {
-    for (int i{0}; i < phi->Size(); ++i)
-    {
-      phi->GetData()[i] = abs(phi->GetData()[i]);
-    }
+    double* access{phi->GetData()};
+    for (int i{0}; i < phi->Size(); ++i, ++access)
+      *access = abs(*access);
     const double local_phi_max{phi->Max()};
     double phi_max;
     MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     *phi /= phi_max;
-    sol /= phi_max;
   }
 
   // set fun to appropriate solution function
@@ -103,7 +94,7 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
 void Analytic::analyze(ostream& os) const
 {
   // TODO lots of cleanup here
-  Vector err(sol.Size());
+  Vector err(phi->Size());
   for (int i{0}; i < err.Size(); ++i)
   {
     Vector v(nDim);
@@ -115,7 +106,7 @@ void Analytic::analyze(ostream& os) const
       v[2] = 0.0;
     err[i] = fun(v);
   }
-  err -= sol;
+  err -= *phi;
 
   // These are computed as they are in LUPINE and are here for compatibility.
   // This method does not account properly for differently sized elements.
@@ -180,7 +171,8 @@ void Analytic::analyze(ostream& os) const
 
 void Analytic::print(ostream& os) const
 {
-  for (int i{0}; i < nVert; ++i)
+  double* access{phi->GetData()};
+  for (int i{0}; i < nVert; ++i, ++access)
   {
     Vector v(nDim);
     v[0] = node[i](0);
@@ -190,8 +182,8 @@ void Analytic::print(ostream& os) const
     else
       v[2] = 0.0;
     const double val{fun(v)};
-    const double err{abs(sol[i] - val)};
-    os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << sol[i]
+    const double err{abs(*access - val)};
+    os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << *access
        << ',' << val << ',' << err << '\n';
   }
 }
