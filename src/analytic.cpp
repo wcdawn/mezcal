@@ -49,16 +49,7 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
 
   // store a writable pointer
   phi = &res.phi;
-  if (reference_solution != fixed_src)
-  {
-    double* access{phi->GetData()};
-    for (int i{0}; i < phi->Size(); ++i, ++access)
-      *access = abs(*access);
-    const double local_phi_max{phi->Max()};
-    double phi_max;
-    MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    *phi /= phi_max;
-  }
+  if (reference_solution != fixed_src) normalize_solution_flux();
 
   // set fun to appropriate solution function
   switch (ref)
@@ -216,6 +207,17 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
     case (tworeg): return "tworeg";
     default: return "invalid";
   }
+}
+
+void Analytic::normalize_solution_flux() const
+{
+  double* access{phi->GetData()};
+  for (int i{0}; i < phi->Size(); ++i, ++access)
+    *access = abs(*access);
+  const double local_phi_max{phi->Max()};
+  double phi_max;
+  MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  *phi /= phi_max;
 }
 
 namespace Analytic_solutions

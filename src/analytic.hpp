@@ -60,6 +60,9 @@ public:
   static std::string reference_enum_to_str(Reference ref);
 
 private:
+
+  void normalize_solution_flux() const;
+
   Reference reference_solution;
   int nVert;
   int nDim;
