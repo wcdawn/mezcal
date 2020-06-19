@@ -25,13 +25,13 @@ using std::sin;
 using std::sinh;
 using std::tanh;
 
-double oned_oneg_c_fun(const Vector& v);
-
 Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
                    const Mesh* const mesh)
   : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
     keff{res.keff}, xs{&xslib}
 {
+  Analytic_solutions::xs_global = xs;
+
   // set node
   Vector vec_node;
   mesh->GetVertices(vec_node);
@@ -72,27 +72,29 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
   // set fun to appropriate solution function
   switch (ref)
   {
-    case (fixed_src): fun = &Analytic::fixed_src_fun; break;
+    case (fixed_src): 
+      fun = &Analytic_solutions::fixed_src_fun;
+      break;
     case (oned_oneg):
-      fun           = &Analytic::oned_oneg_fun;
-      analytic_keff = &Analytic::oned_oneg_keff;
+      fun           = &Analytic_solutions::oned_oneg_fun;
+      analytic_keff = &Analytic_solutions::oned_oneg_keff;
       break;
     case (twod_oneg): // FALL THROUGH
     case (square):
-      fun           = &Analytic::twod_oneg_fun;
-      analytic_keff = &Analytic::twod_oneg_keff;
+      fun           = &Analytic_solutions::twod_oneg_fun;
+      analytic_keff = &Analytic_solutions::twod_oneg_keff;
       break;
     case (threed_oneg):
-      fun           = &Analytic::threed_oneg_fun;
-      analytic_keff = &Analytic::threed_oneg_keff;
+      fun           = &Analytic_solutions::threed_oneg_fun;
+      analytic_keff = &Analytic_solutions::threed_oneg_keff;
       break;
     case (finite_cyl):
-      fun           = &Analytic::finite_cyl_fun;
-      analytic_keff = &Analytic::finite_cyl_keff;
+      fun           = &Analytic_solutions::finite_cyl_fun;
+      analytic_keff = &Analytic_solutions::finite_cyl_keff;
       break;
     case (tworeg):
-      fun           = &Analytic::tworeg_fun;
-      analytic_keff = &Analytic::tworeg_keff;
+      fun           = &Analytic_solutions::tworeg_fun;
+      analytic_keff = &Analytic_solutions::tworeg_keff;
       break;
     default: throw InvalidReferenceName{};
   }
@@ -100,9 +102,19 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
 
 void Analytic::analyze(ostream& os) const
 {
+  // TODO lots of cleanup here
   Vector err(sol.Size());
   for (int i{0}; i < err.Size(); ++i)
-    err[i] = fun(this, node[i], *xs);
+  {
+    Vector v(nDim);
+    v[0] = node[i](0);
+    v[1] = node[i](1);
+    if (nDim == 3)
+      v[2] = node[i](2);
+    else
+      v[2] = 0.0;
+    err[i] = fun(v);
+  }
   err -= sol;
 
   // These are computed as they are in LUPINE and are here for compatibility.
@@ -128,7 +140,7 @@ void Analytic::analyze(ostream& os) const
 
   // These are computed according to the FEM definitions of these and are truly
   // "norms"/integral values defined in the space.
-  FunctionCoefficient exact_sol(oned_oneg_c_fun);
+  FunctionCoefficient exact_sol(fun);
   const double L1error{phi->ComputeL1Error(exact_sol)};
   const double L2error{phi->ComputeL2Error(exact_sol)};
   const double inferror{phi->ComputeMaxError(exact_sol)};
@@ -144,7 +156,7 @@ void Analytic::analyze(ostream& os) const
 
     if (reference_solution != fixed_src)
     {
-      const double kref{analytic_keff(this, *xs)};
+      const double kref{analytic_keff()};
       const auto previous_precision{os.precision()};
       os << setprecision(20);
       os << "keff = " << keff << '\n';
@@ -170,7 +182,14 @@ void Analytic::print(ostream& os) const
 {
   for (int i{0}; i < nVert; ++i)
   {
-    const double val{fun(this, node[i], *xs)};
+    Vector v(nDim);
+    v[0] = node[i](0);
+    v[1] = node[i](1);
+    if (nDim == 3)
+      v[2] = node[i](2);
+    else
+      v[2] = 0.0;
+    const double val{fun(v)};
     const double err{abs(sol[i] - val)};
     os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << sol[i]
        << ',' << val << ',' << err << '\n';
@@ -211,169 +230,166 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
   }
 }
 
-double Analytic::fixed_src_fun(const Vertex& v, const XSLibrary& xs) const
+namespace Analytic_solutions
 {
-  // TODO these need to come as input to the constructor
-  const double sigma_tr{xs.rec[0].sigma_tr[0]};
-  const double sigma_r{xs.rec[0].sigma_r[0]};
-  const double q_fixed{xs.rec[0].source[0]};
 
-  static constexpr double Lx_small{1.0};
-  const double diffusion{1.0 / (3.0 * sigma_tr)};
+  const XSLibrary* xs_global{nullptr};
 
-  const double kappa{sqrt(sigma_r / diffusion)};
-  const double x{v(0)}; // x is the zeroth coordinate
+  double fixed_src_fun(const Vector& v)
+  {
+    const double sigma_tr{xs_global->rec[0].sigma_tr[0]};
+    const double sigma_r{xs_global->rec[0].sigma_r[0]};
+    const double q_fixed{xs_global->rec[0].source[0]};
 
-  return (q_fixed / diffusion)
-         * (1.0 - cosh(kappa * x)
-            + (cosh(kappa * Lx_small) - 1.0) / (sinh(kappa * Lx_small))
-                * sinh(kappa * x));
-}
+    static constexpr double Lx_small{1.0};
+    const double diffusion{1.0 / (3.0 * sigma_tr)};
 
-double Analytic::oned_oneg_fun(const Vertex& v, const XSLibrary&) const
-{
-  static constexpr double Lx{100.0};
-  const double x{v(0)}; // x is the zeroth coordinate
-  return sin((M_PI / Lx) * x);
-}
+    const double kappa{sqrt(sigma_r / diffusion)};
+    const double x{v[0]}; // x is the zeroth coordinate
 
-double Analytic::twod_oneg_fun(const Vertex& v, const XSLibrary&) const
-{
-  static constexpr double Lx{100.0};
-  static constexpr double Ly{100.0};
-  const double x{v(0)}; // x is the zeroth coordinate
-  const double y{v(1)}; // y is the first coordinate
-  return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y);
-}
+    return (q_fixed / diffusion)
+           * (1.0 - cosh(kappa * x)
+              + (cosh(kappa * Lx_small) - 1.0) / (sinh(kappa * Lx_small))
+                  * sinh(kappa * x));
+  }
 
-double Analytic::threed_oneg_fun(const Vertex& v, const XSLibrary&) const
-{
-  static constexpr double Lx{100.0};
-  static constexpr double Ly{100.0};
-  static constexpr double Lz{100.0};
-  const double x{v(0)}; // x is the zeroth coordinate
-  const double y{v(1)}; // y is the first coordinate
-  const double z{v(2)}; // z is the first coordinate
-  return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y) * sin((M_PI / Lz) * z);
-}
+  double oned_oneg_fun(const Vector& v)
+  {
+    const double x{v[0]};
+    constexpr double Lx{100.0};
+    return sin((M_PI / Lx) * x);
+  }
 
-double Analytic::finite_cyl_fun(const Vertex& v, const XSLibrary&) const
-{
-  static constexpr double R{50.0};
-  static constexpr double H{100.0};
+  double twod_oneg_fun(const Vector& v)
+  {
+    static constexpr double Lx{100.0};
+    static constexpr double Ly{100.0};
+    const double x{v[0]}; // x is the zeroth coordinate
+    const double y{v[1]}; // y is the first coordinate
+    return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y);
+  }
 
-  const double r{sqrt(v(0) * v(0) + v(1) * v(1))}; // distance to origin
-  const double z{v(2)};
+  double threed_oneg_fun(const Vector& v)
+  {
+    static constexpr double Lx{100.0};
+    static constexpr double Ly{100.0};
+    static constexpr double Lz{100.0};
+    const double x{v[0]}; // x is the zeroth coordinate
+    const double y{v[1]}; // y is the first coordinate
+    const double z{v[2]}; // z is the first coordinate
+    return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y) * sin((M_PI / Lz) * z);
+  }
 
-  return cyl_bessel_j(0, (alpha0 / R) * r) * sin((M_PI / H) * z);
-}
+  double finite_cyl_fun(const Vector& v)
+  {
+    static constexpr double R{50.0};
+    static constexpr double H{100.0};
 
-double Analytic::tworeg_fun(const Vertex& v, const XSLibrary& xs) const
-{
-  const vector<double> sigma_tr{xs.rec[0].sigma_tr[0], xs.rec[1].sigma_tr[0]};
-  const vector<double> sigma_r{xs.rec[0].sigma_r[0], xs.rec[1].sigma_r[0]};
-  const vector<double> nusf{xs.rec[0].nusf[1], xs.rec[1].nusf[0]};
+    const double r{sqrt(v[0]*v[0] + v[1]*v[1])}; // distance to origin
+    const double z{v[2]};
 
-  vector<double> diffusion(sigma_tr.size());
-  for (size_t i{0}; i < sigma_tr.size(); ++i)
-    diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
+    return cyl_bessel_j(0, (alpha0 / R) * r) * sin((M_PI / H) * z);
+  }
 
-  static constexpr double L_F{8e1};
-  static constexpr double L_R{1e2};
-  static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
+  double tworeg_fun(const Vector& v)
+  {
+    const vector<double> sigma_tr{xs_global->rec[0].sigma_tr[0], xs_global->rec[1].sigma_tr[0]};
+    const vector<double> sigma_r{xs_global->rec[0].sigma_r[0], xs_global->rec[1].sigma_r[0]};
+    const vector<double> nusf{xs_global->rec[0].nusf[1], xs_global->rec[1].nusf[0]};
 
-  const double x{v(0)}; // x is the zeroth coordinate
+    vector<double> diffusion(sigma_tr.size());
+    for (size_t i{0}; i < diffusion.size(); ++i)
+      diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
 
-  // indices are material indices, not group indices
+    static constexpr double L_F{8e1};
+    static constexpr double L_R{1e2};
+    static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
 
-  const double kappa{sqrt(sigma_r[1] / diffusion[1])};
+    const double x{v[0]}; // x is the zeroth coordinate
 
-  if (x <= L_F)
-    return cos(BF * x);
+    // indices are material indices, not group indices
 
-  return cos(BF * L_F)
-         * (cosh(kappa * (x - L_F))
-            - sinh(kappa * (x - L_F)) / tanh(kappa * (L_R - L_F)));
-}
+    const double kappa{sqrt(sigma_r[1] / diffusion[1])};
 
-double Analytic::oned_oneg_keff(const XSLibrary& xs) const
-{
-  const double transport{xs.rec[0].sigma_tr[0]};
-  const double removal{xs.rec[0].sigma_r[0]};
-  const double nusf{xs.rec[0].nusf[0]};
+    if (x <= L_F)
+      return cos(BF * x);
 
-  static constexpr double Lx{100.0};
+    return cos(BF * L_F)
+           * (cosh(kappa * (x - L_F))
+              - sinh(kappa * (x - L_F)) / tanh(kappa * (L_R - L_F)));
+  }
 
-  const double diffusion{1.0 / (3.0 * transport)};
+  double oned_oneg_keff()
+  {
+    const double transport{xs_global->rec[0].sigma_tr[0]};
+    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double nusf{xs_global->rec[0].nusf[0]};
 
-  return nusf / (diffusion * pow(M_PI / Lx, 2) + removal);
-}
+    static constexpr double Lx{100.0};
 
-double Analytic::twod_oneg_keff(const XSLibrary& xs) const
-{
-  const double transport{xs.rec[0].sigma_tr[0]};
-  const double removal{xs.rec[0].sigma_r[0]};
-  const double nusf{xs.rec[0].nusf[0]};
+    const double diffusion{1.0 / (3.0 * transport)};
 
-  static constexpr double Lx{100.0};
-  static constexpr double Ly{100.0};
+    return nusf / (diffusion * pow(M_PI / Lx, 2) + removal);
+  }
 
-  const double diffusion{1.0 / (3.0 * transport)};
+  double twod_oneg_keff()
+  {
+    const double transport{xs_global->rec[0].sigma_tr[0]};
+    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double nusf{xs_global->rec[0].nusf[0]};
 
-  return nusf / (diffusion * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2)) + removal);
-}
+    static constexpr double Lx{100.0};
+    static constexpr double Ly{100.0};
 
-double Analytic::threed_oneg_keff(const XSLibrary& xs) const
-{
-  const double transport{xs.rec[0].sigma_tr[0]};
-  const double removal{xs.rec[0].sigma_r[0]};
-  const double nusf{xs.rec[0].nusf[0]};
+    const double diffusion{1.0 / (3.0 * transport)};
 
-  static constexpr double Lx{100.0};
-  static constexpr double Ly{100.0};
-  static constexpr double Lz{100.0};
+    return nusf / (diffusion * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2)) + removal);
+  }
+  double threed_oneg_keff()
+  {
+    const double transport{xs_global->rec[0].sigma_tr[0]};
+    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double nusf{xs_global->rec[0].nusf[0]};
 
-  const double diffusion{1.0 / (3.0 * transport)};
+    static constexpr double Lx{100.0};
+    static constexpr double Ly{100.0};
+    static constexpr double Lz{100.0};
 
-  return nusf
-         / (diffusion
-              * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2) + pow(M_PI / Lz, 2))
-            + removal);
-}
+    const double diffusion{1.0 / (3.0 * transport)};
 
-double Analytic::finite_cyl_keff(const XSLibrary& xs) const
-{
-  const double transport{xs.rec[0].sigma_tr[0]};
-  const double removal{xs.rec[0].sigma_r[0]};
-  const double nusf{xs.rec[0].nusf[0]};
+    return nusf
+           / (diffusion
+                * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2) + pow(M_PI / Lz, 2))
+              + removal);
+  }
 
-  static constexpr double R{50.0};
-  static constexpr double H{100.0};
+  double finite_cyl_keff()
+  {
+    const double transport{xs_global->rec[0].sigma_tr[0]};
+    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double nusf{xs_global->rec[0].nusf[0]};
 
-  const double diffusion{1.0 / (3.0 * transport)};
+    static constexpr double R{50.0};
+    static constexpr double H{100.0};
 
-  return nusf / (diffusion * (pow(alpha0 / R, 2) + pow(M_PI / H, 2)) + removal);
-}
+    const double diffusion{1.0 / (3.0 * transport)};
 
-double Analytic::tworeg_keff(const XSLibrary& xs) const
-{
-  const vector<double> sigma_tr{xs.rec[0].sigma_tr[0], xs.rec[1].sigma_tr[0]};
-  const vector<double> sigma_r{xs.rec[0].sigma_r[0], xs.rec[1].sigma_r[0]};
-  const vector<double> nusf{xs.rec[0].nusf[1], xs.rec[1].nusf[0]};
+    return nusf / (diffusion * (pow(alpha0 / R, 2) + pow(M_PI / H, 2)) + removal);
+  }
 
-  vector<double> diffusion(sigma_tr.size());
-  for (size_t i{0}; i < sigma_tr.size(); ++i)
-    diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
+  double tworeg_keff()
+  {
+    const vector<double> sigma_tr{xs_global->rec[0].sigma_tr[0], xs_global->rec[1].sigma_tr[0]};
+    const vector<double> sigma_r{xs_global->rec[0].sigma_r[0], xs_global->rec[1].sigma_r[0]};
+    const vector<double> nusf{xs_global->rec[0].nusf[1], xs_global->rec[1].nusf[0]};
 
-  static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
+    vector<double> diffusion(sigma_tr.size());
+    for (size_t i{0}; i < diffusion.size(); ++i)
+      diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
 
-  // indices are material indices, not group indices
-  return nusf[0] / (diffusion[0] * pow(BF, 2) + sigma_r[0]);
-}
+    static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
 
-double oned_oneg_c_fun(const Vector& v)
-{
-  static constexpr double Lx{100.0};
-  const double x{v[0]};
-  return sin((M_PI/Lx) * x);
+    // indices are material indices, not group indices
+    return nusf[0] / (diffusion[0] * pow(BF, 2) + sigma_r[0]);
+  }
 }

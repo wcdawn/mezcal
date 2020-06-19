@@ -9,6 +9,28 @@
 
 using namespace mfem;
 
+namespace Analytic_solutions
+{
+  extern const XSLibrary* xs_global;
+
+  // Zeroth zero of the first Bessel function of the first kind.
+  static constexpr double alpha0{2.404825557695772768622};
+
+  double fixed_src_fun(const Vector&);
+  double oned_oneg_fun(const Vector&);
+  double twod_oneg_fun(const Vector&);
+  double threed_oneg_fun(const Vector&);
+  double finite_cyl_fun(const Vector&);
+  double tworeg_fun(const Vector&);
+
+  double oned_oneg_keff();
+  double twod_oneg_keff();
+  double threed_oneg_keff();
+  double finite_cyl_keff();
+  double tworeg_keff();
+
+}
+
 class Analytic
 {
 public:
@@ -42,30 +64,17 @@ private:
   int nVert;
   int nDim;
   double keff;
-  const XSLibrary* xs;
-
-  // Zeroth zero of the first Bessel function of the first kind.
-  static constexpr double alpha0{2.404825557695772768622};
+  const XSLibrary* const xs;
 
   std::vector<Vertex> node;
   Vector sol;
   GridFunction* phi{nullptr};
 
-  std::function<double(const Analytic*, const Vertex&, const XSLibrary&)> fun;
-  std::function<double(const Analytic*, const XSLibrary&)> analytic_keff;
+  typedef double mfem_function(const Vector&);
+  typedef double keff_function();
+  mfem_function* fun;
+  keff_function* analytic_keff;
 
-  double fixed_src_fun(const Vertex&, const XSLibrary&) const;
-  double oned_oneg_fun(const Vertex&, const XSLibrary&) const;
-  double twod_oneg_fun(const Vertex&, const XSLibrary&) const;
-  double threed_oneg_fun(const Vertex&, const XSLibrary&) const;
-  double finite_cyl_fun(const Vertex&, const XSLibrary&) const;
-  double tworeg_fun(const Vertex&, const XSLibrary&) const;
-
-  double oned_oneg_keff(const XSLibrary& xs) const;
-  double twod_oneg_keff(const XSLibrary& xs) const;
-  double threed_oneg_keff(const XSLibrary& xs) const;
-  double finite_cyl_keff(const XSLibrary& xs) const;
-  double tworeg_keff(const XSLibrary& xs) const;
 };
 
 #endif
