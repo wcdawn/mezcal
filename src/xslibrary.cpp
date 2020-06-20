@@ -4,13 +4,9 @@
 #include <string>
 #include <vector>
 
-// TODO
-using std::cout;
-using std::endl;
-using std::cerr;
-
 using namespace mfem;
 
+using std::cerr;
 using std::ostream;
 using std::ifstream;
 using std::string;
