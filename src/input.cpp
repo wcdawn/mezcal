@@ -177,6 +177,8 @@ void Input::reconcile_enums()
 {
   reference_str = reference;
   ref           = Analytic::reference_str_to_enum(reference_str);
+  if ((reference_str != "invalid") && (ref == Analytic::invalid))
+    throw Invalid_input_card{"Invalid reference name: " + reference_str};
 
   solver_str = solver;
   sol        = solver_choice_str_to_enum(solver_str);

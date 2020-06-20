@@ -93,4 +93,4 @@ main.o : analytic.o input.o solver.o xslibrary.o $(MFEM_HEADER)
 analytic.o : $(MFEM_HEADER) analytic.hpp
 xslibrary.o : xslibrary.hpp
 input.o : analytic.o input.hpp $(MFEM_HEADER)
-solver.o : solver.hpp $(MFEM_HEADER)
+solver.o : solver.hpp $(MFEM_HEADER) result.hpp xslibrary.hpp

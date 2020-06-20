@@ -26,6 +26,7 @@ namespace Analytic_solutions
   double threed_oneg_keff();
   double finite_cyl_keff();
   double tworeg_keff();
+  double oned_twog_keff();
 
 }
 
@@ -44,7 +45,8 @@ public:
     threed_oneg,
     square,
     finite_cyl,
-    tworeg
+    tworeg,
+    oned_twog
   };
 
   Analytic(const Reference ref, Result& res, const XSLibrary& xs,

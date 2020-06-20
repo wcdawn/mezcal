@@ -14,19 +14,25 @@ struct XSRecord
   XSRecord(int ngroup) : G{ngroup}
   {
     sigma_tr.resize(G);
+    sigma_t.resize(G);
     sigma_r.resize(G);
     nusf.resize(G);
     chi.resize(G);
     source.resize(G);
   }
 
-  std::string name;
-  int zaid;
-  double nden;
+  void calculate_removal_xs();
+  void self_scatter_rebalance();
 
-  int G;
+  std::string name;
+  int zaid{0};
+  double nden{0.0};
+  bool is_fiss{false};
+
+  int G{0};
 
   std::vector<double> sigma_tr;
+  std::vector<double> sigma_t;
   std::vector<double> sigma_r;
   std::vector<double> nusf;
   std::vector<double> chi;
@@ -38,11 +44,12 @@ struct XSRecord
 class XSLibrary
 {
 public:
-  int ngroup() { return G; }
-  int niso() { return N; }
+  int ngroup() const { return G; }
+  int niso() const { return N; }
 
-  void read_userxs(std::string fname);
+  void read_userxs(const std::string& fname);
   void read_userxs(const char* fname);
+  void Print(std::ostream& os);
 
   class Invalid_input_card : std::exception
   {
@@ -71,10 +78,25 @@ private:
   int N{0}; // number of materials/isotopes present
 
   void initialize_records();
+  void calculate_removal_xs();
+  void self_scatter_rebalance();
 
   static constexpr char comment_char{'#'};
 
-  static void read_vector(std::ifstream&, std::vector<double>&);
+  template<typename T>
+  static void read_vector(std::istream& is, std::vector<T>& vec)
+  {
+    for (T& val : vec)
+      is >> val;
+  }
+
+  template<typename T>
+  static void write_vector(std::ostream& os, const std::vector<T>& vec)
+  {
+    for (T val : vec)
+      os << val << '\n';
+  }
+
 };
 
 #endif

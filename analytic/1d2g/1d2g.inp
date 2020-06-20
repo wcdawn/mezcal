@@ -1,0 +1,10 @@
+[CORE]
+
+mesh_file 1d2g.msh
+xs_file 1d2g.xs
+boundary_conditions 0 1 0 1
+
+reference oned_twog
+
+[STATE]
+# default options

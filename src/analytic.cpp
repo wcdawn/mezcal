@@ -80,6 +80,9 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
       fun           = &Analytic_solutions::tworeg_fun;
       analytic_keff = &Analytic_solutions::tworeg_keff;
       break;
+    case (oned_twog):
+      fun = &Analytic_solutions::oned_oneg_fun; // same profile shape
+      analytic_keff = &Analytic_solutions::oned_twog_keff;
     default: throw InvalidReferenceName{};
   }
 }
@@ -193,6 +196,8 @@ Analytic::Reference Analytic::reference_str_to_enum(string str)
     return square;
   if (str == "tworeg")
     return tworeg;
+  if (str == "oned_twog")
+    return oned_twog;
   return invalid;
 }
 
@@ -207,6 +212,7 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
     case (fixed_src): return "fixed_src";
     case (square): return "square";
     case (tworeg): return "tworeg";
+    case(oned_twog): return "oned_twog";
     default: return "invalid";
   }
 }
@@ -371,9 +377,11 @@ namespace Analytic_solutions
 
   double tworeg_keff()
   {
-    const vector<double> sigma_tr{xs_global->rec[0].sigma_tr[0], xs_global->rec[1].sigma_tr[0]};
-    const vector<double> sigma_r{xs_global->rec[0].sigma_r[0], xs_global->rec[1].sigma_r[0]};
-    const vector<double> nusf{xs_global->rec[0].nusf[1], xs_global->rec[1].nusf[0]};
+    const XSRecord* const fuel{&xs_global->rec[0]};
+    const XSRecord* const reflector{&xs_global->rec[1]};
+    const vector<double> sigma_tr{fuel->sigma_tr[0], reflector->sigma_tr[0]};
+    const vector<double> sigma_r{fuel->sigma_r[0], reflector->sigma_r[0]};
+    const vector<double> nusf{fuel->nusf[1], reflector->nusf[0]};
 
     vector<double> diffusion(sigma_tr.size());
     for (size_t i{0}; i < diffusion.size(); ++i)
@@ -383,5 +391,21 @@ namespace Analytic_solutions
 
     // indices are material indices, not group indices
     return nusf[0] / (diffusion[0] * pow(BF, 2) + sigma_r[0]);
+  }
+
+  double oned_twog_keff()
+  {
+    static constexpr double Lx{100.0};
+
+    const XSRecord* const rec{&xs_global->rec[0]};
+
+    vector<double> diffusion(xs_global->ngroup());
+    for (size_t g{0}; g < diffusion.size(); ++g)
+      diffusion[g] = 1.0 / (3.0 * rec->sigma_tr[g]);
+
+    const double bsq{pow(M_PI / Lx, 2)};
+    const double k2k1{rec->sigma_s.Elem(1,0) / 
+      (diffusion[1] * bsq + rec->sigma_r[1])};
+    return (rec->nusf[0] + rec->nusf[1] * k2k1) / (diffusion[0] * bsq + rec->sigma_r[0]);
   }
 }

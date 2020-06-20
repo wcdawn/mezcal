@@ -29,10 +29,6 @@ int main(int argc, char* argv[])
 
   // cross sections
   XSLibrary xs;
-  vector<double> q_fixed;
-
-  // boundary conditions
-  vector<int> boundary_conditions; // 0 is essential, 1 is non-essential
 
   // reference problem
   // Initialize MPI
@@ -89,6 +85,11 @@ int main(int argc, char* argv[])
 
   // input is finalized, you can read cross sections
   xs.read_userxs(inp.xs_file);
+
+  {
+    ofstream ofs_xs{"out.xs"};
+    xs.Print(ofs_xs);
+  }
 
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
@@ -175,7 +176,6 @@ int main(int argc, char* argv[])
     cout << "keff = " << setprecision(20) << res.keff
          << setprecision(old_precision) << '\n';
 
-  // TODO this is wrong for parallel!
   if (inp.ref != Analytic::invalid)
   {
     Analytic anal(inp.ref, res, xs, pmesh);
