@@ -9,9 +9,6 @@
 
 using namespace mfem;
 
-using std::cout;
-using std::endl;
-
 using std::ostream;
 using std::setprecision;
 
