@@ -9,6 +9,9 @@
 
 using namespace mfem;
 
+using std::cout;
+using std::endl;
+
 using std::ostream;
 using std::setprecision;
 
@@ -42,11 +45,9 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
   node.reserve(nVert);
   for (int i{0}; i < nVert; ++i)
   {
-    if (nDim == 3)
-      node.push_back(Vertex{vec_node[0 * nVert + i], vec_node[1 * nVert + i],
-                            vec_node[2 * nVert + i]});
-    else
-      node.push_back(Vertex{vec_node[0 * nVert + i], vec_node[1 * nVert + i]});
+    node.push_back(Vector(nDim));
+    for (int j{0}; j < nDim; ++j)
+      node[i][j] = vec_node[j * nVert + i];
   }
 
   // store a writable pointer
@@ -89,17 +90,9 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
 
 void Analytic::analyze(ostream& os) const
 {
-  // TODO lots of cleanup here
   Vector err(phi->Size());
   for (int i{0}; i < err.Size(); ++i)
-  {
-    Vector v(nDim);
-    v[0] = node[i](0);
-    v[1] = node[i](1);
-    if (nDim == 3)
-      v[2] = node[i](2);
-    err[i] = fun(v);
-  }
+    err[i] = fun(node[i]);
   err -= *phi;
 
   // These are computed as they are in LUPINE and are here for compatibility.
@@ -168,15 +161,12 @@ void Analytic::print(ostream& os) const
   double* access{phi->GetData()};
   for (int i{0}; i < nVert; ++i, ++access)
   {
-    Vector v(nDim);
-    v[0] = node[i](0);
-    v[1] = node[i](1);
-    if (nDim == 3)
-      v[2] = node[i](2);
-    const double val{fun(v)};
+    const double val{fun(node[i])};
     const double err{abs(*access - val)};
-    os << node[i](0) << ',' << node[i](1) << ',' << node[i](2) << ',' << *access
-       << ',' << val << ',' << err << '\n';
+    for (int j{0}; j < nDim; ++j)
+      os << node[i][j] << ',';
+    if (nDim == 2) os << 0.0 << ',';
+    os << *access << ',' << val << ',' << err << '\n';
   }
 }
 

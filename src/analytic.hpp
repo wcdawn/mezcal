@@ -69,7 +69,7 @@ private:
   double keff;
   const XSLibrary* const xs;
 
-  std::vector<mfem::Vertex> node;
+  std::vector<mfem::Vector> node;
   mfem::GridFunction* phi{nullptr};
 
   typedef double mfem_function(const mfem::Vector&);
