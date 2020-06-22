@@ -77,10 +77,7 @@ int main(int argc, char* argv[])
   // need to reconcile enums to match their const char* counterparts
   inp.reconcile_enums();
 
-  const int mfem_print_level{inp.verbose ? 1 : 0};
-  // const int hypre_print_level{inp.verbose ? 1 : 0};
-
-  if ((myid == 0) && mfem_print_level)
+  if ((myid == 0) && (inp.verbose))
     args.PrintOptions(cout);
 
   // input is finalized, you can read cross sections
@@ -149,7 +146,7 @@ int main(int argc, char* argv[])
     ess_bdr[i] = inp.boundary_conditions[i];
 
   // do the solving
-  Result res{fespace};
+  Result res{fespace, xs.ngroup()};
   if (inp.ref == Analytic::fixed_src)
   {
     res = diffusion_fixed_src(inp, xs, ess_bdr, pmesh, fespace);
@@ -187,7 +184,13 @@ int main(int argc, char* argv[])
   }
 
   ParaViewDataCollection output("output_dir", pmesh);
-  output.RegisterField("flux", &res.phi);
+  const auto group_width{std::to_string(xs.ngroup()).length()};
+  for (int g{0}; g < xs.ngroup(); ++g)
+  {
+    ostringstream record_name;
+    record_name << "phi_g" << setfill('0') << setw(group_width) << g;
+    output.RegisterField(record_name.str(), &res.phi[g]);
+  }
   output.SetFormat(DataCollection::PARALLEL_FORMAT);
   output.Save();
 

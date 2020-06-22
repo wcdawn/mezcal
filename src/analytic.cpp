@@ -30,7 +30,7 @@ using std::tanh;
 Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
                    const Mesh* const mesh)
   : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
-    keff{res.keff}, phi{&res.phi}
+    keff{res.keff}, phi{&res.phi[0]} // TODO this will need to be different for 1d2g
 {
   Analytic_solutions::xs_global = &xslib;
 
@@ -277,9 +277,11 @@ namespace Analytic_solutions
 
   double tworeg_fun(const Vector& v)
   {
-    const vector<double> sigma_tr{xs_global->rec[0].sigma_tr[0], xs_global->rec[1].sigma_tr[0]};
-    const vector<double> sigma_r{xs_global->rec[0].sigma_r[0], xs_global->rec[1].sigma_r[0]};
-    const vector<double> nusf{xs_global->rec[0].nusf[1], xs_global->rec[1].nusf[0]};
+    const XSRecord& fuel{xs_global->rec[0]};
+    const XSRecord& reflector{xs_global->rec[1]};
+    const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
+    const vector<double> sigma_r{fuel.sigma_r[0], reflector.sigma_r[0]};
+    const vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
 
     vector<double> diffusion(sigma_tr.size());
     for (size_t i{0}; i < diffusion.size(); ++i)
@@ -367,7 +369,7 @@ namespace Analytic_solutions
     const XSRecord& reflector{xs_global->rec[1]};
     const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
     const vector<double> sigma_r{fuel.sigma_r[0], reflector.sigma_r[0]};
-    const vector<double> nusf{fuel.nusf[1], reflector.nusf[0]};
+    const vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
 
     vector<double> diffusion(sigma_tr.size());
     for (size_t i{0}; i < diffusion.size(); ++i)

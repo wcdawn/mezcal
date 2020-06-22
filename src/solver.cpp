@@ -1,9 +1,12 @@
 #include "solver.hpp"
 
 #include <limits>
+#include <vector>
 
 using namespace mfem;
 using std::numeric_limits;
+
+using std::vector;
 
 using std::cout;
 using std::endl;
@@ -71,8 +74,7 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   // 11. Setup the preconditioner.
   Solver* prec{nullptr};
   auto amg{new HypreBoomerAMG(*A)};
-  const int hypre_print_level{inp.verbose ? 1 : 0};
-  amg->SetPrintLevel(hypre_print_level);
+  amg->SetPrintLevel(inp.hypre_print_level());
   prec = amg;
 
   auto lobpcg{new HypreLOBPCG(MPI_COMM_WORLD)};
@@ -86,7 +88,7 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   lobpcg->SetMaxIter(inp.tol.max_outer);
   lobpcg->SetTol(inp.tol.k * inp.tol.phi);
   lobpcg->SetPrecondUsageMode(1);
-  lobpcg->SetPrintLevel(hypre_print_level);
+  lobpcg->SetPrintLevel(inp.hypre_print_level());
   lobpcg->SetMassMatrix(*M);
   lobpcg->SetOperator(*A);
 
@@ -98,14 +100,15 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   delete A;
   delete M;
 
-  Result res(fespace);
+  Result res{fespace, xs.ngroup()};
+
+  constexpr int g{0}; // TODO single energy group
 
   // store solution
   Array<double> eigenvalues;
   lobpcg->GetEigenvalues(eigenvalues);
   res.keff = 1.0 / eigenvalues[0];
-  res.phi =
-    lobpcg->GetEigenvector(0); // this is the local solution on this process
+  res.phi[g] = lobpcg->GetEigenvector(0);
 
   // free memory from solver
   delete lobpcg;
@@ -114,102 +117,147 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   return res;
 }
 
-// this will not work AT ALL for parallel problems
 Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
                                  const Array<int>& ess_bdr,
                                  const ParMesh* const pmesh,
                                  ParFiniteElementSpace* const fespace)
 {
-  const int hypre_print_level{inp.verbose ? 1 : 0};
-  const int mfem_print_level{inp.verbose ? 1 : 0};
 
-  auto a{new ParBilinearForm(fespace)};
-  if (inp.partial_assembly)
-    a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+  // this is necessary to specify bcs for the inner solver
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  Vector leakage(pmesh->attributes.Max());
-  for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[0]);
-  PWConstCoefficient leakage_func{leakage};
+  // build streaming and removal operator (LHS) for each energy group
+  vector<ParBilinearForm*> a(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+  {
+    a[g] = new ParBilinearForm(fespace);
+    if (inp.partial_assembly) a[g]->SetAssemblyLevel(AssemblyLevel::PARTIAL);
 
-  Vector removal(pmesh->attributes.Max());
-  for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = xs.rec[i].sigma_r[0];
-  PWConstCoefficient removal_func{removal};
+    Vector leakage(pmesh->attributes.Max());
+    for (int i{0}; i < leakage.Size(); ++i)
+      leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[g]);
+    PWConstCoefficient leakage_func{leakage};
 
-  a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
-  a->AddDomainIntegrator(new MassIntegrator(removal_func));
+    Vector removal(pmesh->attributes.Max());
+    for (int i{0}; i < removal.Size(); ++i)
+      removal[i] = xs.rec[i].sigma_r[g];
+    PWConstCoefficient removal_func{removal};
 
-  if (inp.static_condensation)
-    a->EnableStaticCondensation();
+    a[g]->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
+    a[g]->AddDomainIntegrator(new MassIntegrator(removal_func));
 
-  a->Assemble();
+    if (inp.static_condensation) a[g]->EnableStaticCondensation();
 
+    a[g]->Assemble();
+  }
+
+  // set initial flux profile to be used for fission source
+  // currently we use a uniform "flat" flux profile
+  ParGridFunction phi_old(fespace);
+  phi_old = 1.0;
+
+  vector<PWConstCoefficient> fiss_func(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+  {
+    Vector fission(pmesh->attributes.Max()); // length is number of materials
+    for (int i{0}; i < fission.Size(); ++i)
+      fission[i] = xs.rec[i].nusf[g];
+    fiss_func[g].UpdateConstants(fission);
+  }
+
+  vector<GridFunctionCoefficient> phi_func(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+    phi_func[g].SetGridFunction(&phi_old);
+
+  // note that this one does not have a default constructor so we have to do
+  // this a bit differently
+  vector<ProductCoefficient> fiss_term;
+  fiss_term.reserve(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+    fiss_term.push_back(ProductCoefficient(fiss_func[g], phi_func[g]));
+
+  // build "outline" of source operator (RHS) for each energy group
+  vector<ParLinearForm*> b(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+  {
+    b[g] = new ParLinearForm(fespace);
+    b[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
+  }
+
+  // setup preconditioner
   Solver* prec{nullptr};
   auto amg{new HypreBoomerAMG};
-  amg->SetPrintLevel(hypre_print_level);
+  amg->SetPrintLevel(inp.hypre_print_level());
   prec = amg;
 
+  // setup solver
   CGSolver cg(MPI_COMM_WORLD);
   cg.SetRelTol(inp.tol.inner_rel);
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
-  cg.SetPrintLevel(mfem_print_level);
-  if (prec)
-    cg.SetPreconditioner(*prec);
+  cg.SetPrintLevel(inp.mfem_print_level());
+  if (prec) cg.SetPreconditioner(*prec);
 
+  // these are necessary for the solver
   OperatorPtr A;
   Vector B;
   Vector X;
 
-  Vector fission(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < fission.Size(); ++i) fission[i] = xs.rec[i].nusf[0];
-  PWConstCoefficient fiss_func(fission);
-
+  // get the process id so that only the root process writes to terminal
   int myid;
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
-  Result res(fespace);
+  // build "outline" of fission source integrator for each energy group
+  vector<ParLinearForm*> fiss(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); g++)
+  {
+    fiss[g] = new ParLinearForm(fespace);
+    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
+  }
 
-  ParGridFunction phi_old(fespace);
-  phi_old = 1.0;
+  // prepare solution that will be returned
+  Result res{fespace, xs.ngroup()};
 
-  GridFunctionCoefficient phi_func(&phi_old);
-  ProductCoefficient fiss_term(fiss_func, phi_func);
-
-  auto b{new ParLinearForm(fespace)};
-  b->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
-    
-  auto fiss{new ParLinearForm(fespace)};
-  fiss->AddDomainIntegrator(new DomainLFIntegrator(fiss_term));
-
-  Array<int> ess_tdof_list;
-  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
-    
+  // initialize "old" data
   double keff_old{res.keff};
   double fiss_sum{1.0};
-  double local_fiss_sum{1.0};
   double fiss_sum_old{1.0};
 
+  // initialize convergence critera (make sure we enter the loop at least once)
   double k_conv{inp.tol.k * 1e1 + 1e-5};
   double phi_conv{inp.tol.phi * 1e1 + 1e-5};
-  double local_phi_conv{phi_conv};
 
   int iter{0};
   for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
                  || (phi_conv > inp.tol.phi)); ++iter)
   {
-    // construct source
-    b->Assemble();
-    *b /= res.keff;
+    // construct source for each group
+    // TODO split the source construction into fission, upscatter, and downscatter
+    for (int g{0}; g < xs.ngroup(); ++g)
+    {
+      b[g]->Assemble();
+      *(b[g]) /= res.keff;
+    }
 
-    // Solve this fixed source problem.
+    // Solve this fixed source problem for each energy group.
     // Note that FormLinearSystem is designed to be called multiple times.
-    a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
+    double local_phi_conv{0.0};
+    for (int g{0}; g < xs.ngroup(); ++g)
+    {
+      phi_old = res.phi[g];
 
-    cg.SetOperator(*A);
-    cg.Mult(B, X); // solve
-    a->RecoverFEMSolution(X, *b, res.phi);
+      a[g]->FormLinearSystem(ess_tdof_list, res.phi[g], *(b[g]), A, X, B);
+
+      cg.SetOperator(*A);
+      cg.Mult(B, X); // solve
+      a[g]->RecoverFEMSolution(X, *(b[g]), res.phi[g]);
+      
+      phi_old -= res.phi[g];
+      local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf());
+    }
+
+    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
     // Calculate fission sum.
     if (iter == 0)
@@ -219,12 +267,17 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
       // values of keff.
       fiss_sum = fiss_sum_old;
       // Use res.phi for all subsequent fission integrations.
-      phi_func.SetGridFunction(&res.phi);
+      for (int g{0}; g < xs.ngroup(); ++g)
+        phi_func[g].SetGridFunction(&res.phi[g]);
     }
     else
     {
-      fiss->Assemble();
-      local_fiss_sum = fiss->Sum();
+      double local_fiss_sum{0.0};
+      for (int g{0}; g < xs.ngroup(); ++g)
+      {
+        fiss[g]->Assemble();
+        local_fiss_sum += fiss[g]->Sum();
+      }
       MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     }
     
@@ -234,14 +287,10 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     // update convergence criteria
     k_conv = std::abs(res.keff - keff_old);
 
-    phi_old -= res.phi;
-    local_phi_conv = phi_old.Normlinf();
-    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-
     // copy old values
     keff_old = res.keff;
     fiss_sum_old = fiss_sum;
-    phi_old = res.phi;
+    phi_old = res.phi[0]; // TODO convergence critera needs to be adjusted
 
     if (myid == 0)
     {
@@ -250,10 +299,15 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     }
   }
 
-  delete fiss;
-  delete b;
   delete prec;
-  delete a;
+
+  // TODO consider creating a special class to adhere better to RAII
+  for (int g{0}; g < xs.ngroup(); ++g)
+  {
+    delete a[g];
+    delete b[g];
+    delete fiss[g];
+  }
 
   if ((iter == inp.tol.max_outer) && (myid == 0))
   {
@@ -273,10 +327,6 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
                            const ParMesh* const pmesh,
                            ParFiniteElementSpace* const fespace)
 {
-
-  const int mfem_print_level{inp.verbose ? 1 : 0};
-  const int hypre_print_level{inp.verbose ? 1 : 0};
-
   auto a{new ParBilinearForm(fespace)};
   if (inp.partial_assembly)
     a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
@@ -315,27 +365,28 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  Result res{fespace};
+  Result res{fespace, xs.ngroup()};
 
-  a->FormLinearSystem(ess_tdof_list, res.phi, *b, A, X, B);
+  // TODO we must require that the fixed source problem has a single energy group
+  a->FormLinearSystem(ess_tdof_list, res.phi[0], *b, A, X, B);
 
   Solver* prec{nullptr};
   auto amg{new HypreBoomerAMG};
-  amg->SetPrintLevel(hypre_print_level);
+  amg->SetPrintLevel(inp.hypre_print_level());
   prec = amg;
 
   CGSolver cg(MPI_COMM_WORLD);
   cg.SetRelTol(inp.tol.inner_rel);
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
-  cg.SetPrintLevel(mfem_print_level);
+  cg.SetPrintLevel(inp.mfem_print_level());
   if (prec)
     cg.SetPreconditioner(*prec);
   cg.SetOperator(*A);
   cg.Mult(B, X);
   delete prec;
 
-  a->RecoverFEMSolution(X, *b, res.phi);
+  a->RecoverFEMSolution(X, *b, res.phi[0]);
 
   delete b;
   delete a;

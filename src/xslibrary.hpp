@@ -5,6 +5,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <fstream>
 
 #include "mfem.hpp"
 
@@ -19,10 +21,12 @@ struct XSRecord
     nusf.resize(G);
     chi.resize(G);
     source.resize(G);
+    is_upscatter.resize(G);
   }
 
   void calculate_removal_xs();
   void self_scatter_rebalance();
+  void evaluate_upscatter();
 
   std::string name;
   int zaid{0};
@@ -37,6 +41,8 @@ struct XSRecord
   std::vector<double> nusf;
   std::vector<double> chi;
   std::vector<double> source; // fixed source
+
+  std::vector<bool> is_upscatter; // is the upscattering into this group?
 
   mfem::SparseMatrix sigma_s;
 };

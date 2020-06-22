@@ -32,6 +32,9 @@ public:
   void reconcile_enums();
   void echo(std::ostream& os) const;
 
+  int hypre_print_level() const { return verbose ? 1 : 0; };
+  int mfem_print_level() const { return verbose ? 1 : 0; };
+
   class Invalid_input_card : std::exception
   {
   public:

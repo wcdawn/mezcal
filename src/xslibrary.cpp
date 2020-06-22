@@ -1,16 +1,17 @@
 #include "xslibrary.hpp"
 
-#include <fstream>
-#include <string>
-#include <vector>
-
 using namespace mfem;
 
 using std::cerr;
+using std::cout;
+using std::endl;
+
 using std::ostream;
 using std::ifstream;
 using std::string;
 using std::vector;
+
+using std::max_element;
 
 void XSLibrary::read_userxs(const char* fname)
 {
@@ -78,11 +79,11 @@ void XSLibrary::read_userxs(const std::string& fname)
     }
     else if (card == "scatter")
     {
-      // By initializing with zeros on the diagonal, we ensure that the
-      // diagonal (self-scattering) entries will exist in the matrix.
-      Vector zero_diag(G);
-      zero_diag = 0.0;
-      SparseMatrix tmp_sparse(zero_diag);
+      // initialize a matrix with zero entries for self-scattering
+      SparseMatrix tmp_sparse(G, G);
+      for (int g{0}; g < G; ++g)
+        tmp_sparse.Set(g, g, 0.0);
+
       double val;
       for (int i{0}; i < G; ++i)
       {
@@ -94,7 +95,10 @@ void XSLibrary::read_userxs(const std::string& fname)
             tmp_sparse.Set(i, j, val);
         }
       }
-      tmp_sparse.Finalize();
+      // 0 - do not skip zero entries (necessary for diagonal)
+      // true - fix empty rows (if a row is empty, store a zero on the diagonal)
+      tmp_sparse.Finalize(0, true);
+      tmp_sparse.SortColumnIndices();
       rec[mat_count].sigma_s = tmp_sparse; // hopefully a move operation
     }
     else
@@ -108,6 +112,7 @@ void XSLibrary::read_userxs(const std::string& fname)
   {
     record.calculate_removal_xs();
     record.self_scatter_rebalance();
+    record.evaluate_upscatter();
   }
 
 }
@@ -118,17 +123,17 @@ void XSLibrary::Print(ostream& os)
   os << "niso " << N << '\n';
   for (int i{0}; i < N; ++i)
   {
-    const XSRecord* const record{&rec[i]};
+    const XSRecord& record{rec[i]};
     os << '\n';
-    os << "name " << record->name << '\n';
-    if (record->zaid > 0)
-      os << "zaid " << record->zaid << '\n';
-    if (record->nden > 0.0)
-      os << "nden " << record->nden << '\n';
+    os << "name " << record.name << '\n';
+    if (record.zaid > 0)
+      os << "zaid " << record.zaid << '\n';
+    if (record.nden > 0.0)
+      os << "nden " << record.nden << '\n';
     os << "transport\n";
-    write_vector(os, record->sigma_tr);
+    write_vector(os, record.sigma_tr);
     os << "total\n";
-    write_vector(os, record->sigma_r);
+    write_vector(os, record.sigma_r);
 
     os << "scatter\n";
     for (int g{0}; g < G; ++g)
@@ -138,17 +143,17 @@ void XSLibrary::Print(ostream& os)
         // this will write zeros as appropriate
         // note that Elem does not return zeros but if passed to a stream, it
         // will be output as a zero
-        os << record->sigma_s.Elem(g,gprime) << ' ';
+        os << record.sigma_s.Elem(g,gprime) << ' ';
       }
       os << '\n';
     }
 
-    if (record->is_fiss)
+    if (record.is_fiss)
     {
       os << "nusf\n";
-      write_vector(os, record->nusf);
+      write_vector(os, record.nusf);
       os << "chi\n";
-      write_vector(os, record->chi);
+      write_vector(os, record.chi);
     }
   }
 }
@@ -156,7 +161,7 @@ void XSLibrary::Print(ostream& os)
 void XSRecord::calculate_removal_xs()
 {
   for (int g{0}; g < G; ++g)
-    sigma_r[g] = sigma_t[g] - sigma_s.SearchRow(g, g);
+    sigma_r[g] = sigma_t[g] - sigma_s.Elem(g, g);
 }
 
 void XSRecord::self_scatter_rebalance()
@@ -168,6 +173,21 @@ void XSRecord::self_scatter_rebalance()
       sigma_s.Set(g, g, sigma_tr[g] - sigma_t[g]);
       sigma_t[g] = sigma_tr[g];
     }
+  }
+}
+
+void XSRecord::evaluate_upscatter()
+{
+  for (int g{0}; g < G; ++g)
+  {
+    const int row_size{sigma_s.RowSize(g)};
+    const int* row_columns{sigma_s.GetRowColumns(g)};
+    const auto max_upscatter_group{
+      std::max_element(row_columns, row_columns + row_size)};
+    if (*max_upscatter_group > g) 
+      is_upscatter[g] = true;
+    else
+      is_upscatter[g] = false;
   }
 }
 
