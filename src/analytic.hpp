@@ -67,7 +67,6 @@ private:
   int nVert;
   int nDim;
   double keff;
-  const XSLibrary* const xs;
 
   std::vector<mfem::Vector> node;
   mfem::GridFunction* phi{nullptr};

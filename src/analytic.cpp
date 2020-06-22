@@ -30,9 +30,9 @@ using std::tanh;
 Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
                    const Mesh* const mesh)
   : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
-    keff{res.keff}, xs{&xslib}
+    keff{res.keff}, phi{&res.phi}
 {
-  Analytic_solutions::xs_global = xs;
+  Analytic_solutions::xs_global = &xslib;
 
   // set node
   Vector vec_node;
@@ -48,7 +48,6 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
   }
 
   // store a writable pointer
-  phi = &res.phi;
   if (reference_solution != fixed_src) normalize_solution_flux();
 
   // set fun to appropriate solution function
@@ -364,11 +363,11 @@ namespace Analytic_solutions
 
   double tworeg_keff()
   {
-    const XSRecord* const fuel{&xs_global->rec[0]};
-    const XSRecord* const reflector{&xs_global->rec[1]};
-    const vector<double> sigma_tr{fuel->sigma_tr[0], reflector->sigma_tr[0]};
-    const vector<double> sigma_r{fuel->sigma_r[0], reflector->sigma_r[0]};
-    const vector<double> nusf{fuel->nusf[1], reflector->nusf[0]};
+    const XSRecord& fuel{xs_global->rec[0]};
+    const XSRecord& reflector{xs_global->rec[1]};
+    const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
+    const vector<double> sigma_r{fuel.sigma_r[0], reflector.sigma_r[0]};
+    const vector<double> nusf{fuel.nusf[1], reflector.nusf[0]};
 
     vector<double> diffusion(sigma_tr.size());
     for (size_t i{0}; i < diffusion.size(); ++i)
@@ -384,15 +383,15 @@ namespace Analytic_solutions
   {
     static constexpr double Lx{100.0};
 
-    const XSRecord* const rec{&xs_global->rec[0]};
+    const XSRecord& rec{xs_global->rec[0]};
 
     vector<double> diffusion(xs_global->ngroup());
     for (size_t g{0}; g < diffusion.size(); ++g)
-      diffusion[g] = 1.0 / (3.0 * rec->sigma_tr[g]);
+      diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
     const double bsq{pow(M_PI / Lx, 2)};
-    const double k2k1{rec->sigma_s.Elem(1,0) / 
-      (diffusion[1] * bsq + rec->sigma_r[1])};
-    return (rec->nusf[0] + rec->nusf[1] * k2k1) / (diffusion[0] * bsq + rec->sigma_r[0]);
+    const double k2k1{rec.sigma_s.Elem(1,0) / 
+      (diffusion[1] * bsq + rec.sigma_r[1])};
+    return (rec.nusf[0] + rec.nusf[1] * k2k1) / (diffusion[0] * bsq + rec.sigma_r[0]);
   }
 }
