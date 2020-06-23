@@ -33,12 +33,16 @@ endif
 
 CPP_FILES = main.cpp \
 			analytic.cpp \
+			fission_coefficient.cpp \
 			input.cpp \
+			scattering_coefficient.cpp \
 			solver.cpp \
 			xslibrary.cpp
 
 HPP_FILES = analytic.hpp \
+			fission_coefficient.hpp \
 			input.hpp \
+			scattering_coefficient.hpp \
 			solver.hpp \
 			xslibrary.hpp
 
@@ -89,8 +93,12 @@ clean :
 format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
-main.o : analytic.o input.o solver.o xslibrary.o $(MFEM_HEADER)
-analytic.o : $(MFEM_HEADER) analytic.hpp
-xslibrary.o : xslibrary.hpp
+# Listing Order:
+# <object file> : <dependent object file> ... <dependent object file> $(MFEM_HEADER) <my header> <other headers>
+main.o : analytic.o input.o solver.o xslibrary.o solver.o $(MFEM_HEADER) result.hpp
+analytic.o : xslibrary.o $(MFEM_HEADER) analytic.hpp result.hpp
+xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : analytic.o input.hpp $(MFEM_HEADER)
-solver.o : solver.hpp $(MFEM_HEADER) result.hpp xslibrary.hpp
+solver.o : input.o xslibrary.o $(MFEM_HEADER) solver.hpp result.hpp
+scattering_coefficient.o : xslibrary.o $(MFEM_HEADER) scattering_coefficient.hpp
+fission_coefficient.o : xslibrary.o $(MFEM_HEADER) fission_coefficient.hpp

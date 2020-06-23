@@ -80,7 +80,7 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
     case (oned_twog):
       fun = &Analytic_solutions::oned_oneg_fun; // same profile shape
       analytic_keff = &Analytic_solutions::oned_twog_keff;
-    default: throw InvalidReferenceName{};
+    default: throw Invalid_reference_name{};
   }
 }
 

@@ -2,10 +2,8 @@
 #define XSLIBRARY
 
 #include <exception>
-#include <iostream>
 #include <string>
 #include <vector>
-#include <algorithm>
 #include <fstream>
 
 #include "mfem.hpp"
@@ -30,7 +28,7 @@ struct XSRecord
 
   std::string name;
   int zaid{0};
-  double nden{0.0};
+  double nden{1.0};
   bool is_fiss{false};
 
   int G{0};
@@ -56,6 +54,7 @@ public:
   void read_userxs(const std::string& fname);
   void read_userxs(const char* fname);
   void Print(std::ostream& os);
+  void flux_free_chi();
 
   class Invalid_input_card : std::exception
   {
@@ -78,14 +77,13 @@ public:
   };
 
   std::vector<XSRecord> rec;
+  std::vector<double> chi;
 
 private:
   int G{0}; // number of energy groups
   int N{0}; // number of materials/isotopes present
 
   void initialize_records();
-  void calculate_removal_xs();
-  void self_scatter_rebalance();
 
   static constexpr char comment_char{'#'};
 

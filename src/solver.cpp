@@ -1,5 +1,9 @@
 #include "solver.hpp"
 
+#include "scattering_coefficient.hpp"
+#include "fission_coefficient.hpp"
+
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -7,6 +11,7 @@ using namespace mfem;
 using std::numeric_limits;
 
 using std::vector;
+using std::min;
 
 using std::cout;
 using std::endl;
@@ -81,12 +86,11 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   lobpcg->SetNumModes(1); // solve for nev eigenmodes
   // Random seed is set used to initialize the initial eigenvalues for the
   // lobpcg algorithm. This can significantly affect convergence time but
-  // convergence time remains bounded. No default provided by MFEM but this is
-  // used in one of the tutorials.
+  // convergence time remains bounded.
   lobpcg->SetRandomSeed(730);
   lobpcg->SetPreconditioner(*prec);
   lobpcg->SetMaxIter(inp.tol.max_outer);
-  lobpcg->SetTol(inp.tol.k * inp.tol.phi);
+  lobpcg->SetTol(min(inp.tol.phi * inp.tol.phi, inp.tol.k * inp.tol.k));
   lobpcg->SetPrecondUsageMode(1);
   lobpcg->SetPrintLevel(inp.hypre_print_level());
   lobpcg->SetMassMatrix(*M);
@@ -152,37 +156,45 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     a[g]->Assemble();
   }
 
-  // set initial flux profile to be used for fission source
-  // currently we use a uniform "flat" flux profile
-  ParGridFunction phi_old(fespace);
-  phi_old = 1.0;
-
-  vector<PWConstCoefficient> fiss_func(xs.ngroup());
+  // create a coefficientfor the nu*fission cross section in each energy group
+  vector<PWConstCoefficient> nusf_coeff(xs.ngroup());
   for (int g{0}; g < xs.ngroup(); ++g)
   {
     Vector fission(pmesh->attributes.Max()); // length is number of materials
     for (int i{0}; i < fission.Size(); ++i)
       fission[i] = xs.rec[i].nusf[g];
-    fiss_func[g].UpdateConstants(fission);
+    nusf_coeff[g].UpdateConstants(fission);
   }
 
-  vector<GridFunctionCoefficient> phi_func(xs.ngroup());
+  // set initial flux profile to be used for fission source
+  // currently we use a uniform "flat" flux profile
+  ParGridFunction phi_old(fespace);
+  phi_old = 1.0;
+
+  // prepare solution that will be returned
+  Result res{fespace, xs.ngroup()};
+  for (auto& flux : res.phi)
+    flux = 1.0;
+
+  // set the grid function coefficient for each energy group flux
+  vector<GridFunctionCoefficient> phi_coeff(xs.ngroup());
   for (int g{0}; g < xs.ngroup(); ++g)
-    phi_func[g].SetGridFunction(&phi_old);
+    phi_coeff[g].SetGridFunction(&res.phi[g]);
 
   // note that this one does not have a default constructor so we have to do
   // this a bit differently
-  vector<ProductCoefficient> fiss_term;
-  fiss_term.reserve(xs.ngroup());
+  vector<ProductCoefficient> fiss_product_coeff;
+  fiss_product_coeff.reserve(xs.ngroup());
   for (int g{0}; g < xs.ngroup(); ++g)
-    fiss_term.push_back(ProductCoefficient(fiss_func[g], phi_func[g]));
+    fiss_product_coeff.push_back(
+      ProductCoefficient{nusf_coeff[g], phi_coeff[g]});
 
-  // build "outline" of source operator (RHS) for each energy group
-  vector<ParLinearForm*> b(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
+  // build "outline" of fission source integrator for each energy group
+  vector<ParLinearForm*> fiss(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); g++)
   {
-    b[g] = new ParLinearForm(fespace);
-    b[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
+    fiss[g] = new ParLinearForm(fespace);
+    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_product_coeff[g]));
   }
 
   // setup preconditioner
@@ -208,17 +220,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   int myid;
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
-  // build "outline" of fission source integrator for each energy group
-  vector<ParLinearForm*> fiss(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); g++)
-  {
-    fiss[g] = new ParLinearForm(fespace);
-    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
-  }
-
-  // prepare solution that will be returned
-  Result res{fespace, xs.ngroup()};
-
   // initialize "old" data
   double keff_old{res.keff};
   double fiss_sum{1.0};
@@ -228,31 +229,52 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   double k_conv{inp.tol.k * 1e1 + 1e-5};
   double phi_conv{inp.tol.phi * 1e1 + 1e-5};
 
+  vector<FissionCoefficient> fiss_term;
+  fiss_term.reserve(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+    fiss_term.push_back(FissionCoefficient{g, res.keff, xs, res.phi});
+
+  vector<ScatteringCoefficient> scat_term;
+  scat_term.reserve(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+    scat_term.push_back(ScatteringCoefficient{g, xs, res.phi});
+
+  vector<ParLinearForm*> b(xs.ngroup());
+  for (int g{0}; g < xs.ngroup(); ++g)
+  {
+    b[g] = new ParLinearForm(fespace);
+    b[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
+    b[g]->AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
+  }
+
   int iter{0};
   for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
                  || (phi_conv > inp.tol.phi)); ++iter)
   {
-    // construct source for each group
-    // TODO split the source construction into fission, upscatter, and downscatter
-    for (int g{0}; g < xs.ngroup(); ++g)
-    {
-      b[g]->Assemble();
-      *(b[g]) /= res.keff;
-    }
-
     // Solve this fixed source problem for each energy group.
     // Note that FormLinearSystem is designed to be called multiple times.
     double local_phi_conv{0.0};
     for (int g{0}; g < xs.ngroup(); ++g)
     {
+      // assemble source for this group
+      b[g]->Assemble();
+      cout << "group=" << g << endl;
+      b[g]->Print();
+
+      // necessary to enforce zero-flux boundary conditions
+      if (iter == 0) res.phi[g] = 0.0;
+
+      // store the old flux value for this group
       phi_old = res.phi[g];
 
-      a[g]->FormLinearSystem(ess_tdof_list, res.phi[g], *(b[g]), A, X, B);
-
+      // form, solve, and recover the linear system
+      a[g]->FormLinearSystem(ess_tdof_list, res.phi[g], *b[g], A, X, B);
       cg.SetOperator(*A);
       cg.Mult(B, X); // solve
-      a[g]->RecoverFEMSolution(X, *(b[g]), res.phi[g]);
+      a[g]->RecoverFEMSolution(X, *b[g], res.phi[g]);
       
+      // determine the convergence of this energy group and store the maximum
+      // value over all energy groups
       phi_old -= res.phi[g];
       local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf());
     }
@@ -266,9 +288,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
       // This is important for multi-state problems but also avoids extreme
       // values of keff.
       fiss_sum = fiss_sum_old;
-      // Use res.phi for all subsequent fission integrations.
-      for (int g{0}; g < xs.ngroup(); ++g)
-        phi_func[g].SetGridFunction(&res.phi[g]);
     }
     else
     {
@@ -290,7 +309,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     // copy old values
     keff_old = res.keff;
     fiss_sum_old = fiss_sum;
-    phi_old = res.phi[0]; // TODO convergence critera needs to be adjusted
 
     if (myid == 0)
     {

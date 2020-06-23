@@ -33,7 +33,7 @@ namespace Analytic_solutions
 class Analytic
 {
 public:
-  class InvalidReferenceName
+  class Invalid_reference_name
   {};
 
   enum Reference

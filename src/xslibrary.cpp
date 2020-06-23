@@ -1,5 +1,9 @@
 #include "xslibrary.hpp"
 
+#include <iostream>
+#include <algorithm>
+#include <numeric>
+
 using namespace mfem;
 
 using std::cerr;
@@ -12,6 +16,40 @@ using std::string;
 using std::vector;
 
 using std::max_element;
+using std::accumulate;
+
+void XSRecord::calculate_removal_xs()
+{
+  for (int g{0}; g < G; ++g)
+    sigma_r[g] = sigma_t[g] - sigma_s.Elem(g, g);
+}
+
+void XSRecord::self_scatter_rebalance()
+{
+  for (int g{0}; g < G; ++g)
+  {
+    if (sigma_s.Elem(g,g) == 0.0)
+    {
+      sigma_s.Set(g, g, sigma_tr[g] - sigma_t[g]);
+      sigma_t[g] = sigma_tr[g];
+    }
+  }
+}
+
+void XSRecord::evaluate_upscatter()
+{
+  for (int g{0}; g < G; ++g)
+  {
+    const int row_size{sigma_s.RowSize(g)};
+    const int* row_columns{sigma_s.GetRowColumns(g)};
+    const auto max_upscatter_group{
+      std::max_element(row_columns, row_columns + row_size)};
+    if (*max_upscatter_group > g) 
+      is_upscatter[g] = true;
+    else
+      is_upscatter[g] = false;
+  }
+}
 
 void XSLibrary::read_userxs(const char* fname)
 {
@@ -128,8 +166,7 @@ void XSLibrary::Print(ostream& os)
     os << "name " << record.name << '\n';
     if (record.zaid > 0)
       os << "zaid " << record.zaid << '\n';
-    if (record.nden > 0.0)
-      os << "nden " << record.nden << '\n';
+    os << "nden " << record.nden << '\n';
     os << "transport\n";
     write_vector(os, record.sigma_tr);
     os << "total\n";
@@ -143,7 +180,7 @@ void XSLibrary::Print(ostream& os)
         // this will write zeros as appropriate
         // note that Elem does not return zeros but if passed to a stream, it
         // will be output as a zero
-        os << record.sigma_s.Elem(g,gprime) << ' ';
+        os << record.sigma_s.Elem(g, gprime) << ' ';
       }
       os << '\n';
     }
@@ -158,40 +195,29 @@ void XSLibrary::Print(ostream& os)
   }
 }
 
-void XSRecord::calculate_removal_xs()
-{
-  for (int g{0}; g < G; ++g)
-    sigma_r[g] = sigma_t[g] - sigma_s.Elem(g, g);
-}
-
-void XSRecord::self_scatter_rebalance()
-{
-  for (int g{0}; g < G; ++g)
-  {
-    if (sigma_s.Elem(g,g) == 0.0)
-    {
-      sigma_s.Set(g, g, sigma_tr[g] - sigma_t[g]);
-      sigma_t[g] = sigma_tr[g];
-    }
-  }
-}
-
-void XSRecord::evaluate_upscatter()
-{
-  for (int g{0}; g < G; ++g)
-  {
-    const int row_size{sigma_s.RowSize(g)};
-    const int* row_columns{sigma_s.GetRowColumns(g)};
-    const auto max_upscatter_group{
-      std::max_element(row_columns, row_columns + row_size)};
-    if (*max_upscatter_group > g) 
-      is_upscatter[g] = true;
-    else
-      is_upscatter[g] = false;
-  }
-}
-
 void XSLibrary::initialize_records()
 {
-  for (int i{0}; i < N; ++i) rec.push_back(XSRecord(G));
+  rec.reserve(N);
+  for (int i{0}; i < N; ++i)
+    rec.push_back(XSRecord(G));
+  chi.resize(G);
+}
+
+void XSLibrary::flux_free_chi()
+{
+  std::vector<double> numerator(G);
+  for (double& val : numerator)
+    val = 0.0;
+  double denominator{0.0};
+  for (int i{0}; i < N; ++i)
+  {
+    const double nden{rec[i].nden};
+    const double f_i{nden * 
+      std::accumulate(rec[i].nusf.begin(), rec[i].nusf.end(), 0.0)};
+    for (int g{0}; g < G; ++g)
+      numerator[g] += rec[i].chi[g] * f_i;
+    denominator += f_i;
+  }
+  for (int g{0}; g < G; ++g)
+    chi[g] = numerator[g] / denominator;
 }
