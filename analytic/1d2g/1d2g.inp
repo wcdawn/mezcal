@@ -8,3 +8,4 @@ reference oned_twog
 
 [STATE]
 # default options
+solver power_iteration

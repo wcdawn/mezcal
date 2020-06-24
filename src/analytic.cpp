@@ -30,9 +30,11 @@ using std::tanh;
 Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
                    const Mesh* const mesh)
   : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
-    keff{res.keff}, phi{&res.phi[0]} // TODO this will need to be different for 1d2g
+    keff{res.keff}, phi{&res.phi[0]}
 {
   Analytic_solutions::xs_global = &xslib;
+
+  if (reference_solution == oned_twog) phi2 = &res.phi[1];
 
   // set node
   Vector vec_node;
@@ -80,7 +82,10 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
     case (oned_twog):
       fun = &Analytic_solutions::oned_oneg_fun; // same profile shape
       analytic_keff = &Analytic_solutions::oned_twog_keff;
-    default: throw Invalid_reference_name{};
+      break;
+    default: 
+      std::cerr << reference_enum_to_str(reference_solution) << std::endl;
+      throw Invalid_reference_name{};
   }
 }
 
@@ -119,6 +124,15 @@ void Analytic::analyze(ostream& os) const
   const double L2error{phi->ComputeL2Error(exact_sol)};
   const double inferror{phi->ComputeMaxError(exact_sol)};
 
+  // If this is a two group problem, calculate the ratio.
+  // Requries accumulating accross processes.
+  double ratio_calc{0.0};
+  if (phi2)
+  {
+    const double local_ratio_calc{phi2->Max()};
+    MPI_Allreduce(&local_ratio_calc, &ratio_calc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  }
+
   int myid;
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
@@ -137,6 +151,19 @@ void Analytic::analyze(ostream& os) const
       os << "kref = " << kref << '\n';
       os << "keff_err_[pcm] = " << (kref - keff) * 1e5 << '\n';
       os << setprecision(previous_precision);
+    }
+
+    if (reference_solution == oned_twog)
+    {
+      const auto previous_precision{os.precision()};
+      const double ratio_ref{Analytic_solutions::oned_twog_ratio()};
+      os << "RATIO:" << '\n';
+      os << setprecision(20);
+      os << "ratio_calc = " << ratio_calc << '\n';
+      os << "ratio_ref  = " << ratio_ref << '\n';
+      os << "ratio_err  = " << (ratio_ref - ratio_calc) << '\n';
+      os << setprecision(previous_precision);
+      os << "(errors only for fast group)\n";
     }
 
     os << "(norms do not account for element sizes)\n";
@@ -212,6 +239,7 @@ void Analytic::normalize_solution_flux() const
   double phi_max;
   MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
   *phi /= phi_max;
+  if (phi2) *phi2 /= phi_max;
 }
 
 namespace Analytic_solutions
@@ -392,8 +420,20 @@ namespace Analytic_solutions
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
     const double bsq{pow(M_PI / Lx, 2)};
-    const double k2k1{rec.sigma_s.Elem(1,0) / 
-      (diffusion[1] * bsq + rec.sigma_r[1])};
+    const double k2k1{oned_twog_ratio()};
     return (rec.nusf[0] + rec.nusf[1] * k2k1) / (diffusion[0] * bsq + rec.sigma_r[0]);
+  }
+
+  double oned_twog_ratio()
+  {
+    static constexpr double Lx{100.0};
+    const XSRecord& rec{xs_global->rec[0]};
+    const double bsq{pow(M_PI / Lx, 2)};
+
+    vector<double> diffusion(xs_global->ngroup());
+    for (size_t g{0}; g < diffusion.size(); ++g)
+      diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
+
+    return rec.sigma_s.Elem(1,0) / (diffusion[1] * bsq + rec.sigma_r[1]);
   }
 }

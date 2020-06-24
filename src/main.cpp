@@ -173,9 +173,6 @@ int main(int argc, char* argv[])
     cout << "keff = " << setprecision(20) << res.keff
          << setprecision(old_precision) << '\n';
 
-  if (inp.ref == Analytic::oned_twog)
-    cout << "RATIO: " << res.phi[1].Max() / res.phi[0].Max() << endl;
-
   if (inp.ref != Analytic::invalid)
   {
     Analytic anal(inp.ref, res, xs, pmesh);

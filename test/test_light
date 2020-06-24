@@ -250,5 +250,25 @@ class Test_light(unittest.TestCase):
         infnorm_ref = 0.000379678
         self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
 
+    def test_1d2g(self):
+        input_file = os.path.join(self.dirname, "../analytic/1d2g/1d2g.inp");
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.89207081282702782588
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.000105084
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
+
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.000375909
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
+
+        ratio_calc = driver.get_value(data, "ratio_calc")
+        ratio_calc_ref = 0.26132419009225332784
+        self.assert_absolute_equal(ratio_calc, ratio_calc_ref, tol=self.err_tol)
+
 if (__name__ == "__main__"):
     unittest.main()

@@ -28,6 +28,8 @@ namespace Analytic_solutions
   double tworeg_keff();
   double oned_twog_keff();
 
+  double oned_twog_ratio();
+
 }
 
 class Analytic
@@ -70,6 +72,7 @@ private:
 
   std::vector<mfem::Vector> node;
   mfem::GridFunction* phi{nullptr};
+  mfem::GridFunction* phi2{nullptr};
 
   typedef double mfem_function(const mfem::Vector&);
   typedef double keff_function();
