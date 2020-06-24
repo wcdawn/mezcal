@@ -1,0 +1,8 @@
+[CORE]
+mesh_file lwr_pool.vtk
+boundary_conditions 0 0 0 0
+
+xs_file lwr_pool.xs
+
+[STATE]
+# default options

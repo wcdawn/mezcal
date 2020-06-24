@@ -1,0 +1,8 @@
+[CORE]
+mesh_file bwr4.vtk
+boundary_conditions 0 0 0 0
+
+xs_file bwr.xs
+
+[STATE]
+solver power_iteration # necessary for multigroup
