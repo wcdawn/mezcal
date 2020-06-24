@@ -78,7 +78,6 @@ public:
   const char* reference{"invalid"};
   const char* device{"cpu"};
   bool static_condensation{false};
-  bool partial_assembly{false};
 
   // actual enum value
   Analytic::Reference ref{Analytic::invalid};

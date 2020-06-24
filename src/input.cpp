@@ -95,10 +95,6 @@ void Input::read_core()
     {
       static_condensation = read_bool(ifs);
     }
-    else if (card == "partial_assembly")
-    {
-      partial_assembly = read_bool(ifs);
-    }
     else
     {
       cerr << "INVALID CARD\n";
@@ -204,7 +200,6 @@ void Input::echo(ostream& os) const
 
   os << "device " << device << '\n';
   os << "static_condensation " << static_condensation << '\n';
-  os << "partial_assembly " << static_condensation << '\n';
 
   os << "\n[STATE]\n";
   os << "verbose " << verbose << '\n';
@@ -294,8 +289,6 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
   args.AddOption(&inp.static_condensation, "-sc", "--static-condensation",
                  "-no-sc", "--no-static-condensation",
                  "Enable static condensation.");
-  args.AddOption(&inp.partial_assembly, "-pa", "--partial-assembly", "-no-pa",
-                 "--no-partial-assembly", "Enable Partial Assembly.");
   // STATE
   args.AddOption(&inp.verbose, "-v", "--verbose", "-no-v", "--no-verbose",
                  "Verbose solver output of inner and outer solvers");

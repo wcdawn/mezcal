@@ -26,8 +26,6 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   // assemble A (LHS) matrix
   //////////////////////////////////////////////////////////////////////////////
   auto a{new ParBilinearForm(fespace)};
-  if (inp.partial_assembly)
-    a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
 
   // assemble leakage coefficient
   Vector leakage(pmesh->attributes.Max()); // length is number of materials
@@ -56,8 +54,6 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   // assemble M (RHS) matrix
   //////////////////////////////////////////////////////////////////////////////
   auto m{new ParBilinearForm(fespace)};
-  if (inp.partial_assembly)
-    m->SetAssemblyLevel(AssemblyLevel::PARTIAL);
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
@@ -136,7 +132,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   for (int g{0}; g < xs.ngroup(); ++g)
   {
     a[g] = new ParBilinearForm(fespace);
-    if (inp.partial_assembly) a[g]->SetAssemblyLevel(AssemblyLevel::PARTIAL);
 
     Vector leakage(pmesh->attributes.Max());
     for (int i{0}; i < leakage.Size(); ++i)
@@ -344,8 +339,6 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
                            ParFiniteElementSpace* const fespace)
 {
   auto a{new ParBilinearForm(fespace)};
-  if (inp.partial_assembly)
-    a->SetAssemblyLevel(AssemblyLevel::PARTIAL);
 
   Vector leakage(pmesh->attributes.Max());
   for (int i{0}; i < leakage.Size(); ++i)
