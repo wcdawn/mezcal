@@ -20,6 +20,15 @@ double FissionCoefficient::Eval(ElementTransformation& T,
 
   sum /= keff;
 
-  // TODO this is a hack of chi for two group problems
-  return (g == 0) ? sum : 0.0;
+  return get_chi(T, ip) * sum;
+}
+
+// TODO do not currently support multiple isotopes at a single position
+double FissionCoefficient::get_chi(const ElementTransformation& T,
+                                   const IntegrationPoint& ip) const
+{
+  const int attribute{T.Attribute - 1};
+  const int element_id{T.ElementNo};
+  const XSRecord& record{xs.rec[attribute]};
+  return record.chi[g];
 }

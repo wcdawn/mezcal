@@ -106,7 +106,7 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
 
   Result res{fespace, xs.ngroup()};
 
-  constexpr int g{0}; // TODO single energy group
+  constexpr int g{0};
 
   // store solution
   Array<double> eigenvalues;

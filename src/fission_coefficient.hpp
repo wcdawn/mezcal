@@ -32,6 +32,10 @@ class FissionCoefficient : public mfem::Coefficient
 
     // Store a reference to the flux vector.
     const std::vector<mfem::ParGridFunction>& phi;
+
+    // Routine to calculate chi on-the-fly using th flux profile.
+    double get_chi(const mfem::ElementTransformation& T, 
+                   const mfem::IntegrationPoint& ip) const;
 };
 
 #endif
