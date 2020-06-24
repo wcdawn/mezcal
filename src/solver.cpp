@@ -258,8 +258,6 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     {
       // assemble source for this group
       b[g]->Assemble();
-      cout << "group=" << g << endl;
-      b[g]->Print();
 
       // necessary to enforce zero-flux boundary conditions
       if (iter == 0) res.phi[g] = 0.0;
