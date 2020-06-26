@@ -270,6 +270,11 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
       // determine the convergence of this energy group and store the maximum
       // value over all energy groups
       phi_old -= res.phi[g];
+
+      // need to sync memory for gpu problems
+      auto sync{phi_old.GetMemory()};
+      sync.Read(MemoryClass::HOST, phi_old.Size());
+      
       local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
     }
 
