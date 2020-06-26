@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
   auto fespace = new ParFiniteElementSpace(pmesh, fec);
   const HYPRE_Int size{fespace->GlobalTrueVSize()};
   if (myid == 0)
-    cout << "Number of finite element unknowns: " << size << endl;
+    cout << "Number of finite element unknowns: " << size * xs.ngroup() << endl;
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
   //    In this example, the boundary conditions are defined by marking all

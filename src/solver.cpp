@@ -255,6 +255,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
       b[g]->Assemble();
 
       // necessary to enforce zero-flux boundary conditions
+      // TODO look into ProjectBdr... (example in ex15.cpp)
       if (iter == 0) res.phi[g] = 0.0;
 
       // store the old flux value for this group
@@ -269,7 +270,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
       // determine the convergence of this energy group and store the maximum
       // value over all energy groups
       phi_old -= res.phi[g];
-      local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf());
+      local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
     }
 
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);

@@ -67,8 +67,11 @@ void XSLibrary::read_userxs(const std::string& fname)
   while (ifs >> card)
   {
     if (card[0] == comment_char)
-      continue;
-    if (card == "ngroup")
+    {
+      // eat until newline
+      for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
+    }
+    else if (card == "ngroup")
     {
       ifs >> G;
       if (N > 0)
