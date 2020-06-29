@@ -272,8 +272,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
       phi_old -= res.phi[g];
 
       // need to sync memory for gpu problems
-      auto sync{phi_old.GetMemory()};
-      sync.Read(MemoryClass::HOST, phi_old.Size());
+      phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
       
       local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
     }
