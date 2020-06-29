@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include<regex>
+
 struct Tolerance_control
 {
   int max_outer{100};
@@ -38,7 +40,7 @@ public:
   class Invalid_input_card : std::exception
   {
   public:
-    Invalid_input_card(std::string str) { msg = "Invalid input card: " + str; }
+    Invalid_input_card(std::string str) : msg {"Invalid input card: " + str} {}
     const char* what() const noexcept override { return msg.c_str(); }
 
   private:
@@ -113,7 +115,8 @@ private:
   std::string stub;
   std::string path_stub(std::string path);
 
-  static void reset_state(std::ifstream& ifs);
+  static const std::regex block_head_regex_format;
+  static void reset_block(std::ifstream& ifs, const std::string& block_head);
   static bool read_bool(std::ifstream& ifs);
   static void read_vector(std::ifstream& ifs, mfem::Array<int>& vec);
 

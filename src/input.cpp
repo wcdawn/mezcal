@@ -1,11 +1,11 @@
 #include "input.hpp"
 
-#include <cstring>
-using std::strcpy;
-using std::strlen;
-
 #include <iostream>
 using std::cerr;
+
+using std::smatch;
+using std::regex;
+using std::regex_match;
 
 using std::ifstream;
 using std::ostream;
@@ -13,6 +13,8 @@ using std::string;
 using std::vector;
 
 using namespace mfem;
+
+const std::regex Input::block_head_regex_format{R"(\[[A-Z]+\])"};
 
 Input::Input(std::string fname) : input_file_str{fname}
 {
@@ -35,6 +37,7 @@ void Input::open()
 void Input::read_core()
 {
   string card;
+  smatch matches; // regex matches
 
   ifs >> card;
   if (card != "[CORE]")
@@ -47,9 +50,9 @@ void Input::read_core()
       // eat until newline
       for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
     }
-    else if (card == "[STATE]")
+    else if (regex_match(card, matches, block_head_regex_format))
     {
-      reset_state(ifs);
+      reset_block(ifs, matches[0]);
       return;
     }
     else if (card == "mesh_file")
@@ -107,6 +110,7 @@ void Input::read_core()
 void Input::read_state()
 {
   string card;
+  smatch matches; // regex matches
 
   ifs >> card;
   if (card != "[STATE]")
@@ -119,9 +123,9 @@ void Input::read_state()
       // eat until newline
       for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
     }
-    else if (card == "[STATE]")
+    else if (regex_match(card, matches, block_head_regex_format))
     {
-      reset_state(ifs);
+      reset_block(ifs, matches[0]);
       return;
     }
     else if (card == "max_outer")
@@ -223,9 +227,9 @@ string Input::path_stub(string path)
   return stub;
 }
 
-void Input::reset_state(ifstream& ifs)
+void Input::reset_block(ifstream& ifs, const string& block_head)
 {
-  for (size_t i{0}; i < strlen("[STATE]"); ++i) ifs.unget();
+  for (size_t i{0}; i < block_head.size(); ++i) ifs.unget();
 }
 
 bool Input::read_bool(ifstream& ifs)

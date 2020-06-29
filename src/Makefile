@@ -35,6 +35,7 @@ CPP_FILES = main.cpp \
 			analytic.cpp \
 			fission_coefficient.cpp \
 			input.cpp \
+			material_library.cpp \
 			scattering_coefficient.cpp \
 			solver.cpp \
 			xslibrary.cpp
@@ -42,6 +43,7 @@ CPP_FILES = main.cpp \
 HPP_FILES = analytic.hpp \
 			fission_coefficient.hpp \
 			input.hpp \
+			material_library.hpp \
 			scattering_coefficient.hpp \
 			solver.hpp \
 			xslibrary.hpp
@@ -98,7 +100,8 @@ format : $(CPP_FILES) $(HPP_FILES)
 main.o : analytic.o input.o solver.o xslibrary.o solver.o $(MFEM_HEADER) result.hpp
 analytic.o : xslibrary.o $(MFEM_HEADER) analytic.hpp result.hpp
 xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
-input.o : analytic.o input.hpp $(MFEM_HEADER)
+input.o : analytic.o $(MFEM_HEADER) input.hpp 
+material_library.o : xslibrary.o material_library.hpp
 solver.o : input.o xslibrary.o $(MFEM_HEADER) solver.hpp result.hpp
 scattering_coefficient.o : xslibrary.o $(MFEM_HEADER) scattering_coefficient.hpp
 fission_coefficient.o : xslibrary.o $(MFEM_HEADER) fission_coefficient.hpp
