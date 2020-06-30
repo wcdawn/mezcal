@@ -4,8 +4,6 @@ mesh_file inf_homog.msh
 xs_file pert_analytic_chi.xs
 boundary_conditions 0 0 0 0
 
-#reference analytic_chi
-
 [MATERIAL]
 name m1 
 U235_7 0.05

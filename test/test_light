@@ -270,5 +270,23 @@ class Test_light(unittest.TestCase):
         ratio_calc_ref = 0.26132419009225332784
         self.assert_absolute_equal(ratio_calc, ratio_calc_ref, tol=self.err_tol)
 
+    def test_analytic_chi(self):
+        input_file = os.path.join(self.dirname,
+            "../analytic/chi_collapse/analytic_chi.inp");
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 1.02289806655878 # from INL/EXT-19-549998
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+    def test_pert_analytic_chi(self):
+        input_file = os.path.join(self.dirname,
+            "../analytic/chi_collapse/pert_analytic_chi.inp");
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.92927395196420 # from INL/EXT-19-549998
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
 if (__name__ == "__main__"):
     unittest.main()
