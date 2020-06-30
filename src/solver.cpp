@@ -257,7 +257,6 @@ Result diffusion_power_iteration(const Input& inp,
       b[g]->Assemble();
 
       // necessary to enforce zero-flux boundary conditions
-      // TODO look into ProjectBdr... (example in ex15.cpp)
       if (iter == 0) res.phi[g] = 0.0;
 
       // store the old flux value for this group

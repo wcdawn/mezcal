@@ -1,0 +1,20 @@
+[CORE]
+
+mesh_file inf_homog.msh
+xs_file pert_analytic_chi.xs
+boundary_conditions 0 0 0 0
+
+#reference analytic_chi
+
+[MATERIAL]
+name m1 
+U235_7 0.05
+AM2417P 0.15
+U238_7 0.80
+
+[STATE]
+solver power_iteration
+k_tol 1e-14
+phi_tol 1e-13
+inner_abs_tol 1e-15
+inner_rel_tol 1e-15

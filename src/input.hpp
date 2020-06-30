@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-#include<regex>
-
 struct Tolerance_control
 {
   int max_outer{100};
@@ -118,7 +116,6 @@ private:
   std::string stub;
   std::string path_stub(std::string path);
 
-  static const std::regex block_head_regex_format;
   static void reset_block(std::ifstream& ifs, const std::string& block_head);
   static bool read_bool(std::ifstream& ifs);
   static void read_vector(std::ifstream& ifs, mfem::Array<int>& vec);

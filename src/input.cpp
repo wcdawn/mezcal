@@ -3,18 +3,12 @@
 #include <iostream>
 using std::cerr;
 
-using std::smatch;
-using std::regex;
-using std::regex_match;
-
 using std::ifstream;
 using std::ostream;
 using std::string;
 using std::vector;
 
 using namespace mfem;
-
-const std::regex Input::block_head_regex_format{R"(\[[A-Z]+\])"};
 
 Input::Input(std::string fname) : input_file_str{fname}
 {
@@ -37,7 +31,6 @@ void Input::open()
 void Input::read_core()
 {
   string card;
-  smatch matches; // regex matches
 
   ifs >> card;
   if (card != "[CORE]")
@@ -93,18 +86,16 @@ void Input::read_core()
     {
       static_condensation = read_bool(ifs);
     }
-    else if (card == "flux_free_chi")
-    {
-      flux_free_chi = read_bool(ifs);
-    }
     else if (card == "verbose")
     {
       verbose = read_bool(ifs);
     }
-    else if (regex_match(card, matches, block_head_regex_format))
+    else if (card == "[MATERIAL]")
     {
-      reset_block(ifs, matches[0]);
-      return;
+      // expecting to lead into [MATERIAL] block
+      // cannot lead directly into [STATE] block
+      reset_block(ifs, "[MATERIAL]");
+      break;
     }
     else
     {
@@ -118,7 +109,6 @@ void Input::read_core()
 void Input::read_state()
 {
   string card;
-  smatch matches; // regex matches
 
   ifs >> card;
   if (card != "[STATE]")
@@ -161,10 +151,15 @@ void Input::read_state()
       sol    = solver_choice_str_to_enum(solver_str);
       solver = solver_str.c_str();
     }
-    else if (regex_match(card, matches, block_head_regex_format))
+    else if (card == "flux_free_chi")
     {
-      reset_block(ifs, matches[0]);
-      return;
+      flux_free_chi = read_bool(ifs);
+    }
+    else if (card == "[STATE]")
+    {
+      // prepare to head into another state block
+      reset_block(ifs, "[STATE]");
+      break;
     }
     else
     {

@@ -7,7 +7,6 @@
 #include <vector>
 #include <string>
 #include <iostream>
-#include <regex>
 
 struct Material_isotope
 {
@@ -72,14 +71,12 @@ class Material_library
 
     int ngroup() const { return G; }
 
-    // TODO should probably be private? maybe?
     std::vector<Material_record> mat;
   private:
     const XSLibrary& xs; // associated microscopic cross section library
     const int G; // set in constructor
     int nMat{0};
 
-    static const std::regex block_head_regex_format;
     static void reset_block(std::ifstream& ifs, const std::string& block_head);
     static constexpr char comment_char{'#'};
 };

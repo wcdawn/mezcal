@@ -7,16 +7,10 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
-using std::regex;
-using std::smatch;
-using std::regex_match;
-
 using std::ifstream;
 using std::string;
 
 using std::vector;
-
-const regex Material_library::block_head_regex_format{R"(\[[A-Z]+\])"};
 
 Material_library::Material_library(const XSLibrary& xslib)
   : xs{xslib}, G{xs.ngroup()}
@@ -26,7 +20,6 @@ Material_library::Material_library(const XSLibrary& xslib)
 void Material_library::read_material(ifstream& ifs)
 {
   string card;
-  smatch matches; // regex matches
 
   int mat_count{-1};
   
@@ -68,9 +61,11 @@ void Material_library::read_material(ifstream& ifs)
       mat[mat_count].iso.push_back(
         Material_isotope{card, nden, iso_idx, xs.rec[iso_idx]});
     }
-    else if (regex_match(card, matches, block_head_regex_format))
+    else if (card == "[STATE]")
     {
-      reset_block(ifs, matches[0]);
+      // expecting to lead directly into the first [STATE] block
+      // cannot lead into any other block
+      reset_block(ifs, "[STATE]");
       break;
     }
     else
