@@ -35,17 +35,18 @@ struct Material_record
 
   // calculate for all groups
   // phi_g is the flux spectra at a given position
-  std::vector<double> calculate_chi(const std::vector<double>& phi_g);
+  std::vector<double> calculate_chi(const std::vector<double>& phi_g) const;
   // alternatively, calculate chi weighting with only nusf
-  std::vector<double> flux_free_chi();
+  std::vector<double> flux_free_chi() const;
 
   // calculate for a single group
-  // these are less efficient but will be necessary to properly evaluate chi for
-  // a given flux spectra
+  // These are less efficient but will be necessary to properly evaluate chi for
+  // a given flux spectra. The main efficiency penalty will be a bigger problem
+  // for many-group problems.
   // phi_g is the flux spectra at a given position
-  double calculate_chi(const std::vector<double>& phi_g, int g);
+  double calculate_chi(const std::vector<double>& phi_g, int g) const;
   // alternatively, calculate chi weighting with only nusf
-  double flux_free_chi(int g);
+  double flux_free_chi(int g) const;
 
   // calculate macroscopic xs based on user-input number densities and
   // microscopic xs from XSLibrary

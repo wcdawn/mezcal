@@ -11,8 +11,10 @@ class FissionCoefficient : public mfem::Coefficient
   public:
     FissionCoefficient(int group, const double& init_keff, 
                        const Material_library& mat_lib_lib,
-                       const std::vector<mfem::ParGridFunction>& flux)
-      : g{group}, keff{init_keff}, mat_lib{mat_lib_lib}, phi{flux} {}
+                       const std::vector<mfem::ParGridFunction>& flux, 
+                       bool flux_free_chi_choice=false)
+      : g{group}, keff{init_keff}, mat_lib{mat_lib_lib}, phi{flux},
+    flux_free_chi{flux_free_chi_choice} {}
 
     // void SetGroup(int gnew) { g = gnew; }
 
@@ -33,6 +35,12 @@ class FissionCoefficient : public mfem::Coefficient
 
     // Store a reference to the flux vector.
     const std::vector<mfem::ParGridFunction>& phi;
+
+    // option for whether to recalculate chi using flux
+    // true = do not recalculate chi
+    // false = recalculate chi using the local fluxes
+    // default to false
+    bool flux_free_chi;
 
     // Routine to calculate chi on-the-fly using th flux profile.
     double get_chi(const mfem::ElementTransformation& T, 

@@ -23,12 +23,19 @@ double FissionCoefficient::Eval(ElementTransformation& T,
   return get_chi(T, ip) * sum;
 }
 
-// TODO do not currently support multiple isotopes at a single position
 double FissionCoefficient::get_chi(const ElementTransformation& T,
                                    const IntegrationPoint& ip) const
 {
   const int attribute{T.Attribute - 1};
   const int element_id{T.ElementNo};
-  const XSRecord& record{mat_lib.mat[attribute].rec};
-  return record.chi[g];
+
+  // use precalculated value
+  if (flux_free_chi) return mat_lib.mat[attribute].rec.chi[g];
+
+  // collect flux spectrum
+  vector<double> spectrum(mat_lib.ngroup());
+  for (size_t gprime{0}; gprime < phi.size(); ++gprime)
+    spectrum[gprime] = phi[gprime].GetValue(element_id, ip);
+
+  return mat_lib.mat[attribute].calculate_chi(spectrum, g);
 }

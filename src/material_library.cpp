@@ -110,10 +110,9 @@ void Material_record::calculate_macroscopic_xs()
     rec.chi = flux_free_chi(); // initialize chi with the flux_free_chi formula
   }
   rec.sigma_s = scat;
-  rec.sigma_s.Print();
 }
 
-vector<double> Material_record::flux_free_chi()
+vector<double> Material_record::flux_free_chi() const
 {
   vector<double> numerator(ngroup());
   double denominator{0.0};
@@ -131,7 +130,7 @@ vector<double> Material_record::flux_free_chi()
   return numerator;
 }
 
-double Material_record::flux_free_chi(int g)
+double Material_record::flux_free_chi(int g) const
 {
   double numerator{0.0};
   double denominator{0.0};
@@ -146,7 +145,7 @@ double Material_record::flux_free_chi(int g)
   return numerator / denominator;
 }
 
-vector<double> Material_record::calculate_chi(const vector<double>& phi_g)
+vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
 {
   vector<double> numerator(ngroup());
   double denominator{0.0};
@@ -164,7 +163,7 @@ vector<double> Material_record::calculate_chi(const vector<double>& phi_g)
   return numerator;
 }
 
-double Material_record::calculate_chi(const vector<double>& phi_g, int g)
+double Material_record::calculate_chi(const vector<double>& phi_g, int g) const
 {
   double numerator{0.0};
   double denominator{0.0};
