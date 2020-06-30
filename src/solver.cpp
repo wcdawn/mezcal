@@ -228,7 +228,8 @@ Result diffusion_power_iteration(const Input& inp,
   vector<FissionCoefficient> fiss_term;
   fiss_term.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    fiss_term.push_back(FissionCoefficient{g, res.keff, mat_lib, res.phi});
+    fiss_term.push_back(
+      FissionCoefficient{g, res.keff, mat_lib, res.phi, inp.flux_free_chi});
 
   vector<ScatteringCoefficient> scat_term;
   scat_term.reserve(mat_lib.ngroup());

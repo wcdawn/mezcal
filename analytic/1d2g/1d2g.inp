@@ -6,6 +6,9 @@ boundary_conditions 0 1 0 1
 
 reference oned_twog
 
+[MATERIAL]
+name m1 MAT1 1.0
+
 [STATE]
 # default options
 solver power_iteration

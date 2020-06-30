@@ -58,7 +58,6 @@ int main(int argc, char* argv[])
   {
     inp.open();
     inp.read_core();
-    inp.read_state();
   }
 
   // parse command-line options using MFEM
@@ -81,21 +80,12 @@ int main(int argc, char* argv[])
   if ((myid == 0) && (inp.verbose))
     args.PrintOptions(cout);
 
-  // input is finalized, you can read cross sections
+  // core block is finished, you can read cross sections from file
   xs.read_userxs(inp.xs_file);
 
-  // TODO this is for testing the materials reader
-  ifstream ifs{inp.input_file};
-  for (string str; ifs >> str; )
-  {
-    if (str == "[MATERIAL]")
-    {
-      for (size_t i{0}; i < strlen("[MATERIAL]"); ++i) ifs.unget();
-      break;
-    }
-  }
+  // core block is finished, you can read the material block
   Material_library mat_lib{xs};
-  mat_lib.read_material(ifs);
+  mat_lib.read_material(inp.ifs);
 
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
@@ -148,7 +138,6 @@ int main(int argc, char* argv[])
   // begin by setting all bcs to essential
   ess_bdr = 1;
 
-  // boundary conditions are baked into the matrix
   // go through and set boundary conditions based on user input
   for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size());
        ++i)
@@ -156,6 +145,9 @@ int main(int argc, char* argv[])
 
   // do the solving
   Result res{fespace, xs.ngroup()};
+  // TODO loop over states
+  inp.read_state();
+
   if (inp.ref == Analytic::fixed_src)
   {
     res = diffusion_fixed_src(inp, mat_lib, ess_bdr, pmesh, fespace);

@@ -48,6 +48,8 @@ void Material_library::read_material(ifstream& ifs)
       continue;
     }
 
+
+
     // determine if the card is an isotope name
     int iso_idx{0};
     for (iso_idx = 0; iso_idx < xs.niso(); ++iso_idx)
@@ -56,7 +58,7 @@ void Material_library::read_material(ifstream& ifs)
     if (card[0] == comment_char)
     {
       // eat until newline
-      for (char c{0}; (ifs.get(c)) && (c != '\n'); ) continue;
+      for (char c{0}; (ifs.get(c)) && (c != '\n'); );
     }
     else if (iso_idx < xs.niso())
     {
@@ -69,6 +71,7 @@ void Material_library::read_material(ifstream& ifs)
     else if (regex_match(card, matches, block_head_regex_format))
     {
       reset_block(ifs, matches[0]);
+      break;
     }
     else
     {

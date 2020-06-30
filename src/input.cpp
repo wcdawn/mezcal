@@ -93,6 +93,14 @@ void Input::read_core()
     {
       static_condensation = read_bool(ifs);
     }
+    else if (card == "flux_free_chi")
+    {
+      flux_free_chi = read_bool(ifs);
+    }
+    else if (card == "verbose")
+    {
+      verbose = read_bool(ifs);
+    }
     else if (regex_match(card, matches, block_head_regex_format))
     {
       reset_block(ifs, matches[0]);
@@ -146,10 +154,6 @@ void Input::read_state()
     else if (card == "inner_abs_tol")
     {
       ifs >> tol.inner_abs;
-    }
-    else if (card == "verbose")
-    {
-      verbose = read_bool(ifs);
     }
     else if (card == "solver")
     {
@@ -213,6 +217,8 @@ void Input::echo(ostream& os) const
   os << "max_outer " << tol.max_outer << '\n';
   os << "k_tol " << tol.k << '\n';
   os << "phi_tol " << tol.phi << '\n';
+  os << "solver " << solver_choice_enum_to_str(sol) << '\n';
+  os << "flux_free_chi " << flux_free_chi << '\n';
 }
 
 string Input::path_stub(string path)
@@ -293,21 +299,12 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
   args.AddOption(&inp.static_condensation, "-sc", "--static-condensation",
                  "-no-sc", "--no-static-condensation",
                  "Enable static condensation.");
-  // STATE
   args.AddOption(&inp.verbose, "-v", "--verbose", "-no-v", "--no-verbose",
-                 "Verbose solver output of inner and outer solvers");
-  args.AddOption(&inp.tol.max_outer, "-mo", "--max-outer",
-                 "Maximum number of outer iterations.");
-  args.AddOption(&inp.tol.k, "-kt", "--k-tol", "keff tolerance.");
-  args.AddOption(&inp.tol.phi, "-phit", "--phi-tol", "Scalar flux tolerance.");
-  args.AddOption(&inp.tol.max_inner, "-mi", "--max-inner",
-                 "Maximum number of inner iterations.");
-  args.AddOption(&inp.tol.inner_rel, "-irt", "--inner-rel-tol",
-                 "Inner solver relative tolerance.");
-  args.AddOption(&inp.tol.inner_abs, "-iat", "--inner-abs-tol",
-                 "Inner solver absolute tolerance.");
-  args.AddOption(&inp.solver, "-s", "--solver",
-                 "Solver method. Either 'power_iteration' or 'lobpcg'.");
+                "Enable verbose output.");
+
+  // Note: STATE variables cannot be input from the command line as they will be
+  // overwritten by reading the STATE block in the input file at for the first
+  // state.
 
   return args;
 }

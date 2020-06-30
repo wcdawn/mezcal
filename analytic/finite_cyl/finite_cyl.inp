@@ -6,5 +6,8 @@ xs_file finite_cyl.xs
 
 reference finite_cyl
 
+[MATERIAL]
+name m1 MAT1 1.0
+
 [STATE]
 # default options

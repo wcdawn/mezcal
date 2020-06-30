@@ -6,5 +6,8 @@ xs_file 3d1g.xs
 
 reference threed_oneg
 
+[MATERIAL]
+name m1 MAT1 1.0
+
 [STATE]
 # default options

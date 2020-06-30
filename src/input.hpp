@@ -80,14 +80,15 @@ public:
   const char* reference{"invalid"};
   const char* device{"cpu"};
   bool static_condensation{false};
+  bool verbose{false};
 
   // actual enum value
   Analytic::Reference ref{Analytic::invalid};
 
   // STATE
-  bool verbose{false};
   Tolerance_control tol;
   const char* solver{"lobpcg"};
+  bool flux_free_chi{false};
 
   enum Solver_choice
   {
@@ -96,11 +97,13 @@ public:
     lobpcg
   };
 
+  // actual enum value
   Solver_choice sol{lobpcg};
 
+  // this is public so that other blocks (e.g. MATERIAL) can be read
+  std::ifstream ifs;
 private:
   static constexpr char comment_char{'#'};
-  std::ifstream ifs;
 
   // strings corresponding to const char*
   // [CORE]
