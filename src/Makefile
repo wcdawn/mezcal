@@ -71,7 +71,7 @@ $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) || $(RM) $(EXEC)
 
 %.o : %.cpp
-	$(MPICXX) $(MPICXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $< || $(RM) $(EXEC)
+	$(MPICXX) $(MPICXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
 version.hpp : 
 	@echo "#ifndef VERSION" > version.hpp
@@ -97,11 +97,11 @@ format : $(CPP_FILES) $(HPP_FILES)
 
 # Listing Order:
 # <object file> : <dependent object file> ... <dependent object file> $(MFEM_HEADER) <my header> <other headers>
-main.o : analytic.o input.o solver.o xslibrary.o solver.o $(MFEM_HEADER) result.hpp
+main.o : analytic.o input.o material_library.o solver.o xslibrary.o solver.o $(MFEM_HEADER) result.hpp
 analytic.o : xslibrary.o $(MFEM_HEADER) analytic.hpp result.hpp
 xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : analytic.o $(MFEM_HEADER) input.hpp 
-material_library.o : xslibrary.o material_library.hpp
-solver.o : input.o xslibrary.o $(MFEM_HEADER) solver.hpp result.hpp
-scattering_coefficient.o : xslibrary.o $(MFEM_HEADER) scattering_coefficient.hpp
-fission_coefficient.o : xslibrary.o $(MFEM_HEADER) fission_coefficient.hpp
+material_library.o : xslibrary.o $(MFEM_HEADER) material_library.hpp
+solver.o : input.o fission_coefficient.o material_library.o scattering_coefficient.o xslibrary.o $(MFEM_HEADER) solver.hpp result.hpp
+scattering_coefficient.o : material_library.o xslibrary.o $(MFEM_HEADER) scattering_coefficient.hpp
+fission_coefficient.o : material_library.o xslibrary.o $(MFEM_HEADER) fission_coefficient.hpp

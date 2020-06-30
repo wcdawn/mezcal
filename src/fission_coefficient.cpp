@@ -10,12 +10,12 @@ double FissionCoefficient::Eval(ElementTransformation& T,
   const int attribute{T.Attribute - 1};
   const int element_id{T.ElementNo};
 
-  const XSRecord& record{xs.rec[attribute]};
+  const XSRecord& record{mat_lib.mat[attribute].rec};
   const vector<double>& nusf{record.nusf};
 
   double sum{0.0};
 
-  for (int gprime{0}; gprime < xs.ngroup(); ++gprime)
+  for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     sum += nusf[gprime] * phi[gprime].GetValue(element_id, ip);
 
   sum /= keff;
@@ -29,6 +29,6 @@ double FissionCoefficient::get_chi(const ElementTransformation& T,
 {
   const int attribute{T.Attribute - 1};
   const int element_id{T.ElementNo};
-  const XSRecord& record{xs.rec[attribute]};
+  const XSRecord& record{mat_lib.mat[attribute].rec};
   return record.chi[g];
 }

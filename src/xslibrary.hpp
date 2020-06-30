@@ -11,16 +11,10 @@
 struct XSRecord
 {
   XSRecord() {}
-  XSRecord(int ngroup) : G{ngroup}
-  {
-    sigma_tr.resize(G);
-    sigma_t.resize(G);
-    sigma_r.resize(G);
-    nusf.resize(G);
-    chi.resize(G);
-    source.resize(G);
-    is_upscatter.resize(G);
-  }
+  XSRecord(int ngroup) { set_ngroup(ngroup); }
+
+  void set_ngroup(int ngroup);
+  int ngroup() const { return G; };
 
   void calculate_removal_xs();
   void self_scatter_rebalance();
@@ -28,7 +22,7 @@ struct XSRecord
 
   std::string name;
   int zaid{0};
-  double nden{1.0};
+  double nden{0.0};
   bool is_fiss{false};
 
   int G{0};
@@ -54,7 +48,6 @@ public:
   void read_userxs(const std::string& fname);
   void read_userxs(const char* fname);
   void Print(std::ostream& os);
-  void flux_free_chi();
 
   class Invalid_input_card : std::exception
   {
@@ -77,7 +70,6 @@ public:
   };
 
   std::vector<XSRecord> rec;
-  std::vector<double> chi;
 
 private:
   int G{0}; // number of energy groups

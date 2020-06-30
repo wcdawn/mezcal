@@ -17,7 +17,7 @@ using std::cout;
 using std::endl;
 using std::flush;
 
-Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
+Result diffusion_lobpcg(const Input& inp, const Material_library& mat_lib,
                         const Array<int>& ess_bdr, const ParMesh* const pmesh,
                         ParFiniteElementSpace* const fespace)
 {
@@ -30,12 +30,12 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   // assemble leakage coefficient
   Vector leakage(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[0]);
+    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[0]);
   PWConstCoefficient leakage_func(leakage);
 
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < removal.Size(); ++i) removal[i] = xs.rec[i].sigma_r[0];
+  for (int i{0}; i < removal.Size(); ++i) removal[i] = mat_lib.mat[i].rec.sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -57,7 +57,7 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < removal.Size(); ++i) fission[i] = xs.rec[i].nusf[0];
+  for (int i{0}; i < removal.Size(); ++i) fission[i] = mat_lib.mat[i].rec.nusf[0];
   PWConstCoefficient fission_func(fission);
 
   m->AddDomainIntegrator(new MassIntegrator(fission_func));
@@ -100,7 +100,7 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   delete A;
   delete M;
 
-  Result res{fespace, xs.ngroup()};
+  Result res{fespace, mat_lib.ngroup()};
 
   constexpr int g{0};
 
@@ -117,7 +117,8 @@ Result diffusion_lobpcg(const Input& inp, const XSLibrary& xs,
   return res;
 }
 
-Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
+Result diffusion_power_iteration(const Input& inp, 
+                                 const Material_library& mat_lib,
                                  const Array<int>& ess_bdr,
                                  const ParMesh* const pmesh,
                                  ParFiniteElementSpace* const fespace)
@@ -128,19 +129,19 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
   // build streaming and removal operator (LHS) for each energy group
-  vector<ParBilinearForm*> a(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
+  vector<ParBilinearForm*> a(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     a[g] = new ParBilinearForm(fespace);
 
     Vector leakage(pmesh->attributes.Max());
     for (int i{0}; i < leakage.Size(); ++i)
-      leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[g]);
+      leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
     PWConstCoefficient leakage_func{leakage};
 
     Vector removal(pmesh->attributes.Max());
     for (int i{0}; i < removal.Size(); ++i)
-      removal[i] = xs.rec[i].sigma_r[g];
+      removal[i] = mat_lib.mat[i].rec.sigma_r[g];
     PWConstCoefficient removal_func{removal};
 
     a[g]->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -152,12 +153,12 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   }
 
   // create a coefficientfor the nu*fission cross section in each energy group
-  vector<PWConstCoefficient> nusf_coeff(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
+  vector<PWConstCoefficient> nusf_coeff(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     Vector fission(pmesh->attributes.Max()); // length is number of materials
     for (int i{0}; i < fission.Size(); ++i)
-      fission[i] = xs.rec[i].nusf[g];
+      fission[i] = mat_lib.mat[i].rec.nusf[g];
     nusf_coeff[g].UpdateConstants(fission);
   }
 
@@ -167,26 +168,26 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   phi_old = 1.0;
 
   // prepare solution that will be returned
-  Result res{fespace, xs.ngroup()};
+  Result res{fespace, mat_lib.ngroup()};
   for (auto& flux : res.phi)
     flux = 1.0;
 
   // set the grid function coefficient for each energy group flux
-  vector<GridFunctionCoefficient> phi_coeff(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
+  vector<GridFunctionCoefficient> phi_coeff(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
     phi_coeff[g].SetGridFunction(&res.phi[g]);
 
   // note that this one does not have a default constructor so we have to do
   // this a bit differently
   vector<ProductCoefficient> fiss_product_coeff;
-  fiss_product_coeff.reserve(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
+  fiss_product_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
     fiss_product_coeff.push_back(
       ProductCoefficient{nusf_coeff[g], phi_coeff[g]});
 
   // build "outline" of fission source integrator for each energy group
-  vector<ParLinearForm*> fiss(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); g++)
+  vector<ParLinearForm*> fiss(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); g++)
   {
     fiss[g] = new ParLinearForm(fespace);
     fiss[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_product_coeff[g]));
@@ -225,17 +226,17 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   double phi_conv{inp.tol.phi * 1e1 + 1e-5};
 
   vector<FissionCoefficient> fiss_term;
-  fiss_term.reserve(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
-    fiss_term.push_back(FissionCoefficient{g, res.keff, xs, res.phi});
+  fiss_term.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    fiss_term.push_back(FissionCoefficient{g, res.keff, mat_lib, res.phi});
 
   vector<ScatteringCoefficient> scat_term;
-  scat_term.reserve(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
-    scat_term.push_back(ScatteringCoefficient{g, xs, res.phi});
+  scat_term.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scat_term.push_back(ScatteringCoefficient{g, mat_lib, res.phi});
 
-  vector<ParLinearForm*> b(xs.ngroup());
-  for (int g{0}; g < xs.ngroup(); ++g)
+  vector<ParLinearForm*> b(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     b[g] = new ParLinearForm(fespace);
     b[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
@@ -249,7 +250,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     // Solve this fixed source problem for each energy group.
     // Note that FormLinearSystem is designed to be called multiple times.
     double local_phi_conv{0.0};
-    for (int g{0}; g < xs.ngroup(); ++g)
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       // assemble source for this group
       b[g]->Assemble();
@@ -290,7 +291,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
     else
     {
       double local_fiss_sum{0.0};
-      for (int g{0}; g < xs.ngroup(); ++g)
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
         fiss[g]->Assemble();
         local_fiss_sum += fiss[g]->Sum();
@@ -318,7 +319,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   delete prec;
 
   // TODO consider creating a special class to adhere better to RAII
-  for (int g{0}; g < xs.ngroup(); ++g)
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     delete a[g];
     delete b[g];
@@ -338,7 +339,7 @@ Result diffusion_power_iteration(const Input& inp, const XSLibrary& xs,
   return res;
 }
 
-Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
+Result diffusion_fixed_src(const Input& inp, const Material_library& mat_lib,
                            const Array<int>& ess_bdr,
                            const ParMesh* const pmesh,
                            ParFiniteElementSpace* const fespace)
@@ -347,11 +348,11 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
 
   Vector leakage(pmesh->attributes.Max());
   for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * xs.rec[i].sigma_tr[0]);
+    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[0]);
   PWConstCoefficient leakage_func(leakage);
 
   Vector removal(pmesh->attributes.Max());
-  for (int i{0}; i < removal.Size(); ++i) removal[i] = xs.rec[i].sigma_r[0];
+  for (int i{0}; i < removal.Size(); ++i) removal[i] = mat_lib.mat[i].rec.sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -365,7 +366,7 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   auto b{new ParLinearForm(fespace)};
 
   Vector source(pmesh->attributes.Max());
-  for (int i{0}; i < source.Size(); ++i) source[i] = xs.rec[i].source[0];
+  for (int i{0}; i < source.Size(); ++i) source[i] = mat_lib.mat[i].rec.source[0];
   PWConstCoefficient source_func{source};
 
   b->AddDomainIntegrator(new DomainLFIntegrator(source_func));
@@ -379,9 +380,9 @@ Result diffusion_fixed_src(const Input& inp, const XSLibrary& xs,
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  Result res{fespace, xs.ngroup()};
+  Result res{fespace, mat_lib.ngroup()};
 
-  // TODO we must require that the fixed source problem has a single energy group
+  // ASSUMPTION we require that the fixed source problem has a single energy group
   a->FormLinearSystem(ess_tdof_list, res.phi[0], *b, A, X, B);
 
   Solver* prec{nullptr};

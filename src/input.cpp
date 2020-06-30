@@ -50,11 +50,6 @@ void Input::read_core()
       // eat until newline
       for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
     }
-    else if (regex_match(card, matches, block_head_regex_format))
-    {
-      reset_block(ifs, matches[0]);
-      return;
-    }
     else if (card == "mesh_file")
     {
       ifs >> mesh_file_str;
@@ -98,6 +93,11 @@ void Input::read_core()
     {
       static_condensation = read_bool(ifs);
     }
+    else if (regex_match(card, matches, block_head_regex_format))
+    {
+      reset_block(ifs, matches[0]);
+      return;
+    }
     else
     {
       cerr << "INVALID CARD\n";
@@ -122,11 +122,6 @@ void Input::read_state()
     {
       // eat until newline
       for (char c{0}; (ifs.get(c)) && (c != '\n');) continue;
-    }
-    else if (regex_match(card, matches, block_head_regex_format))
-    {
-      reset_block(ifs, matches[0]);
-      return;
     }
     else if (card == "max_outer")
     {
@@ -161,6 +156,11 @@ void Input::read_state()
       ifs >> solver_str;
       sol    = solver_choice_str_to_enum(solver_str);
       solver = solver_str.c_str();
+    }
+    else if (regex_match(card, matches, block_head_regex_format))
+    {
+      reset_block(ifs, matches[0]);
+      return;
     }
     else
     {

@@ -8,7 +8,7 @@ double ScatteringCoefficient::Eval(ElementTransformation& T,
   const int attribute{T.Attribute - 1};
   const int element_id{T.ElementNo};
 
-  const XSRecord& record{xs.rec[attribute]};
+  const XSRecord& record{mat_lib.mat[attribute].rec};
   const SparseMatrix& scat{record.sigma_s};
 
   Array<int> col_idx;

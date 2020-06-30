@@ -2,35 +2,54 @@
 #define MATERIAL_LIBRARY
 
 #include "xslibrary.hpp"
+#include "mfem.hpp"
 
 #include <vector>
 #include <string>
 #include <iostream>
 #include <regex>
 
+struct Material_isotope
+{
+  std::string name;
+  double nden;
+  int idx;
+  const XSRecord& rec;
+};
+
 struct Material_record
 {
-  // TODO this should probably be its own struct and a single vector
-  std::vector<double> nden;
-  std::vector<std::string> iso_name;
-  std::vector<int> iso_idx;
-  std::vector<std::reference_wrapper<XSRecord>> iso_rec;
+  std::vector<Material_isotope> iso;
+  XSRecord rec;
 
   std::string name;
   int niso;
   int G;
 
+  int ngroup() const { return G; }
+
   // utility functions
 
-  int ngroup() { return G; }
+  // This could be implemented as an overload but I want to make it explicitly
+  // clear how chi is being collapsed.
 
-  // calculate chi for all energy groups
+  // calculate for all groups
   // phi_g is the flux spectra at a given position
   std::vector<double> calculate_chi(const std::vector<double>& phi_g);
+  // alternatively, calculate chi weighting with only nusf
+  std::vector<double> flux_free_chi();
 
-  // calculate chi for a single energy group
+  // calculate for a single group
+  // these are less efficient but will be necessary to properly evaluate chi for
+  // a given flux spectra
   // phi_g is the flux spectra at a given position
   double calculate_chi(const std::vector<double>& phi_g, int g);
+  // alternatively, calculate chi weighting with only nusf
+  double flux_free_chi(int g);
+
+  // calculate macroscopic xs based on user-input number densities and
+  // microscopic xs from XSLibrary
+  void calculate_macroscopic_xs();
 };
 
 class Material_library
@@ -50,11 +69,14 @@ class Material_library
         const std::string msg;
     };
 
+    int ngroup() const { return G; }
+
+    // TODO should probably be private? maybe?
+    std::vector<Material_record> mat;
   private:
     const XSLibrary& xs; // associated microscopic cross section library
-    int G; // set in constructor
+    const int G; // set in constructor
     int nMat{0};
-    std::vector<Material_record> mat;
 
     static const std::regex block_head_regex_format;
     static void reset_block(std::ifstream& ifs, const std::string& block_head);

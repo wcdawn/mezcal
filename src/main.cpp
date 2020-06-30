@@ -4,6 +4,7 @@
 #include "result.hpp"
 #include "solver.hpp"
 #include "xslibrary.hpp"
+#include "material_library.hpp"
 
 #include <cstring>
 #include <fstream>
@@ -83,6 +84,19 @@ int main(int argc, char* argv[])
   // input is finalized, you can read cross sections
   xs.read_userxs(inp.xs_file);
 
+  // TODO this is for testing the materials reader
+  ifstream ifs{inp.input_file};
+  for (string str; ifs >> str; )
+  {
+    if (str == "[MATERIAL]")
+    {
+      for (size_t i{0}; i < strlen("[MATERIAL]"); ++i) ifs.unget();
+      break;
+    }
+  }
+  Material_library mat_lib{xs};
+  mat_lib.read_material(ifs);
+
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
   Device device(inp.device);
@@ -144,17 +158,17 @@ int main(int argc, char* argv[])
   Result res{fespace, xs.ngroup()};
   if (inp.ref == Analytic::fixed_src)
   {
-    res = diffusion_fixed_src(inp, xs, ess_bdr, pmesh, fespace);
+    res = diffusion_fixed_src(inp, mat_lib, ess_bdr, pmesh, fespace);
   }
   else
   {
     switch (inp.sol)
     {
       case (Input::lobpcg):
-        res = diffusion_lobpcg(inp, xs, ess_bdr, pmesh, fespace);
+        res = diffusion_lobpcg(inp, mat_lib, ess_bdr, pmesh, fespace);
         break;
       case (Input::power_iteration):
-        res = diffusion_power_iteration(inp, xs, ess_bdr, pmesh, fespace);
+        res = diffusion_power_iteration(inp, mat_lib, ess_bdr, pmesh, fespace);
         break;
       default:
         cerr << "Invalid solver choice.\n";

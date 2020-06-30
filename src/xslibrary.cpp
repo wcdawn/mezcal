@@ -18,6 +18,18 @@ using std::vector;
 using std::max_element;
 using std::accumulate;
 
+void XSRecord::set_ngroup(int ngroup)
+{
+  G = ngroup;
+  sigma_tr.resize(G);
+  sigma_t.resize(G);
+  sigma_r.resize(G);
+  nusf.resize(G);
+  chi.resize(G);
+  source.resize(G);
+  is_upscatter.resize(G);
+}
+
 void XSRecord::calculate_removal_xs()
 {
   for (int g{0}; g < G; ++g)
@@ -169,7 +181,8 @@ void XSLibrary::Print(ostream& os)
     os << "name " << record.name << '\n';
     if (record.zaid > 0)
       os << "zaid " << record.zaid << '\n';
-    os << "nden " << record.nden << '\n';
+    if (record.nden > 0.0) 
+      os << "nden " << record.nden << '\n';
     os << "transport\n";
     write_vector(os, record.sigma_tr);
     os << "total\n";
@@ -203,24 +216,4 @@ void XSLibrary::initialize_records()
   rec.reserve(N);
   for (int i{0}; i < N; ++i)
     rec.push_back(XSRecord(G));
-  chi.resize(G);
-}
-
-void XSLibrary::flux_free_chi()
-{
-  std::vector<double> numerator(G);
-  for (double& val : numerator)
-    val = 0.0;
-  double denominator{0.0};
-  for (int i{0}; i < N; ++i)
-  {
-    const double nden{rec[i].nden};
-    const double f_i{nden * 
-      std::accumulate(rec[i].nusf.begin(), rec[i].nusf.end(), 0.0)};
-    for (int g{0}; g < G; ++g)
-      numerator[g] += rec[i].chi[g] * f_i;
-    denominator += f_i;
-  }
-  for (int g{0}; g < G; ++g)
-    chi[g] = numerator[g] / denominator;
 }
