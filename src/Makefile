@@ -96,12 +96,12 @@ format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
 # Listing Order:
-# <object file> : <dependent object file> ... <dependent object file> $(MFEM_HEADER) <my header> <other headers>
-main.o : analytic.o input.o material_library.o solver.o xslibrary.o solver.o $(MFEM_HEADER) result.hpp
-analytic.o : xslibrary.o $(MFEM_HEADER) analytic.hpp result.hpp
+# <object file> : $(MFEM_HEADER) <my header> <other headers>
+main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp xslibrary.hpp
+analytic.o : $(MFEM_HEADER) analytic.hpp result.hpp xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
-input.o : analytic.o $(MFEM_HEADER) input.hpp 
-material_library.o : xslibrary.o $(MFEM_HEADER) material_library.hpp
-solver.o : input.o fission_coefficient.o material_library.o scattering_coefficient.o xslibrary.o $(MFEM_HEADER) solver.hpp result.hpp
-scattering_coefficient.o : material_library.o xslibrary.o $(MFEM_HEADER) scattering_coefficient.hpp
-fission_coefficient.o : material_library.o xslibrary.o $(MFEM_HEADER) fission_coefficient.hpp
+input.o : $(MFEM_HEADER) analytic.hpp input.hpp 
+material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
+solver.o : $(MFEM_HEADER) solver.hpp input.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp xslibrary.hpp result.hpp
+scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp
+fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp
