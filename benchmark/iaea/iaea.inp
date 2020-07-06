@@ -1,0 +1,11 @@
+[CORE]
+mesh_file lwr.mesh
+# note: this is all mirror boundary conditions but the benchmark uses an
+# external albedo factor of 0.4692
+boundary_conditions 0 0 0 0
+
+xs_file lwr.xs
+
+[STATE]
+solver power_iteration # necessary for multigroup
+max_outer 200
