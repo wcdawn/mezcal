@@ -18,7 +18,7 @@ HYPRE_DIR = ../hypre/src/hypre
 HYPRE_INCLUDE = $(HYPRE_DIR)/include
 HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 
-METIS_DIR = ../metis-5.1.0
+METIS_DIR = ../metis
 METIS_INCLUDE = $(METIS_DIR)/include
 METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
@@ -40,13 +40,15 @@ CPP_FILES = main.cpp \
 			solver.cpp \
 			xslibrary.cpp
 
-HPP_FILES = analytic.hpp \
-			fission_coefficient.hpp \
-			input.hpp \
-			material_library.hpp \
-			scattering_coefficient.hpp \
-			solver.hpp \
-			xslibrary.hpp
+INCLUDE_DIR = ../include
+
+HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
+			$(INCLUDE_DIR)/fission_coefficient.hpp \
+			$(INCLUDE_DIR)/input.hpp \
+			$(INCLUDE_DIR)/material_library.hpp \
+			$(INCLUDE_DIR)/scattering_coefficient.hpp \
+			$(INCLUDE_DIR)/solver.hpp \
+			$(INCLUDE_DIR)/xslibrary.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
 
@@ -71,7 +73,7 @@ $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) || $(RM) $(EXEC)
 
 %.o : %.cpp
-	$(MPICXX) $(MPICXXFLAGS) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
+	$(MPICXX) $(MPICXXFLAGS) -I$(INCLUDE_DIR) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
 version.hpp : 
 	@echo "#ifndef VERSION" > version.hpp
@@ -97,11 +99,11 @@ format : $(CPP_FILES) $(HPP_FILES)
 
 # Listing Order:
 # <object file> : $(MFEM_HEADER) <my header> <other headers>
-main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp xslibrary.hpp
-analytic.o : $(MFEM_HEADER) analytic.hpp result.hpp xslibrary.hpp
-xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
-input.o : $(MFEM_HEADER) analytic.hpp input.hpp 
-material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
-solver.o : $(MFEM_HEADER) solver.hpp input.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp xslibrary.hpp result.hpp
-scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp
-fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp
+main.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/xslibrary.hpp
+analytic.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/xslibrary.hpp
+xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
+input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp 
+material_library.o : $(MFEM_HEADER) $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
+solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
+scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
+fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp

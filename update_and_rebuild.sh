@@ -55,7 +55,7 @@ WD=$(pwd)
 MFEM_DIR=$WD'/mfem'
 MFEM_BUILD=$WD'/build/mfem'
 HYPRE_DIR=$WD'/hypre'
-METIS_DIR=$WD'/metis-5.1.0'
+METIS_DIR=$WD'/metis'
 
 git submodule update --init --recursive
 git submodule foreach --recursive 'git reset --hard'
