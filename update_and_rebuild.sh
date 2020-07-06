@@ -112,7 +112,7 @@ then
 
   make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX='nvcc' \
     BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
-    MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis-5.1.0' ${CUDA}
+    MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' ${CUDA}
 
 fi
 
