@@ -2,6 +2,7 @@
 #define XSLIBRARY
 
 #include "mfem.hpp"
+#include "hdf5_access_wrapper.hpp"
 
 #include <exception>
 #include <fstream>
@@ -74,11 +75,20 @@ public:
 
   std::vector<XSRecord> rec;
 
+  enum Format
+  {
+    invalid = -1,
+    userxs,
+    hdf5xs
+  };
+
 private:
   int G{0}; // number of energy groups
   int N{0}; // number of materials/isotopes present
 
   void initialize_records();
+
+  void read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const std::string& lib_name);
 
   static constexpr char comment_char{'#'};
   static constexpr int hollerith_length{8};

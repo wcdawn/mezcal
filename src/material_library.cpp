@@ -41,8 +41,6 @@ void Material_library::read_material(ifstream& ifs)
       continue;
     }
 
-
-
     // determine if the card is an isotope name
     int iso_idx{0};
     for (iso_idx = 0; iso_idx < xs.niso(); ++iso_idx)
@@ -105,9 +103,10 @@ void Material_record::calculate_macroscopic_xs()
       // note: fixed source is simply summed without number densities
       rec.source[g] += iso[i].rec.source[g];
     }
-    rec.chi = flux_free_chi(); // initialize chi with the flux_free_chi formula
+    rec.is_fiss = rec.is_fiss || iso[i].rec.is_fiss;
   }
   rec.sigma_s = scat;
+  rec.chi = flux_free_chi(); // initialize chi with the flux_free_chi formula
 }
 
 vector<double> Material_record::flux_free_chi() const
@@ -116,6 +115,7 @@ vector<double> Material_record::flux_free_chi() const
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
+    if (!iso[i].rec.is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
       f_i += iso[i].nden * iso[i].rec.nusf[gprime];
@@ -123,8 +123,9 @@ vector<double> Material_record::flux_free_chi() const
       numerator[g] += iso[i].rec.chi[g] * f_i;
     denominator += f_i;
   }
-  for (int g{0}; g < ngroup(); ++g)
-    numerator[g] /= denominator;
+  if (denominator > 0.0)
+    for (int g{0}; g < ngroup(); ++g)
+      numerator[g] /= denominator;
   return numerator;
 }
 
@@ -134,13 +135,16 @@ double Material_record::flux_free_chi(int g) const
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
+    if (!iso[i].rec.is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
       f_i += iso[i].nden * iso[i].rec.nusf[gprime];
     numerator += iso[i].rec.chi[g] * f_i;
     denominator += f_i;
   }
-  return numerator / denominator;
+  if (denominator > 0.0)
+    numerator /= denominator;
+  return numerator;
 }
 
 vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
@@ -149,6 +153,7 @@ vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
+    if (!iso[i].rec.is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
       f_i += iso[i].nden * iso[i].rec.nusf[gprime] * phi_g[gprime];
@@ -156,8 +161,9 @@ vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
       numerator[g] += iso[i].rec.chi[g] * f_i;
     denominator += f_i;
   }
-  for (int g{0}; g < ngroup(); ++g)
-    numerator[g] /= denominator;
+  if (denominator > 0.0)
+    for (int g{0}; g < ngroup(); ++g)
+      numerator[g] /= denominator;
   return numerator;
 }
 
@@ -167,13 +173,16 @@ double Material_record::calculate_chi(const vector<double>& phi_g, int g) const
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
+    if (!iso[i].rec.is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
       f_i += iso[i].nden * iso[i].rec.nusf[gprime] * phi_g[gprime];
     numerator += iso[i].rec.chi[g] * f_i;
     denominator += f_i;
   }
-  return numerator / denominator;
+  if (denominator > 0.0)
+    numerator /= denominator;
+  return numerator;
 }
 
 void Material_library::reset_block(ifstream& ifs, const string& block_head)

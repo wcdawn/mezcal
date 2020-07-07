@@ -288,5 +288,32 @@ class Test_light(unittest.TestCase):
         kref = 0.92927395196420 # from INL/EXT-19-549998
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
+    def test_lwr_pool(self):
+        input_file = os.path.join(self.dirname,
+            "../benchmark/lwr_pool/lwr_pool.inp")
+        data = driver.run_code(self.executable, "-i", input_file, "-rs", "4")
+
+        keff = driver.get_value(data, "keff")
+        kref = 1.006068078942625732
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+    def test_bwr_lattice(self):
+        input_file = os.path.join(self.dirname,
+            "../benchmark/bwr_lattice/bwr.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 1.085094018428294671
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+    def test_iaea(self):
+        input_file = os.path.join(self.dirname,
+            "../benchmark/iaea/iaea.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 1.0358766910438539366
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
 if (__name__ == "__main__"):
     unittest.main()

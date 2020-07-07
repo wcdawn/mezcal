@@ -2,7 +2,16 @@
 mesh_file bwr4.vtk
 boundary_conditions 0 0 0 0
 
-xs_file bwr.xs
+userxs bwr.xs
+
+[MATERIAL]
+name C1 C1 1.0
+name C2 C2 1.0
+name C3 C3 1.0
+name C4 C4 1.0
+name C5 C5 1.0
+name C19 C19 1.0
+name C20 C20 1.0
 
 [STATE]
 solver power_iteration # necessary for multigroup

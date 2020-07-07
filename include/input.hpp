@@ -2,6 +2,7 @@
 #define INPUT
 
 #include "analytic.hpp"
+#include "xslibrary.hpp"
 #include "mfem.hpp" // Array<int>
 
 #include <exception>
@@ -66,7 +67,7 @@ public:
   };
 
   // general
-  const char* input_file;
+  const char* input_file{""};
 
   // CORE
   const char* mesh_file{""};
@@ -74,14 +75,16 @@ public:
   int order{1};
   int refine_serial{0};
   int refine_parallel{0};
-  const char* xs_file{""};
   const char* reference{"invalid"};
   const char* device{"cpu"};
   bool static_condensation{false};
   bool verbose{false};
+  std::string xs_file;
+  std::string hdf5xs_lib_name;
 
   // actual enum value
   Analytic::Reference ref{Analytic::invalid};
+  XSLibrary::Format xs_format{XSLibrary::invalid};
 
   // STATE
   Tolerance_control tol;
@@ -107,7 +110,6 @@ private:
   // [CORE]
   std::string input_file_str;
   std::string mesh_file_str;
-  std::string xs_file_str;
   std::string device_str;
   std::string reference_str;
   // [STATE]

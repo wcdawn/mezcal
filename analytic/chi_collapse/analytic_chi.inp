@@ -1,7 +1,7 @@
 [CORE]
 
 mesh_file inf_homog.msh
-xs_file analytic_chi.xs
+userxs analytic_chi.xs
 boundary_conditions 0 0 0 0
 
 [MATERIAL]

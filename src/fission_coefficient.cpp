@@ -13,8 +13,9 @@ double FissionCoefficient::Eval(ElementTransformation& T,
   const XSRecord& record{mat_lib.mat[attribute].rec};
   const vector<double>& nusf{record.nusf};
 
-  double sum{0.0};
+  if (!record.is_fiss) return 0.0;
 
+  double sum{0.0};
   for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     sum += nusf[gprime] * phi[gprime].GetValue(element_id, ip);
 

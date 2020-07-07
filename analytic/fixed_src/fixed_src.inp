@@ -1,7 +1,7 @@
 [CORE]
 
 mesh_file fixed_src_tri.msh
-xs_file fixed_src.xs
+userxs fixed_src.xs
 boundary_conditions 0 1 0 1
 
 reference fixed_src

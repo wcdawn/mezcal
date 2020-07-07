@@ -1,7 +1,5 @@
 #include "xslibrary.hpp"
 
-#include "hdf5_access_wrapper.hpp"
-
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -197,7 +195,6 @@ void XSLibrary::read_hdf5xs(const char* const fname, const char* const lib_name)
 
 void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
 {
-  constexpr int ell{0}; // store only zeroth order xs (for now)
   try
   {
     const H5::H5File fid{fname, H5F_ACC_RDONLY};
@@ -209,156 +206,13 @@ void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
     const string format{acc.read_string()};
     acc.change_dataset("version");
     const string version{acc.read_string()};
-    if ((format != "ISOTXS") || (version != "0.2"))
+
+    // eventually, this will select between various hdf5xs readers
+    if ((format == "ISOTXS") && (version == "0.2"))
+      read_hdf5xs_isotxs(acc, lib_name);
+    else
       throw Invalid_input_card{"Invalid HDF5 version and/or format"};
 
-    // get niso & ngroup to setup data structure
-    acc.change_dataset("niso");
-    N = acc.read_int();
-    acc.change_dataset("ngroup");
-    G = acc.read_int();
-    initialize_records();
-
-    // get the list of isotope names
-    vector<string> iso_names(N);
-
-    { // scope of "data"
-      vector<char> data(N * hollerith_length);
-      acc.change_dataset("hisonm");
-      acc.read(data.data());
-
-      for (int i{0}; i < N; ++i)
-      {
-        const string str{data.begin() + i * hollerith_length,
-                         data.begin() + (i + 1) * hollerith_length};
-        // trim is necessary for subsequent group access
-        iso_names[i] = trim(str);
-      }
-    }
-
-    for (int i{0}; i < N; ++i)
-    {
-      acc.change_group(lib_name + "/" + iso_names[i]);
-      rec[i].name = iso_names[i];
-
-      vector<double> data;
-
-      // sigma_tr
-      acc.change_dataset("ltrn");
-      const int ltrn{acc.read_int()};
-      data.resize(ltrn * G);
-      acc.change_dataset("strpl");
-      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
-      for (int g{0}; g < G; ++g) rec[i].sigma_tr[g] = data[g + ell];
-
-      // sigma_t
-      acc.change_dataset("ltot");
-      const int ltot{acc.read_int()};
-      data.resize(ltot * G);
-      acc.change_dataset("stotpl");
-      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
-      for (int g{0}; g < G; ++g) rec[i].sigma_t[g] = data[g + ell];
-
-      acc.change_dataset("ifis");
-      rec[i].is_fiss = acc.read_int(); // convert int to bool
-
-      // sigma_f (and initialize nusf)
-      data.resize(G);
-      acc.change_dataset("sfis");
-      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
-      for (int g{0}; g < G; ++g) rec[i].nusf[g] = data[g];
-
-      // nu_f (and combine with sigma_f to finally calculate nusf)
-      acc.change_dataset("snutot");
-      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
-      for (int g{0}; g < G; ++g) rec[i].nusf[g] *= data[g];
-
-      acc.change_dataset("chiso");
-      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
-      for (int g{0}; g < G; ++g) rec[i].chi[g] = data[g];
-
-      // get the integer total number of scattering blocks
-      acc.change_dataset("nscatter");
-      const int nscatter{acc.read_int()};
-
-      // initialize the sparse matrix that will be used
-      // initialize with zero-entries for self-scattering
-      SparseMatrix tmp_sparse{G, G};
-      for (int g{0}; g < G; ++g) tmp_sparse.Set(g, g, 0.0);
-
-      // get ready to track if total scattering is present
-      bool total_scattering_present{false};
-
-      // read and accumulate all of the scattering blocks
-      for (int j{0}; j < nscatter; ++j)
-      {
-        stringstream name;
-        name << "scatter" << setfill('0') << setw(3)
-             << j + 1; // one-based index
-        acc.change_group(lib_name + "/" + iso_names[i] + "/" + name.str());
-
-        // check legendre scattering order
-        acc.change_dataset("legendre");
-        const int legendre{acc.read_int()};
-        // only read zeroth order scattering for now
-        if (legendre != 0)
-          continue;
-
-        // check scattering type
-        acc.change_dataset("type");
-        const int scattering_type(acc.read_int());
-        /*
-         * The "type" returned is:
-         * Type | Description
-         * -----|------------
-         * 0    | Total scattering
-         * 1    | Elastic scattering
-         * 2    | Inelastic scattering
-         * 3    | (n,2n) scattering
-         * other| Undefined
-         */
-        if ((total_scattering_present) && (scattering_type != 0)) continue;
-        total_scattering_present = 
-          (total_scattering_present) && (scattering_type == 0);
-
-        acc.change_dataset("csr_i");
-        auto csr_i{make_unique<int[]>(G + 1)};
-        acc.read(csr_i.get(), H5::PredType::NATIVE_INT);
-
-        acc.change_dataset("csr_j");
-        auto nnz{acc.dataset().getStorageSize() / sizeof(int)};
-        auto csr_j{make_unique<int[]>(nnz)};
-        acc.read(csr_j.get(), H5::PredType::NATIVE_INT);
-
-        acc.change_dataset("csr_data");
-        auto csr_data{make_unique<double[]>(nnz)};
-        acc.read(csr_data.get(), H5::PredType::NATIVE_DOUBLE);
-
-        // adjust for zero-based indexing
-        for (int k{0}; k < G + 1; ++k) --csr_i[k];
-        for (decltype(nnz) k{0}; k < nnz; ++k) --csr_j[k];
-
-        // adjust if n2n scattering
-        if (scattering_type == 3)
-          for (decltype(nnz) k{0}; k < nnz; ++k)
-            csr_data[k] *= 2.0;
-
-        SparseMatrix tmp_tmp{csr_i.release(), csr_j.release(),
-                             csr_data.release(), G, G};
-        tmp_sparse += tmp_tmp;
-      }
-
-      // 0 - do not skip zero entries (necessary for diagonal)
-      // true - fix empty rows (if a row is empty, store a zero on the diagonal)
-      tmp_sparse.Finalize(0, true);
-      tmp_sparse.SortColumnIndices();
-      rec[i].sigma_s = tmp_sparse; // hopefully a move operation
-
-      // do extra processing for each isotope
-      rec[i].calculate_removal_xs();
-      rec[i].self_scatter_rebalance();
-      rec[i].evaluate_upscatter();
-    }
   }
 
   // catch failure caused by the H5File operations
@@ -403,6 +257,167 @@ void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
   }
 }
 
+void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const string& lib_name)
+{
+  constexpr int ell{0}; // store only zeroth order xs (for now)
+
+  // get niso & ngroup to setup data structure
+  acc.change_dataset("niso");
+  N = acc.read_int();
+  acc.change_dataset("ngroup");
+  G = acc.read_int();
+  initialize_records();
+
+  // get the list of isotope names
+  vector<string> iso_names(N);
+
+  { // scope of "data"
+    vector<char> data(N * hollerith_length);
+    acc.change_dataset("hisonm");
+    acc.read(data.data());
+
+    for (int i{0}; i < N; ++i)
+    {
+      const string str{data.begin() + i * hollerith_length,
+                       data.begin() + (i + 1) * hollerith_length};
+      // trim is necessary for subsequent group access
+      iso_names[i] = trim(str);
+    }
+  }
+
+  for (int i{0}; i < N; ++i)
+  {
+    acc.change_group(lib_name + "/" + iso_names[i]);
+    rec[i].name = iso_names[i];
+
+    vector<double> data;
+
+    // sigma_tr
+    acc.change_dataset("ltrn");
+    const int ltrn{acc.read_int()};
+    data.resize(ltrn * G);
+    acc.change_dataset("strpl");
+    acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+    for (int g{0}; g < G; ++g) rec[i].sigma_tr[g] = data[g + ell];
+
+    // sigma_t
+    acc.change_dataset("ltot");
+    const int ltot{acc.read_int()};
+    data.resize(ltot * G);
+    acc.change_dataset("stotpl");
+    acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+    for (int g{0}; g < G; ++g) rec[i].sigma_t[g] = data[g + ell];
+
+    acc.change_dataset("ifis");
+    rec[i].is_fiss = acc.read_int(); // convert int to bool
+
+    if (rec[i].is_fiss) 
+    {
+      // sigma_f (and initialize nusf)
+      data.resize(G);
+      acc.change_dataset("sfis");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].nusf[g] = data[g];
+
+      // nu_f (and combine with sigma_f to finally calculate nusf)
+      acc.change_dataset("snutot");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].nusf[g] *= data[g];
+    }
+
+    acc.change_dataset("ichi");
+    const int ichi{acc.read_int()};
+    if (ichi == 1)
+    {
+      acc.change_dataset("chiso");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].chi[g] = data[g];
+    }
+
+    // get the integer total number of scattering blocks
+    acc.change_dataset("nscatter");
+    const int nscatter{acc.read_int()};
+
+    // initialize the sparse matrix that will be used
+    // initialize with zero-entries for self-scattering
+    SparseMatrix tmp_sparse{G, G};
+    for (int g{0}; g < G; ++g) tmp_sparse.Set(g, g, 0.0);
+
+    // get ready to track if total scattering is present
+    bool total_scattering_present{false};
+
+    // read and accumulate all of the scattering blocks
+    for (int j{0}; j < nscatter; ++j)
+    {
+      stringstream name;
+      name << "scatter" << setfill('0') << setw(3)
+           << j + 1; // one-based index
+      acc.change_group(lib_name + "/" + iso_names[i] + "/" + name.str());
+
+      // check legendre scattering order
+      acc.change_dataset("legendre");
+      const int legendre{acc.read_int()};
+      // only read zeroth order scattering for now
+      if (legendre != 0)
+        continue;
+
+      // check scattering type
+      acc.change_dataset("type");
+      const int scattering_type(acc.read_int());
+      /*
+       * The "type" returned is:
+       * Type | Description
+       * -----|------------
+       * 0    | Total scattering
+       * 1    | Elastic scattering
+       * 2    | Inelastic scattering
+       * 3    | (n,2n) scattering
+       * other| Undefined
+       */
+      if ((total_scattering_present) && (scattering_type != 0)) continue;
+      total_scattering_present = 
+        (total_scattering_present) && (scattering_type == 0);
+
+      acc.change_dataset("csr_i");
+      auto csr_i{make_unique<int[]>(G + 1)};
+      acc.read(csr_i.get(), H5::PredType::NATIVE_INT);
+
+      acc.change_dataset("csr_j");
+      auto nnz{acc.dataset().getStorageSize() / sizeof(int)};
+      auto csr_j{make_unique<int[]>(nnz)};
+      acc.read(csr_j.get(), H5::PredType::NATIVE_INT);
+
+      acc.change_dataset("csr_data");
+      auto csr_data{make_unique<double[]>(nnz)};
+      acc.read(csr_data.get(), H5::PredType::NATIVE_DOUBLE);
+
+      // adjust for zero-based indexing
+      for (int k{0}; k < G + 1; ++k) --csr_i[k];
+      for (decltype(nnz) k{0}; k < nnz; ++k) --csr_j[k];
+
+      // adjust if n2n scattering
+      if (scattering_type == 3)
+        for (decltype(nnz) k{0}; k < nnz; ++k)
+          csr_data[k] *= 2.0;
+
+      SparseMatrix tmp_tmp{csr_i.release(), csr_j.release(),
+                           csr_data.release(), G, G};
+      tmp_sparse += tmp_tmp;
+    }
+
+    // 0 - do not skip zero entries (necessary for diagonal)
+    // true - fix empty rows (if a row is empty, store a zero on the diagonal)
+    tmp_sparse.Finalize(0, true);
+    tmp_sparse.SortColumnIndices();
+    rec[i].sigma_s = tmp_sparse; // hopefully a move operation
+
+    // do extra processing for each isotope
+    rec[i].calculate_removal_xs();
+    rec[i].self_scatter_rebalance();
+    rec[i].evaluate_upscatter();
+  }
+}
+
 void XSLibrary::Print(ostream& os)
 {
   os << "ngoup " << G << '\n';
@@ -419,7 +434,7 @@ void XSLibrary::Print(ostream& os)
     os << "transport\n";
     write_vector(os, record.sigma_tr);
     os << "total\n";
-    write_vector(os, record.sigma_r);
+    write_vector(os, record.sigma_t);
 
     os << "scatter\n";
     for (int g{0}; g < G; ++g)

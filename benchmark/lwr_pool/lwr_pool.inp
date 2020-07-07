@@ -2,7 +2,15 @@
 mesh_file lwr_pool.vtk
 boundary_conditions 0 0 0 0
 
-xs_file lwr_pool.xs
+userxs lwr_pool.xs
+
+[MATERIAL]
+name M1 M1 1.0
+name M2 M2 1.0
+name M3 M3 1.0
+name M4 M4 1.0
+name M5 M5 1.0
+
 
 [STATE]
 # default options

@@ -2,7 +2,7 @@
 
 mesh_file square.mesh
 boundary_conditions 1 1 1 1
-xs_file square.xs
+userxs square.xs
 
 reference square
 

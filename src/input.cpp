@@ -65,11 +65,17 @@ void Input::read_core()
     {
       ifs >> refine_parallel;
     }
-    else if (card == "xs_file")
+    else if (card == "userxs")
     {
-      ifs >> xs_file_str;
-      xs_file_str = stub + xs_file_str;
-      xs_file     = xs_file_str.c_str();
+      ifs >> xs_file;
+      xs_file = stub + xs_file;
+      xs_format = XSLibrary::userxs;
+    }
+    else if (card == "hdf5xs")
+    {
+      ifs >> hdf5xs_lib_name >> xs_file;;
+      xs_file = stub + xs_file;
+      xs_format = XSLibrary::hdf5xs;
     }
     else if (card == "reference")
     {
@@ -286,7 +292,7 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
                  "Refinements to perform on serial mesh.");
   args.AddOption(&inp.refine_parallel, "-rp", "--refine-parallel",
                  "Refinements to perform on parallel mesh.");
-  args.AddOption(&inp.xs_file, "-xs", "--xs-file", "Cross section data file.");
+  // note: xs file cannot be specified as hdf5xs takes two parameters
   args.AddOption(&inp.reference, "-ref", "--reference",
                  "Analytic reference solution.");
   args.AddOption(&inp.device, "-d", "--device",

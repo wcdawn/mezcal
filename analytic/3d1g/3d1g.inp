@@ -2,7 +2,7 @@
 
 mesh_file 3d1g_tet.msh
 boundary_conditions 1 1 1 1 1 1
-xs_file 3d1g.xs
+userxs 3d1g.xs
 
 reference threed_oneg
 

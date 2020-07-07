@@ -1,11 +1,20 @@
 [CORE]
-mesh_file lwr.mesh
+mesh_file iaea.mesh
 # note: this is all mirror boundary conditions but the benchmark uses an
 # external albedo factor of 0.4692
 boundary_conditions 0 0 0 0
 
-xs_file lwr.xs
+userxs iaea.xs
+
+[MATERIAL]
+name m1 MAT1 1.0
+name m2 MAT2 1.0
+name m3 MAT3 1.0
+name m4 MAT4 1.0
+name m5 MAT5 1.0
 
 [STATE]
 solver power_iteration # necessary for multigroup
+k_tol 1e-6
+phi_tol 1e-4
 max_outer 200

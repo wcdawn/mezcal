@@ -153,6 +153,7 @@ Result diffusion_power_iteration(const Input& inp,
   }
 
   // create a coefficientfor the nu*fission cross section in each energy group
+  // this will be used for the flux integral at the end of each loop
   vector<PWConstCoefficient> nusf_coeff(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {

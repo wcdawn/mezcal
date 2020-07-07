@@ -82,7 +82,22 @@ int main(int argc, char* argv[])
 
   // core block is finished, you can read cross sections from file
   // xs.read_userxs(inp.xs_file);
-  xs.read_hdf5xs(inp.xs_file, "xs_data/ISOTXS002");
+  switch (inp.xs_format)
+  {
+    case (XSLibrary::userxs):
+      xs.read_userxs(inp.xs_file);
+      break;
+    case (XSLibrary::hdf5xs):
+      xs.read_hdf5xs(inp.xs_file, inp.hdf5xs_lib_name);
+      break;
+    default:
+      cerr << "Invalid xs format" << endl;
+      return 1;
+  }
+  {
+    ofstream ofs_xs{"out.xs"};
+    xs.Print(ofs_xs);
+  }
 
   // core block is finished, you can read the material block
   Material_library mat_lib{xs};

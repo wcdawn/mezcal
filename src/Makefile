@@ -111,7 +111,7 @@ format : $(CPP_FILES) $(HPP_FILES)
 main.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/xslibrary.hpp
 analytic.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
-input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp 
+input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/xslibrary.hpp
 material_library.o : $(MFEM_HEADER) $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
 scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
