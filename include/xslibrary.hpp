@@ -1,12 +1,12 @@
 #ifndef XSLIBRARY
 #define XSLIBRARY
 
+#include "mfem.hpp"
+
 #include <exception>
+#include <fstream>
 #include <string>
 #include <vector>
-#include <fstream>
-
-#include "mfem.hpp"
 
 struct XSRecord
 {
@@ -45,8 +45,11 @@ public:
   int ngroup() const { return G; }
   int niso() const { return N; }
 
+  void read_userxs(const char* const fname);
   void read_userxs(const std::string& fname);
-  void read_userxs(const char* fname);
+  void read_hdf5xs(const char* const fname, const char* const lib_name);
+  void read_hdf5xs(const std::string& fname, const std::string& lib_name);
+
   void Print(std::ostream& os);
 
   class Invalid_input_card : std::exception
@@ -78,21 +81,19 @@ private:
   void initialize_records();
 
   static constexpr char comment_char{'#'};
+  static constexpr int hollerith_length{8};
 
-  template<typename T>
+  template <typename T>
   static void read_vector(std::istream& is, std::vector<T>& vec)
   {
-    for (T& val : vec)
-      is >> val;
+    for (T& val : vec) is >> val;
   }
 
-  template<typename T>
+  template <typename T>
   static void write_vector(std::ostream& os, const std::vector<T>& vec)
   {
-    for (T val : vec)
-      os << val << '\n';
+    for (T val : vec) os << val << '\n';
   }
-
 };
 
 #endif

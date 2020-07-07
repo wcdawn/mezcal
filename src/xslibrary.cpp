@@ -1,22 +1,30 @@
 #include "xslibrary.hpp"
 
-#include <iostream>
+#include "hdf5_access_wrapper.hpp"
+
 #include <algorithm>
+#include <iostream>
+#include <memory>
 #include <numeric>
+#include <sstream>
 
 using namespace mfem;
 
 using std::cerr;
-using std::cout;
-using std::endl;
 
-using std::ostream;
 using std::ifstream;
+using std::ostream;
 using std::string;
 using std::vector;
 
-using std::max_element;
 using std::accumulate;
+using std::max_element;
+
+using std::setfill;
+using std::setw;
+using std::stringstream;
+
+using std::make_unique;
 
 void XSRecord::set_ngroup(int ngroup)
 {
@@ -32,15 +40,14 @@ void XSRecord::set_ngroup(int ngroup)
 
 void XSRecord::calculate_removal_xs()
 {
-  for (int g{0}; g < G; ++g)
-    sigma_r[g] = sigma_t[g] - sigma_s.Elem(g, g);
+  for (int g{0}; g < G; ++g) sigma_r[g] = sigma_t[g] - sigma_s.Elem(g, g);
 }
 
 void XSRecord::self_scatter_rebalance()
 {
   for (int g{0}; g < G; ++g)
   {
-    if (sigma_s.Elem(g,g) == 0.0)
+    if (sigma_s.Elem(g, g) == 0.0)
     {
       sigma_s.Set(g, g, sigma_tr[g] - sigma_t[g]);
       sigma_t[g] = sigma_tr[g];
@@ -56,14 +63,14 @@ void XSRecord::evaluate_upscatter()
     const int* row_columns{sigma_s.GetRowColumns(g)};
     const auto max_upscatter_group{
       std::max_element(row_columns, row_columns + row_size)};
-    if (*max_upscatter_group > g) 
+    if (*max_upscatter_group > g)
       is_upscatter[g] = true;
     else
       is_upscatter[g] = false;
   }
 }
 
-void XSLibrary::read_userxs(const char* fname)
+void XSLibrary::read_userxs(const char* const fname)
 {
   const string fname_str{fname};
   read_userxs(fname_str);
@@ -133,9 +140,8 @@ void XSLibrary::read_userxs(const std::string& fname)
     else if (card == "scatter")
     {
       // initialize a matrix with zero entries for self-scattering
-      SparseMatrix tmp_sparse(G, G);
-      for (int g{0}; g < G; ++g)
-        tmp_sparse.Set(g, g, 0.0);
+      SparseMatrix tmp_sparse{G, G};
+      for (int g{0}; g < G; ++g) tmp_sparse.Set(g, g, 0.0);
 
       double val;
       for (int i{0}; i < G; ++i)
@@ -167,7 +173,234 @@ void XSLibrary::read_userxs(const std::string& fname)
     record.self_scatter_rebalance();
     record.evaluate_upscatter();
   }
+}
 
+// TODO move this or add a better declaration
+// This is a "rather specialized" function that removes leading and trailing
+// space characters. Not valid for general whitespace or only trimming on one
+// side.
+string trim(const string& str)
+{
+  const auto first{str.find_first_not_of(' ')};
+  if (first == string::npos)
+    return "";
+  const auto last{str.find_last_not_of(' ')};
+  return str.substr(first, (last - first + 1));
+}
+
+void XSLibrary::read_hdf5xs(const char* const fname, const char* const lib_name)
+{
+  const string fname_str{fname};
+  const string lib_name_str{lib_name};
+  read_hdf5xs(fname_str, lib_name_str);
+}
+
+void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
+{
+  constexpr int ell{0}; // store only zeroth order xs (for now)
+  try
+  {
+    const H5::H5File fid{fname, H5F_ACC_RDONLY};
+    Hdf5_access_wrapper acc{fid};
+    acc.change_group(lib_name);
+
+    // check version and format
+    acc.change_dataset("format");
+    const string format{acc.read_string()};
+    acc.change_dataset("version");
+    const string version{acc.read_string()};
+    if ((format != "ISOTXS") || (version != "0.2"))
+      throw Invalid_input_card{"Invalid HDF5 version and/or format"};
+
+    // get niso & ngroup to setup data structure
+    acc.change_dataset("niso");
+    N = acc.read_int();
+    acc.change_dataset("ngroup");
+    G = acc.read_int();
+    initialize_records();
+
+    // get the list of isotope names
+    vector<string> iso_names(N);
+
+    { // scope of "data"
+      vector<char> data(N * hollerith_length);
+      acc.change_dataset("hisonm");
+      acc.read(data.data());
+
+      for (int i{0}; i < N; ++i)
+      {
+        const string str{data.begin() + i * hollerith_length,
+                         data.begin() + (i + 1) * hollerith_length};
+        // trim is necessary for subsequent group access
+        iso_names[i] = trim(str);
+      }
+    }
+
+    for (int i{0}; i < N; ++i)
+    {
+      acc.change_group(lib_name + "/" + iso_names[i]);
+      rec[i].name = iso_names[i];
+
+      vector<double> data;
+
+      // sigma_tr
+      acc.change_dataset("ltrn");
+      const int ltrn{acc.read_int()};
+      data.resize(ltrn * G);
+      acc.change_dataset("strpl");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].sigma_tr[g] = data[g + ell];
+
+      // sigma_t
+      acc.change_dataset("ltot");
+      const int ltot{acc.read_int()};
+      data.resize(ltot * G);
+      acc.change_dataset("stotpl");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].sigma_t[g] = data[g + ell];
+
+      acc.change_dataset("ifis");
+      rec[i].is_fiss = acc.read_int(); // convert int to bool
+
+      // sigma_f (and initialize nusf)
+      data.resize(G);
+      acc.change_dataset("sfis");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].nusf[g] = data[g];
+
+      // nu_f (and combine with sigma_f to finally calculate nusf)
+      acc.change_dataset("snutot");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].nusf[g] *= data[g];
+
+      acc.change_dataset("chiso");
+      acc.read(data.data(), H5::PredType::NATIVE_DOUBLE);
+      for (int g{0}; g < G; ++g) rec[i].chi[g] = data[g];
+
+      // get the integer total number of scattering blocks
+      acc.change_dataset("nscatter");
+      const int nscatter{acc.read_int()};
+
+      // initialize the sparse matrix that will be used
+      // initialize with zero-entries for self-scattering
+      SparseMatrix tmp_sparse{G, G};
+      for (int g{0}; g < G; ++g) tmp_sparse.Set(g, g, 0.0);
+
+      // get ready to track if total scattering is present
+      bool total_scattering_present{false};
+
+      // read and accumulate all of the scattering blocks
+      for (int j{0}; j < nscatter; ++j)
+      {
+        stringstream name;
+        name << "scatter" << setfill('0') << setw(3)
+             << j + 1; // one-based index
+        acc.change_group(lib_name + "/" + iso_names[i] + "/" + name.str());
+
+        // check legendre scattering order
+        acc.change_dataset("legendre");
+        const int legendre{acc.read_int()};
+        // only read zeroth order scattering for now
+        if (legendre != 0)
+          continue;
+
+        // check scattering type
+        acc.change_dataset("type");
+        const int scattering_type(acc.read_int());
+        /*
+         * The "type" returned is:
+         * Type | Description
+         * -----|------------
+         * 0    | Total scattering
+         * 1    | Elastic scattering
+         * 2    | Inelastic scattering
+         * 3    | (n,2n) scattering
+         * other| Undefined
+         */
+        if ((total_scattering_present) && (scattering_type != 0)) continue;
+        total_scattering_present = 
+          (total_scattering_present) && (scattering_type == 0);
+
+        acc.change_dataset("csr_i");
+        auto csr_i{make_unique<int[]>(G + 1)};
+        acc.read(csr_i.get(), H5::PredType::NATIVE_INT);
+
+        acc.change_dataset("csr_j");
+        auto nnz{acc.dataset().getStorageSize() / sizeof(int)};
+        auto csr_j{make_unique<int[]>(nnz)};
+        acc.read(csr_j.get(), H5::PredType::NATIVE_INT);
+
+        acc.change_dataset("csr_data");
+        auto csr_data{make_unique<double[]>(nnz)};
+        acc.read(csr_data.get(), H5::PredType::NATIVE_DOUBLE);
+
+        // adjust for zero-based indexing
+        for (int k{0}; k < G + 1; ++k) --csr_i[k];
+        for (decltype(nnz) k{0}; k < nnz; ++k) --csr_j[k];
+
+        // adjust if n2n scattering
+        if (scattering_type == 3)
+          for (decltype(nnz) k{0}; k < nnz; ++k)
+            csr_data[k] *= 2.0;
+
+        SparseMatrix tmp_tmp{csr_i.release(), csr_j.release(),
+                             csr_data.release(), G, G};
+        tmp_sparse += tmp_tmp;
+      }
+
+      // 0 - do not skip zero entries (necessary for diagonal)
+      // true - fix empty rows (if a row is empty, store a zero on the diagonal)
+      tmp_sparse.Finalize(0, true);
+      tmp_sparse.SortColumnIndices();
+      rec[i].sigma_s = tmp_sparse; // hopefully a move operation
+
+      // do extra processing for each isotope
+      rec[i].calculate_removal_xs();
+      rec[i].self_scatter_rebalance();
+      rec[i].evaluate_upscatter();
+    }
+  }
+
+  // catch failure caused by the H5File operations
+  catch (const H5::FileIException& error)
+  {
+    error.printErrorStack();
+    throw;
+  }
+
+  // catch failure caused by the Group operations
+  catch (const H5::GroupIException& error)
+  {
+    error.printErrorStack();
+    throw;
+  }
+
+  // catch failure caused by the DataSet operations
+  catch (const H5::DataSetIException& error)
+  {
+    error.printErrorStack();
+    throw;
+  }
+
+  // catch failure caused by the DataSpace operations
+  catch (const H5::DataSpaceIException& error)
+  {
+    error.printErrorStack();
+    throw;
+  }
+
+  // catch failure caused by the DataType operations
+  catch (const H5::DataTypeIException& error)
+  {
+    error.printErrorStack();
+    throw;
+  }
+
+  catch (...)
+  {
+    cerr << "Caught an unexpected error.\n";
+    throw;
+  }
 }
 
 void XSLibrary::Print(ostream& os)
@@ -181,7 +414,7 @@ void XSLibrary::Print(ostream& os)
     os << "name " << record.name << '\n';
     if (record.zaid > 0)
       os << "zaid " << record.zaid << '\n';
-    if (record.nden > 0.0) 
+    if (record.nden > 0.0)
       os << "nden " << record.nden << '\n';
     os << "transport\n";
     write_vector(os, record.sigma_tr);
@@ -214,6 +447,5 @@ void XSLibrary::Print(ostream& os)
 void XSLibrary::initialize_records()
 {
   rec.reserve(N);
-  for (int i{0}; i < N; ++i)
-    rec.push_back(XSRecord(G));
+  for (int i{0}; i < N; ++i) rec.push_back(XSRecord(G));
 }

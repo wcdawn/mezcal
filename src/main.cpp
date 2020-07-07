@@ -1,10 +1,10 @@
 #include "analytic.hpp"
 #include "input.hpp"
+#include "material_library.hpp"
 #include "mfem.hpp"
 #include "result.hpp"
 #include "solver.hpp"
 #include "xslibrary.hpp"
-#include "material_library.hpp"
 
 #include <cstring>
 #include <fstream>
@@ -16,8 +16,8 @@ using namespace std;
 using namespace mfem;
 
 #include <cmath>
-using std::sin;
 using std::abs;
+using std::sin;
 double oned_oneg_c_fun(const Vector& v);
 
 int main(int argc, char* argv[])
@@ -81,7 +81,8 @@ int main(int argc, char* argv[])
     args.PrintOptions(cout);
 
   // core block is finished, you can read cross sections from file
-  xs.read_userxs(inp.xs_file);
+  // xs.read_userxs(inp.xs_file);
+  xs.read_hdf5xs(inp.xs_file, "xs_data/ISOTXS002");
 
   // core block is finished, you can read the material block
   Material_library mat_lib{xs};

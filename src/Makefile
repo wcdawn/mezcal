@@ -6,6 +6,11 @@ CXXFLAGS = -Wall -pedantic-errors -std=c++17
 MPICXX = /opt/mpich/bin/mpicxx -cxx=$(CXX)
 MPICXXFLAGS = $(CXXFLAGS)
 
+H5CXX = h5c++
+H5CXXFLAGS = $(CXXFLAGS)
+# generated using "h5c++ -show"
+H5_LIB = /usr/lib/libhdf5_hl_cpp.a /usr/lib/libhdf5_cpp.a /usr/lib/libhdf5_hl.a /usr/lib/libhdf5.a -L/usr/lib -lsz -lz
+
 LD = $(MPICXX) 
 LDFLAGS = -std=c++17
 
@@ -25,6 +30,8 @@ METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 CUDA_DIR = /opt/cuda
 CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread
 
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(CUDA_LIB) $(H5_LIB)
+
 ifeq ($(METHOD), dbg)
 CXXFLAGS += -O0 -g
 else
@@ -34,6 +41,7 @@ endif
 CPP_FILES = main.cpp \
 			analytic.cpp \
 			fission_coefficient.cpp \
+			hdf5_access_wrapper.cpp \
 			input.cpp \
 			material_library.cpp \
 			scattering_coefficient.cpp \
@@ -44,6 +52,7 @@ INCLUDE_DIR = ../include
 
 HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/fission_coefficient.hpp \
+			$(INCLUDE_DIR)/hdf5_access_wrapper.hpp \
 			$(INCLUDE_DIR)/input.hpp \
 			$(INCLUDE_DIR)/material_library.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
@@ -70,7 +79,7 @@ all : $(EXEC)
 
 $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	@# delete any existing executable if linking fails
-	$(LD) $(LDFLAGS) $^ -o $@ $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) || $(RM) $(EXEC)
+	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) || $(RM) $(EXEC)
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) -I$(INCLUDE_DIR) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
@@ -107,3 +116,4 @@ material_library.o : $(MFEM_HEADER) $(INCLUDE_DIR)/material_library.hpp $(INCLUD
 solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
 scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
+hdf5_access_wrapper.o : $(INCLUDE_DIR)/hdf5_access_wrapper.hpp
