@@ -94,10 +94,6 @@ int main(int argc, char* argv[])
       cerr << "Invalid xs format" << endl;
       return 1;
   }
-  {
-    ofstream ofs_xs{"out.xs"};
-    xs.Print(ofs_xs);
-  }
 
   // core block is finished, you can read the material block
   Material_library mat_lib{xs};

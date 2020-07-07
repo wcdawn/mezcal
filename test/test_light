@@ -315,5 +315,14 @@ class Test_light(unittest.TestCase):
         kref = 1.0358766910438539366
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
+    def test_hdf5xs(self):
+        input_file = os.path.join(self.dirname,
+            "../regression/hdf5xs/hdf5_isotxs.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 2.2769962268045236264
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
 if (__name__ == "__main__"):
     unittest.main()

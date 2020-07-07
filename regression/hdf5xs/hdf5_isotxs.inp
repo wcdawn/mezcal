@@ -1,0 +1,16 @@
+[CORE]
+mesh_file inf_homog.msh
+hdf5xs xs_data/ISOTXS002 test.h5
+boundary_conditions 0 0 0 0
+
+[MATERIAL]
+name m1 
+U235_X 1.0
+
+[STATE]
+solver power_iteration
+k_tol 1e-14
+phi_tol 1e-11
+inner_abs_tol 1e-15
+inner_rel_tol 1e-15
+max_outer 1000
