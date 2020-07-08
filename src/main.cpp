@@ -6,6 +6,7 @@
 #include "solver.hpp"
 #include "xslibrary.hpp"
 #include "timer.hpp"
+#include "version.hpp"
 
 #include <cstring>
 #include <fstream>
@@ -25,7 +26,6 @@ int main(int argc, char* argv[])
 {
   /*
    * Features to add:
-   * - Timing for solver and other routines.
    * - SPN.
    * - SLEPc & Trilinos solvers.
    * - Linting/formatting with MFEM tools.
@@ -40,6 +40,14 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+
+  if (myid == 0)
+  {
+    cout << "git version   " << Version::git_version << '\n';
+    cout << "git sha       " << Version::git_sha << '\n';
+    cout << "compiled date " << Version::compiled_date << '\n';
+    cout << "compiled on   " << Version::compiled_host << '\n';
+  }
 
   // 1. Parse command-line options.
   // Do our own parsing to get the input file name.

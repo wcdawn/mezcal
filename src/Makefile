@@ -59,6 +59,7 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
 			$(INCLUDE_DIR)/solver.hpp \
 			$(INCLUDE_DIR)/timer.hpp \
+			$(INCLUDE_DIR)/version.hpp \
 			$(INCLUDE_DIR)/xslibrary.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
@@ -81,36 +82,39 @@ all : $(EXEC)
 
 $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	@# delete any existing executable if linking fails
+	@$(MAKE) version
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) || $(RM) $(EXEC)
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) -I$(INCLUDE_DIR) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
-version.hpp : 
-	@echo "#ifndef VERSION" > version.hpp
-	@echo "#define VERSION" >> version.hpp
-	@echo "" >> version.hpp
-	@echo "#include <string>" >> version.hpp
-	@echo "" >> version.hpp
-	@echo "namespace Version" >> version.hpp
-	@echo "{" >> version.hpp
-	@echo "  const std::string git_version   = \"$(GIT_VERSION)\";" >> version.hpp
-	@echo "  const std::string git_sha       = \"$(GIT_SHA)\";" >> version.hpp
-	@echo "  const std::string compiled_date = \"$(DATE)\";" >> version.hpp
-	@echo "  const std::string compiled_host = \"$(HOST)\";" >> version.hpp
-	@echo "}; // namespace Version" >> version.hpp
-	@echo "" >> version.hpp
-	@echo "#endif" >> version.hpp
+version : $(INCLUDE_DIR)/version.hpp
+
+$(INCLUDE_DIR)/version.hpp : 
+	@echo "#ifndef VERSION" > $@
+	@echo "#define VERSION" >> $@
+	@echo "" >> $@
+	@echo "#include <string>" >> $@
+	@echo "" >> $@
+	@echo "namespace Version" >> $@
+	@echo "{" >> $@
+	@echo "  const std::string git_version   = \"$(GIT_VERSION)\";" >> $@
+	@echo "  const std::string git_sha       = \"$(GIT_SHA)\";" >> $@
+	@echo "  const std::string compiled_date = \"$(DATE)\";" >> $@
+	@echo "  const std::string compiled_host = \"$(HOST)\";" >> $@
+	@echo "} // namespace Version" >> $@
+	@echo "" >> $@
+	@echo "#endif" >> $@
 
 clean :
-	@$(RM) $(OBJ) $(EXEC) version.hpp
+	@$(RM) $(OBJ) $(EXEC) $(INCLUDE_DIR)/version.hpp
 
 format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
 # Listing Order:
 # <object file> : $(MFEM_HEADER) <my header> <other headers>
-main.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp
+main.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/version.hpp $(INCLUDE_DIR)/xslibrary.hpp
 analytic.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
 input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/xslibrary.hpp
