@@ -17,10 +17,13 @@ using std::cout;
 using std::endl;
 using std::flush;
 
-Result diffusion_lobpcg(const Input& inp, const Material_library& mat_lib,
+Result diffusion_lobpcg(Timer& time, const Input& inp, 
+                        const Material_library& mat_lib,
                         const Array<int>& ess_bdr, const ParMesh* const pmesh,
                         ParFiniteElementSpace* const fespace)
 {
+
+  time.start(timing_matrix_assembly);
 
   //////////////////////////////////////////////////////////////////////////////
   // assemble A (LHS) matrix
@@ -72,6 +75,8 @@ Result diffusion_lobpcg(const Input& inp, const Material_library& mat_lib,
   HypreParMatrix* M = m->ParallelAssemble();
   delete m;
 
+  time.stop();
+
   // 11. Setup the preconditioner.
   Solver* prec{nullptr};
   auto amg{new HypreBoomerAMG(*A)};
@@ -95,7 +100,9 @@ Result diffusion_lobpcg(const Input& inp, const Material_library& mat_lib,
   // 9. Compute the eigenmodes and extract the array of eigenvalues. Define a
   //    parallel grid function to represent each of the eigenmodes returned by
   //    the solver.
+  time.start(timing_solver);
   lobpcg->Solve();
+  time.stop();
 
   delete A;
   delete M;
@@ -117,7 +124,7 @@ Result diffusion_lobpcg(const Input& inp, const Material_library& mat_lib,
   return res;
 }
 
-Result diffusion_power_iteration(const Input& inp, 
+Result diffusion_power_iteration(Timer& time, const Input& inp, 
                                  const Material_library& mat_lib,
                                  const Array<int>& ess_bdr,
                                  const ParMesh* const pmesh,
@@ -127,6 +134,8 @@ Result diffusion_power_iteration(const Input& inp,
   // this is necessary to specify bcs for the inner solver
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  time.start(timing_matrix_assembly);
 
   // build streaming and removal operator (LHS) for each energy group
   vector<ParBilinearForm*> a(mat_lib.ngroup());
@@ -151,6 +160,8 @@ Result diffusion_power_iteration(const Input& inp,
 
     a[g]->Assemble();
   }
+
+  time.stop();
 
   // create a coefficientfor the nu*fission cross section in each energy group
   // this will be used for the flux integral at the end of each loop
@@ -245,6 +256,7 @@ Result diffusion_power_iteration(const Input& inp,
     b[g]->AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
   }
 
+  time.start(timing_solver);
   int iter{0};
   for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
                  || (phi_conv > inp.tol.phi)); ++iter)
@@ -316,6 +328,7 @@ Result diffusion_power_iteration(const Input& inp,
            << " dk=" << k_conv << " dphi=" << phi_conv << endl;
     }
   }
+  time.stop();
 
   delete prec;
 
@@ -340,11 +353,13 @@ Result diffusion_power_iteration(const Input& inp,
   return res;
 }
 
-Result diffusion_fixed_src(const Input& inp, const Material_library& mat_lib,
+Result diffusion_fixed_src(Timer& time, const Input& inp,
+                           const Material_library& mat_lib,
                            const Array<int>& ess_bdr,
                            const ParMesh* const pmesh,
                            ParFiniteElementSpace* const fespace)
 {
+  time.start(timing_matrix_assembly);
   auto a{new ParBilinearForm(fespace)};
 
   Vector leakage(pmesh->attributes.Max());
@@ -374,6 +389,8 @@ Result diffusion_fixed_src(const Input& inp, const Material_library& mat_lib,
 
   b->Assemble();
 
+  time.stop();
+
   OperatorPtr A;
   Vector B;
   Vector X;
@@ -399,7 +416,9 @@ Result diffusion_fixed_src(const Input& inp, const Material_library& mat_lib,
   if (prec)
     cg.SetPreconditioner(*prec);
   cg.SetOperator(*A);
+  time.start(timing_solver);
   cg.Mult(B, X);
+  time.stop();
   delete prec;
 
   a->RecoverFEMSolution(X, *b, res.phi[0]);

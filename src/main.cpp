@@ -5,6 +5,7 @@
 #include "result.hpp"
 #include "solver.hpp"
 #include "xslibrary.hpp"
+#include "timer.hpp"
 
 #include <cstring>
 #include <fstream>
@@ -27,18 +28,12 @@ int main(int argc, char* argv[])
    * - Timing for solver and other routines.
    * - SPN.
    * - SLEPc & Trilinos solvers.
+   * - Linting/formatting with MFEM tools.
+   * - Version info to terminal.
    */
 
-  // "input" from a file
+  Timer time;
 
-  // mesh
-  string fname_xs;
-  string fname_inp;
-
-  // cross sections
-  XSLibrary xs;
-
-  // reference problem
   // Initialize MPI
   int num_procs;
   int myid;
@@ -69,8 +64,6 @@ int main(int argc, char* argv[])
 
   // parse command-line options using MFEM
   OptionsParser args{custom_arguments(inp, argc, argv)};
-
-  // parse again and overwrite
   args.Parse();
 
   if (!args.Good())
@@ -89,6 +82,7 @@ int main(int argc, char* argv[])
 
   // core block is finished, you can read cross sections from file
   // xs.read_userxs(inp.xs_file);
+  XSLibrary xs;
   switch (inp.xs_format)
   {
     case (XSLibrary::userxs):
@@ -112,6 +106,8 @@ int main(int argc, char* argv[])
   if (myid == 0)
     device.Print();
 
+  time.start("Mesh processing");
+
   // 3. Read the mesh from the given mesh file. We can handle triangular,
   //    quadrilateral, tetrahedral, hexahedral, surface and volume meshes with
   //    the same code.
@@ -125,6 +121,8 @@ int main(int argc, char* argv[])
   auto pmesh{new ParMesh(MPI_COMM_WORLD, *mesh)};
   delete mesh;
   for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh->UniformRefinement();
+
+  time.stop();
 
   // 5. Define a finite element space on the mesh. Here we use continuous
   //    Lagrange finite elements of the specified order. If order < 1, we
@@ -169,17 +167,17 @@ int main(int argc, char* argv[])
 
   if (inp.ref == Analytic::fixed_src)
   {
-    res = diffusion_fixed_src(inp, mat_lib, ess_bdr, pmesh, fespace);
+    res = diffusion_fixed_src(time, inp, mat_lib, ess_bdr, pmesh, fespace);
   }
   else
   {
     switch (inp.sol)
     {
       case (Input::lobpcg):
-        res = diffusion_lobpcg(inp, mat_lib, ess_bdr, pmesh, fespace);
+        res = diffusion_lobpcg(time, inp, mat_lib, ess_bdr, pmesh, fespace);
         break;
       case (Input::power_iteration):
-        res = diffusion_power_iteration(inp, mat_lib, ess_bdr, pmesh, fespace);
+        res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, pmesh, fespace);
         break;
       default:
         cerr << "Invalid solver choice.\n";
@@ -203,6 +201,8 @@ int main(int argc, char* argv[])
     anal.print(ofs);
   }
 
+  time.start("Output");
+
   ParaViewDataCollection output("output_dir", pmesh);
   const auto group_width{std::to_string(xs.ngroup()).length()};
   for (int g{0}; g < xs.ngroup(); ++g)
@@ -213,6 +213,10 @@ int main(int argc, char* argv[])
   }
   output.SetFormat(DataCollection::PARALLEL_FORMAT);
   output.Save();
+
+  time.stop();
+
+  if (myid == 0) time.Print(cout);
 
   // 15. Free the used memory.
 
