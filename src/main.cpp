@@ -22,6 +22,13 @@ double oned_oneg_c_fun(const Vector& v);
 
 int main(int argc, char* argv[])
 {
+  /*
+   * Features to add:
+   * - Timing for solver and other routines.
+   * - SPN.
+   * - SLEPc & Trilinos solvers.
+   */
+
   // "input" from a file
 
   // mesh
