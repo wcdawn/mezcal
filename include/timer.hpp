@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-// TODO this currently only tracks a single thread.
+// TODO this currently only tracks a single thread, using wall-clock time.
 // may want to accumulate accross threads.
 // could also generate statistics regarding load-balancing.
 
