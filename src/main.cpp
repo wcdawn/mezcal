@@ -4,8 +4,8 @@
 #include "mfem.hpp"
 #include "result.hpp"
 #include "solver.hpp"
-#include "xslibrary.hpp"
 #include "timer.hpp"
+#include "xslibrary.hpp"
 
 #include <cstring>
 #include <fstream>
@@ -41,10 +41,7 @@ int main(int argc, char* argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 
-  if (myid == 0)
-  {
-    version(cout);
-  }
+  if (myid == 0) { version(cout); }
 
   // 1. Parse command-line options.
   // Do our own parsing to get the input file name.
@@ -73,8 +70,7 @@ int main(int argc, char* argv[])
 
   if (!args.Good())
   {
-    if (myid == 0)
-      args.PrintUsage(cout);
+    if (myid == 0) args.PrintUsage(cout);
     MPI_Finalize();
     return 1;
   }
@@ -82,23 +78,18 @@ int main(int argc, char* argv[])
   // need to reconcile enums to match their const char* counterparts
   inp.reconcile_enums();
 
-  if ((myid == 0) && (inp.verbose))
-    args.PrintOptions(cout);
+  if ((myid == 0) && (inp.verbose)) args.PrintOptions(cout);
 
   // core block is finished, you can read cross sections from file
   // xs.read_userxs(inp.xs_file);
   XSLibrary xs;
   switch (inp.xs_format)
   {
-    case (XSLibrary::userxs):
-      xs.read_userxs(inp.xs_file);
-      break;
+    case (XSLibrary::userxs): xs.read_userxs(inp.xs_file); break;
     case (XSLibrary::hdf5xs):
       xs.read_hdf5xs(inp.xs_file, inp.hdf5xs_lib_name);
       break;
-    default:
-      cerr << "Invalid xs format" << endl;
-      return 1;
+    default: cerr << "Invalid xs format" << endl; return 1;
   }
 
   // core block is finished, you can read the material block
@@ -108,8 +99,7 @@ int main(int argc, char* argv[])
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
   Device device(inp.device);
-  if (myid == 0)
-    device.Print();
+  if (myid == 0) device.Print();
 
   time.start("Mesh processing");
 
@@ -132,15 +122,11 @@ int main(int argc, char* argv[])
   //    Lagrange finite elements of the specified order. If order < 1, we
   //    instead use an isoparametric/isogeometric space.
   FiniteElementCollection* fec{nullptr};
-  if (inp.order > 0)
-  {
-    fec = new H1_FECollection(inp.order, dim);
-  }
+  if (inp.order > 0) { fec = new H1_FECollection(inp.order, dim); }
   else if (pmesh.GetNodes())
   {
     fec = pmesh.GetNodes()->OwnFEC();
-    if (myid == 0)
-      cout << "Using isoparametric FEs: " << fec->Name() << endl;
+    if (myid == 0) cout << "Using isoparametric FEs: " << fec->Name() << endl;
   }
   else
   {
@@ -181,7 +167,8 @@ int main(int argc, char* argv[])
         res = diffusion_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
         break;
       case (Input::power_iteration):
-        res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh,
+                                        &fespace);
         break;
       default:
         cerr << "Invalid solver choice.\n";

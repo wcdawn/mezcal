@@ -14,16 +14,14 @@ void Hdf5_access_wrapper::change_dataset(const std::string& new_dset_name)
 std::string Hdf5_access_wrapper::read_string() const
 {
   std::string val;
-  if (dset)
-    dset->read(val, dset->getStrType(), dset->getSpace());
+  if (dset) dset->read(val, dset->getStrType(), dset->getSpace());
   return val;
 }
 
 int Hdf5_access_wrapper::read_int() const
 {
   int val;
-  if (dset)
-    dset->read(&val, dset->getIntType(), dset->getSpace());
+  if (dset) dset->read(&val, dset->getIntType(), dset->getSpace());
   return val;
 }
 

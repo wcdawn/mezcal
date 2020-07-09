@@ -2,13 +2,13 @@
 #define SOLVER
 
 #include "input.hpp"
+#include "material_library.hpp"
 #include "mfem.hpp"
 #include "result.hpp"
-#include "xslibrary.hpp"
-#include "material_library.hpp"
 #include "timer.hpp"
+#include "xslibrary.hpp"
 
-Result diffusion_lobpcg(Timer& time, const Input& inp, 
+Result diffusion_lobpcg(Timer& time, const Input& inp,
                         const Material_library& mat_lib,
                         const mfem::Array<int>& ess_bdr,
                         const mfem::ParMesh* const pmesh,

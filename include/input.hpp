@@ -2,8 +2,8 @@
 #define INPUT
 
 #include "analytic.hpp"
-#include "xslibrary.hpp"
 #include "mfem.hpp" // Array<int>
+#include "xslibrary.hpp"
 
 #include <exception>
 #include <fstream>
@@ -39,7 +39,7 @@ public:
   class Invalid_input_card : std::exception
   {
   public:
-    Invalid_input_card(std::string str) : msg {"Invalid input card: " + str} {}
+    Invalid_input_card(std::string str) : msg{"Invalid input card: " + str} {}
     const char* what() const noexcept override { return msg.c_str(); }
 
   private:
@@ -103,6 +103,7 @@ public:
 
   // this is public so that other blocks (e.g. MATERIAL) can be read
   std::ifstream ifs;
+
 private:
   static constexpr char comment_char{'#'};
 

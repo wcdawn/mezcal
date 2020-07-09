@@ -1,12 +1,12 @@
 #ifndef MATERIAL_LIBRARY
 #define MATERIAL_LIBRARY
 
-#include "xslibrary.hpp"
 #include "mfem.hpp"
+#include "xslibrary.hpp"
 
-#include <vector>
-#include <string>
 #include <iostream>
+#include <string>
+#include <vector>
 
 struct Material_isotope
 {
@@ -54,31 +54,34 @@ struct Material_record
 
 class Material_library
 {
+public:
+  Material_library(const XSLibrary& xs);
+  void read_material(std::ifstream& ifs);
+
+  class Invalid_material_card : std::exception
+  {
   public:
-    Material_library(const XSLibrary& xs);
-    void read_material(std::ifstream& ifs);
-
-    class Invalid_material_card : std::exception
+    Invalid_material_card(std::string str)
+      : msg{"Inavlid material card: " + str}
     {
-      public:
-        Invalid_material_card(std::string str) 
-          : msg{"Inavlid material card: " + str}
-        {}
-        const char * what() const noexcept override { return msg.c_str(); }
-      private:
-        const std::string msg;
-    };
+    }
+    const char* what() const noexcept override { return msg.c_str(); }
 
-    int ngroup() const { return G; }
-
-    std::vector<Material_record> mat;
   private:
-    const XSLibrary& xs; // associated microscopic cross section library
-    const int G; // set in constructor
-    int nMat{0};
+    const std::string msg;
+  };
 
-    static void reset_block(std::ifstream& ifs, const std::string& block_head);
-    static constexpr char comment_char{'#'};
+  int ngroup() const { return G; }
+
+  std::vector<Material_record> mat;
+
+private:
+  const XSLibrary& xs; // associated microscopic cross section library
+  const int G;         // set in constructor
+  int nMat{0};
+
+  static void reset_block(std::ifstream& ifs, const std::string& block_head);
+  static constexpr char comment_char{'#'};
 };
 
 #endif

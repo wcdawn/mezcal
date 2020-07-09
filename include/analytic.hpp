@@ -30,13 +30,14 @@ namespace Analytic_solutions
 
   double oned_twog_ratio();
 
-}
+} // namespace Analytic_solutions
 
 class Analytic
 {
 public:
   class Invalid_reference_name
-  {};
+  {
+  };
 
   enum Reference
   {
@@ -62,7 +63,6 @@ public:
   static std::string reference_enum_to_str(Reference ref);
 
 private:
-
   void normalize_solution_flux() const;
 
   Reference reference_solution;
@@ -78,7 +78,6 @@ private:
   using keff_function = double();
   mfem_function* fun;
   keff_function* analytic_keff;
-
 };
 
 #endif

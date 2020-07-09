@@ -1,8 +1,8 @@
 #ifndef XSLIBRARY
 #define XSLIBRARY
 
-#include "mfem.hpp"
 #include "hdf5_access_wrapper.hpp"
+#include "mfem.hpp"
 
 #include <exception>
 #include <fstream>
@@ -88,7 +88,8 @@ private:
 
   void initialize_records();
 
-  void read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const std::string& lib_name);
+  void read_hdf5xs_isotxs(Hdf5_access_wrapper& acc,
+                          const std::string& lib_name);
 
   static constexpr char comment_char{'#'};
   static constexpr int hollerith_length{8};

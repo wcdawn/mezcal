@@ -45,8 +45,7 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
   for (int i{0}; i < nVert; ++i)
   {
     node.push_back(Vector(nDim));
-    for (int j{0}; j < nDim; ++j)
-      node[i][j] = vec_node[j * nVert + i];
+    for (int j{0}; j < nDim; ++j) node[i][j] = vec_node[j * nVert + i];
   }
 
   // store a writable pointer
@@ -55,9 +54,7 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
   // set fun to appropriate solution function
   switch (ref)
   {
-    case (fixed_src): 
-      fun = &Analytic_solutions::fixed_src_fun;
-      break;
+    case (fixed_src): fun = &Analytic_solutions::fixed_src_fun; break;
     case (oned_oneg):
       fun           = &Analytic_solutions::oned_oneg_fun;
       analytic_keff = &Analytic_solutions::oned_oneg_keff;
@@ -80,10 +77,10 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
       analytic_keff = &Analytic_solutions::tworeg_keff;
       break;
     case (oned_twog):
-      fun = &Analytic_solutions::oned_oneg_fun; // same profile shape
+      fun           = &Analytic_solutions::oned_oneg_fun; // same profile shape
       analytic_keff = &Analytic_solutions::oned_twog_keff;
       break;
-    default: 
+    default:
       std::cerr << reference_enum_to_str(reference_solution) << std::endl;
       throw Invalid_reference_name{};
   }
@@ -92,8 +89,7 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
 void Analytic::analyze(ostream& os) const
 {
   Vector err(phi->Size());
-  for (int i{0}; i < err.Size(); ++i)
-    err[i] = fun(node[i]);
+  for (int i{0}; i < err.Size(); ++i) err[i] = fun(node[i]);
   err -= *phi;
 
   // These are computed as they are in LUPINE and are here for compatibility.
@@ -112,9 +108,10 @@ void Analytic::analyze(ostream& os) const
   MPI_Allreduce(&local_L1norm, &L1norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_L2norm, &L2norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&nVert, &total_nVert, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(&local_infnorm, &infnorm, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_infnorm, &infnorm, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
 
-  L2norm = sqrt(L2norm);
+  L2norm  = sqrt(L2norm);
   rmsnorm = L2norm / sqrt(nVert);
 
   // These are computed according to the FEM definitions of these and are truly
@@ -130,7 +127,8 @@ void Analytic::analyze(ostream& os) const
   if (phi2)
   {
     const double local_ratio_calc{phi2->Max()};
-    MPI_Allreduce(&local_ratio_calc, &ratio_calc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_ratio_calc, &ratio_calc, 1, MPI_DOUBLE, MPI_MAX,
+                  MPI_COMM_WORLD);
   }
 
   int myid;
@@ -167,13 +165,13 @@ void Analytic::analyze(ostream& os) const
     }
 
     os << "(norms do not account for element sizes)\n";
-    os << "L1norm  = " << L1norm  << '\n';
-    os << "L2norm  = " << L2norm  << '\n';
+    os << "L1norm  = " << L1norm << '\n';
+    os << "L2norm  = " << L2norm << '\n';
     os << "rmsnorm = " << rmsnorm << '\n';
     os << "infnorm = " << infnorm << '\n';
     os << "(errors are true FEM errors)\n";
-    os << "L1error  = " << L1error  << '\n';
-    os << "L2error  = " << L2error  << '\n';
+    os << "L1error  = " << L1error << '\n';
+    os << "L2error  = " << L2error << '\n';
     os << "inferror = " << inferror << '\n';
     os << '\n';
   }
@@ -186,8 +184,7 @@ void Analytic::print(ostream& os) const
   {
     const double val{fun(node[i])};
     const double err{abs(*access - val)};
-    for (int j{0}; j < nDim; ++j)
-      os << node[i][j] << ',';
+    for (int j{0}; j < nDim; ++j) os << node[i][j] << ',';
     if (nDim == 2) os << 0.0 << ',';
     os << *access << ',' << val << ',' << err << '\n';
   }
@@ -195,22 +192,14 @@ void Analytic::print(ostream& os) const
 
 Analytic::Reference Analytic::reference_str_to_enum(string str)
 {
-  if (str == "oned_oneg")
-    return oned_oneg;
-  if (str == "twod_oneg")
-    return twod_oneg;
-  if (str == "threed_oneg")
-    return threed_oneg;
-  if (str == "finite_cyl")
-    return finite_cyl;
-  if (str == "fixed_src")
-    return fixed_src;
-  if (str == "square")
-    return square;
-  if (str == "tworeg")
-    return tworeg;
-  if (str == "oned_twog")
-    return oned_twog;
+  if (str == "oned_oneg") return oned_oneg;
+  if (str == "twod_oneg") return twod_oneg;
+  if (str == "threed_oneg") return threed_oneg;
+  if (str == "finite_cyl") return finite_cyl;
+  if (str == "fixed_src") return fixed_src;
+  if (str == "square") return square;
+  if (str == "tworeg") return tworeg;
+  if (str == "oned_twog") return oned_twog;
   return invalid;
 }
 
@@ -225,7 +214,7 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
     case (fixed_src): return "fixed_src";
     case (square): return "square";
     case (tworeg): return "tworeg";
-    case(oned_twog): return "oned_twog";
+    case (oned_twog): return "oned_twog";
     default: return "invalid";
   }
 }
@@ -233,11 +222,11 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
 void Analytic::normalize_solution_flux() const
 {
   double* access{phi->GetData()};
-  for (int i{0}; i < phi->Size(); ++i, ++access)
-    *access = abs(*access);
+  for (int i{0}; i < phi->Size(); ++i, ++access) *access = abs(*access);
   const double local_phi_max{phi->Max()};
   double phi_max;
-  MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
   *phi /= phi_max;
   if (phi2) *phi2 /= phi_max;
 }
@@ -262,7 +251,7 @@ namespace Analytic_solutions
     return (q_fixed / diffusion)
            * (1.0 - cosh(kappa * x)
               + (cosh(kappa * Lx_small) - 1.0) / (sinh(kappa * Lx_small))
-                  * sinh(kappa * x));
+                * sinh(kappa * x));
   }
 
   double oned_oneg_fun(const Vector& v)
@@ -297,7 +286,7 @@ namespace Analytic_solutions
     static constexpr double R{50.0};
     static constexpr double H{100.0};
 
-    const double r{sqrt(v[0]*v[0] + v[1]*v[1])}; // distance to origin
+    const double r{sqrt(v[0] * v[0] + v[1] * v[1])}; // distance to origin
     const double z{v[2]};
 
     return cyl_bessel_j(0, (alpha0 / R) * r) * sin((M_PI / H) * z);
@@ -325,8 +314,7 @@ namespace Analytic_solutions
 
     const double kappa{sqrt(sigma_r[1] / diffusion[1])};
 
-    if (x <= L_F)
-      return cos(BF * x);
+    if (x <= L_F) return cos(BF * x);
 
     return cos(BF * L_F)
            * (cosh(kappa * (x - L_F))
@@ -357,7 +345,8 @@ namespace Analytic_solutions
 
     const double diffusion{1.0 / (3.0 * transport)};
 
-    return nusf / (diffusion * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2)) + removal);
+    return nusf
+           / (diffusion * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2)) + removal);
   }
   double threed_oneg_keff()
   {
@@ -373,7 +362,7 @@ namespace Analytic_solutions
 
     return nusf
            / (diffusion
-                * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2) + pow(M_PI / Lz, 2))
+              * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2) + pow(M_PI / Lz, 2))
               + removal);
   }
 
@@ -388,7 +377,8 @@ namespace Analytic_solutions
 
     const double diffusion{1.0 / (3.0 * transport)};
 
-    return nusf / (diffusion * (pow(alpha0 / R, 2) + pow(M_PI / H, 2)) + removal);
+    return nusf
+           / (diffusion * (pow(alpha0 / R, 2) + pow(M_PI / H, 2)) + removal);
   }
 
   double tworeg_keff()
@@ -421,7 +411,8 @@ namespace Analytic_solutions
 
     const double bsq{pow(M_PI / Lx, 2)};
     const double k2k1{oned_twog_ratio()};
-    return (rec.nusf[0] + rec.nusf[1] * k2k1) / (diffusion[0] * bsq + rec.sigma_r[0]);
+    return (rec.nusf[0] + rec.nusf[1] * k2k1)
+           / (diffusion[0] * bsq + rec.sigma_r[0]);
   }
 
   double oned_twog_ratio()
@@ -434,6 +425,6 @@ namespace Analytic_solutions
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
-    return rec.sigma_s.Elem(1,0) / (diffusion[1] * bsq + rec.sigma_r[1]);
+    return rec.sigma_s.Elem(1, 0) / (diffusion[1] * bsq + rec.sigma_r[1]);
   }
-}
+} // namespace Analytic_solutions

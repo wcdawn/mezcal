@@ -60,7 +60,7 @@ void XSRecord::evaluate_upscatter()
     const int row_size{sigma_s.RowSize(g)};
     const int* row_columns{sigma_s.GetRowColumns(g)};
     const auto max_upscatter_group{
-      std::max_element(row_columns, row_columns + row_size)};
+    std::max_element(row_columns, row_columns + row_size)};
     if (*max_upscatter_group > g)
       is_upscatter[g] = true;
     else
@@ -77,8 +77,7 @@ void XSLibrary::read_userxs(const char* const fname)
 void XSLibrary::read_userxs(const std::string& fname)
 {
   ifstream ifs{fname};
-  if (!ifs)
-    throw Invalid_file_name{fname};
+  if (!ifs) throw Invalid_file_name{fname};
   string card;
   int mat_count{-1};
   while (ifs >> card)
@@ -91,14 +90,12 @@ void XSLibrary::read_userxs(const std::string& fname)
     else if (card == "ngroup")
     {
       ifs >> G;
-      if (N > 0)
-        initialize_records();
+      if (N > 0) initialize_records();
     }
     else if (card == "niso")
     {
       ifs >> N;
-      if (G > 0)
-        initialize_records();
+      if (G > 0) initialize_records();
     }
     else if (card == "name")
     {
@@ -148,8 +145,7 @@ void XSLibrary::read_userxs(const std::string& fname)
         {
           ifs >> val;
           // abs to potentially allow for higher-order scattering in the future
-          if (abs(val) > 0.0)
-            tmp_sparse.Set(i, j, val);
+          if (abs(val) > 0.0) tmp_sparse.Set(i, j, val);
         }
       }
       // 0 - do not skip zero entries (necessary for diagonal)
@@ -180,8 +176,7 @@ void XSLibrary::read_userxs(const std::string& fname)
 string trim(const string& str)
 {
   const auto first{str.find_first_not_of(' ')};
-  if (first == string::npos)
-    return "";
+  if (first == string::npos) return "";
   const auto last{str.find_last_not_of(' ')};
   return str.substr(first, (last - first + 1));
 }
@@ -212,7 +207,6 @@ void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
       read_hdf5xs_isotxs(acc, lib_name);
     else
       throw Invalid_input_card{"Invalid HDF5 version and/or format"};
-
   }
 
   // catch failure caused by the H5File operations
@@ -257,7 +251,8 @@ void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
   }
 }
 
-void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const string& lib_name)
+void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc,
+                                   const string& lib_name)
 {
   constexpr int ell{0}; // store only zeroth order xs (for now)
 
@@ -311,7 +306,7 @@ void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const string& lib_n
     acc.change_dataset("ifis");
     rec[i].is_fiss = acc.read_int(); // convert int to bool
 
-    if (rec[i].is_fiss) 
+    if (rec[i].is_fiss)
     {
       // sigma_f (and initialize nusf)
       data.resize(G);
@@ -350,16 +345,14 @@ void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const string& lib_n
     for (int j{0}; j < nscatter; ++j)
     {
       stringstream name;
-      name << "scatter" << setfill('0') << setw(3)
-           << j + 1; // one-based index
+      name << "scatter" << setfill('0') << setw(3) << j + 1; // one-based index
       acc.change_group(lib_name + "/" + iso_names[i] + "/" + name.str());
 
       // check legendre scattering order
       acc.change_dataset("legendre");
       const int legendre{acc.read_int()};
       // only read zeroth order scattering for now
-      if (legendre != 0)
-        continue;
+      if (legendre != 0) continue;
 
       // check scattering type
       acc.change_dataset("type");
@@ -375,8 +368,8 @@ void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const string& lib_n
        * other| Undefined
        */
       if ((total_scattering_present) && (scattering_type != 0)) continue;
-      total_scattering_present = 
-        (total_scattering_present) && (scattering_type == 0);
+      total_scattering_present =
+      (total_scattering_present) && (scattering_type == 0);
 
       acc.change_dataset("csr_i");
       auto csr_i{make_unique<int[]>(G + 1)};
@@ -397,11 +390,10 @@ void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc, const string& lib_n
 
       // adjust if n2n scattering
       if (scattering_type == 3)
-        for (decltype(nnz) k{0}; k < nnz; ++k)
-          csr_data[k] *= 2.0;
+        for (decltype(nnz) k{0}; k < nnz; ++k) csr_data[k] *= 2.0;
 
-      SparseMatrix tmp_tmp{csr_i.release(), csr_j.release(),
-                           csr_data.release(), G, G};
+      SparseMatrix tmp_tmp{csr_i.release(), csr_j.release(), csr_data.release(),
+                           G, G};
       tmp_sparse += tmp_tmp;
     }
 
@@ -427,10 +419,8 @@ void XSLibrary::Print(ostream& os)
     const XSRecord& record{rec[i]};
     os << '\n';
     os << "name " << record.name << '\n';
-    if (record.zaid > 0)
-      os << "zaid " << record.zaid << '\n';
-    if (record.nden > 0.0)
-      os << "nden " << record.nden << '\n';
+    if (record.zaid > 0) os << "zaid " << record.zaid << '\n';
+    if (record.nden > 0.0) os << "nden " << record.nden << '\n';
     os << "transport\n";
     write_vector(os, record.sigma_tr);
     os << "total\n";

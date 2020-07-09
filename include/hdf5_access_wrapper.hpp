@@ -9,7 +9,8 @@ class Hdf5_access_wrapper
 {
 public:
   Hdf5_access_wrapper(const H5::H5File& associated_file) : file{associated_file}
-  {}
+  {
+  }
 
   void change_group(const std::string& new_group_name);
   void change_dataset(const std::string& new_dset_name);

@@ -1,27 +1,27 @@
 #include "solver.hpp"
 
-#include "scattering_coefficient.hpp"
 #include "fission_coefficient.hpp"
+#include "scattering_coefficient.hpp"
 
 #include <cmath>
 #include <limits>
-#include <vector>
 #include <memory>
+#include <vector>
 
 using namespace mfem;
 using std::numeric_limits;
 
-using std::vector;
 using std::min;
+using std::vector;
 
 using std::cout;
 using std::endl;
 using std::flush;
 
-using std::unique_ptr;
 using std::make_unique;
+using std::unique_ptr;
 
-Result diffusion_lobpcg(Timer& time, const Input& inp, 
+Result diffusion_lobpcg(Timer& time, const Input& inp,
                         const Material_library& mat_lib,
                         const Array<int>& ess_bdr, const ParMesh* const pmesh,
                         ParFiniteElementSpace* const fespace)
@@ -42,13 +42,13 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
 
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < removal.Size(); ++i) removal[i] = mat_lib.mat[i].rec.sigma_r[0];
+  for (int i{0}; i < removal.Size(); ++i)
+    removal[i] = mat_lib.mat[i].rec.sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
   a.AddDomainIntegrator(new MassIntegrator(removal_func));
-  if (inp.static_condensation)
-    a.EnableStaticCondensation();
+  if (inp.static_condensation) a.EnableStaticCondensation();
 
   a.Assemble();
   a.EliminateEssentialBCDiag(ess_bdr, 1.0);
@@ -63,12 +63,12 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < removal.Size(); ++i) fission[i] = mat_lib.mat[i].rec.nusf[0];
+  for (int i{0}; i < removal.Size(); ++i)
+    fission[i] = mat_lib.mat[i].rec.nusf[0];
   PWConstCoefficient fission_func(fission);
 
   m.AddDomainIntegrator(new MassIntegrator(fission_func));
-  if (inp.static_condensation)
-    m.EnableStaticCondensation();
+  if (inp.static_condensation) m.EnableStaticCondensation();
 
   m.Assemble();
   // shift the eigenvalue corresponding to eliminated dofs to a large value
@@ -111,13 +111,13 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
   // store solution
   Array<double> eigenvalues;
   lobpcg.GetEigenvalues(eigenvalues);
-  res.keff = 1.0 / eigenvalues[0];
+  res.keff   = 1.0 / eigenvalues[0];
   res.phi[g] = lobpcg.GetEigenvector(0);
 
   return res;
 }
 
-Result diffusion_power_iteration(Timer& time, const Input& inp, 
+Result diffusion_power_iteration(Timer& time, const Input& inp,
                                  const Material_library& mat_lib,
                                  const Array<int>& ess_bdr,
                                  const ParMesh* const pmesh,
@@ -175,8 +175,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
 
   // prepare solution that will be returned
   Result res{fespace, mat_lib.ngroup()};
-  for (auto& flux : res.phi)
-    flux = 1.0;
+  for (auto& flux : res.phi) flux = 1.0;
 
   // set the grid function coefficient for each energy group flux
   vector<GridFunctionCoefficient> phi_coeff(mat_lib.ngroup());
@@ -189,7 +188,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   fiss_product_coeff.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     fiss_product_coeff.push_back(
-      ProductCoefficient{nusf_coeff[g], phi_coeff[g]});
+    ProductCoefficient{nusf_coeff[g], phi_coeff[g]});
 
   // build "outline" of fission source integrator for each energy group
   vector<ParLinearForm> fiss(mat_lib.ngroup());
@@ -233,7 +232,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   fiss_term.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     fiss_term.push_back(
-      FissionCoefficient{g, res.keff, mat_lib, res.phi, inp.flux_free_chi});
+    FissionCoefficient{g, res.keff, mat_lib, res.phi, inp.flux_free_chi});
 
   vector<ScatteringCoefficient> scat_term;
   scat_term.reserve(mat_lib.ngroup());
@@ -250,8 +249,9 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
 
   time.start(timing_solver);
   int iter{0};
-  for (iter = 0; (iter < inp.tol.max_outer) && ((k_conv > inp.tol.k)
-                 || (phi_conv > inp.tol.phi)); ++iter)
+  for (iter = 0; (iter < inp.tol.max_outer)
+                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi));
+       ++iter)
   {
     // Solve this fixed source problem for each energy group.
     // Note that FormLinearSystem is designed to be called multiple times.
@@ -272,18 +272,20 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
       cg.SetOperator(*A);
       cg.Mult(B, X); // solve
       a[g]->RecoverFEMSolution(X, b[g], res.phi[g]);
-      
+
       // determine the convergence of this energy group and store the maximum
       // value over all energy groups
       phi_old -= res.phi[g];
 
       // need to sync memory for gpu problems
       phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
-      
-      local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
+
+      local_phi_conv =
+      std::max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
     }
 
-    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX,
+                  MPI_COMM_WORLD);
 
     // Calculate fission sum.
     if (iter == 0)
@@ -301,9 +303,10 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
         fiss[g].Assemble();
         local_fiss_sum += fiss[g].Sum();
       }
-      MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+      MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
     }
-    
+
     // update keff
     res.keff = res.keff * (fiss_sum / fiss_sum_old);
 
@@ -311,13 +314,13 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
     k_conv = std::abs(res.keff - keff_old);
 
     // copy old values
-    keff_old = res.keff;
+    keff_old     = res.keff;
     fiss_sum_old = fiss_sum;
 
     if (myid == 0)
     {
-      cout << "iter=" << iter << " keff=" << res.keff 
-           << " dk=" << k_conv << " dphi=" << phi_conv << endl;
+      cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv
+           << " dphi=" << phi_conv << endl;
     }
   }
   time.stop();
@@ -350,21 +353,22 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   PWConstCoefficient leakage_func(leakage);
 
   Vector removal(pmesh->attributes.Max());
-  for (int i{0}; i < removal.Size(); ++i) removal[i] = mat_lib.mat[i].rec.sigma_r[0];
+  for (int i{0}; i < removal.Size(); ++i)
+    removal[i] = mat_lib.mat[i].rec.sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
   a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
   a.AddDomainIntegrator(new MassIntegrator(removal_func));
 
-  if (inp.static_condensation)
-    a.EnableStaticCondensation();
+  if (inp.static_condensation) a.EnableStaticCondensation();
 
   a.Assemble();
 
   ParLinearForm b{fespace};
 
   Vector source(pmesh->attributes.Max());
-  for (int i{0}; i < source.Size(); ++i) source[i] = mat_lib.mat[i].rec.source[0];
+  for (int i{0}; i < source.Size(); ++i)
+    source[i] = mat_lib.mat[i].rec.source[0];
   PWConstCoefficient source_func{source};
 
   b.AddDomainIntegrator(new DomainLFIntegrator(source_func));
@@ -382,7 +386,8 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
 
   Result res{fespace, mat_lib.ngroup()};
 
-  // ASSUMPTION we require that the fixed source problem has a single energy group
+  // ASSUMPTION we require that the fixed source problem has a single energy
+  // group
   a.FormLinearSystem(ess_tdof_list, res.phi[0], b, A, X, B);
 
   HypreBoomerAMG amg;

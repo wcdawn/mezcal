@@ -23,8 +23,7 @@ Input::Input(const char* fname) : input_file_str{fname}
 void Input::open()
 {
   ifs.open(input_file_str);
-  if (!ifs)
-    throw Invalid_file_name{input_file_str};
+  if (!ifs) throw Invalid_file_name{input_file_str};
   stub = path_stub(input_file_str);
 }
 
@@ -68,13 +67,14 @@ void Input::read_core()
     else if (card == "userxs")
     {
       ifs >> xs_file;
-      xs_file = stub + xs_file;
+      xs_file   = stub + xs_file;
       xs_format = XSLibrary::userxs;
     }
     else if (card == "hdf5xs")
     {
-      ifs >> hdf5xs_lib_name >> xs_file;;
-      xs_file = stub + xs_file;
+      ifs >> hdf5xs_lib_name >> xs_file;
+      ;
+      xs_file   = stub + xs_file;
       xs_format = XSLibrary::hdf5xs;
     }
     else if (card == "reference")
@@ -204,8 +204,7 @@ void Input::echo(ostream& os) const
 
   os << "xs_file " << xs_file << '\n';
 
-  if (ref != Analytic::invalid)
-    os << "reference " << reference << '\n';
+  if (ref != Analytic::invalid) os << "reference " << reference << '\n';
 
   os << "device " << device << '\n';
   os << "static_condensation " << static_condensation << '\n';
@@ -226,8 +225,7 @@ string Input::path_stub(string path)
 {
   string stub;
   // assume absolute paths start with ~ or /
-  if ((path[0] == '~') || (path[0] == '/'))
-    return stub;
+  if ((path[0] == '~') || (path[0] == '/')) return stub;
   // return up-to-and-including the final /
   const auto final_slash{path.find_last_of('/')};
   stub = path.substr(0, final_slash + 1);
@@ -266,10 +264,8 @@ std::string Input::solver_choice_enum_to_str(const Solver_choice& solver)
 
 Input::Solver_choice Input::solver_choice_str_to_enum(const string& solver)
 {
-  if (solver == "power_iteration")
-    return power_iteration;
-  if (solver == "lobpcg")
-    return lobpcg;
+  if (solver == "power_iteration") return power_iteration;
+  if (solver == "lobpcg") return lobpcg;
   return invalid;
 }
 
@@ -301,7 +297,7 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
                  "-no-sc", "--no-static-condensation",
                  "Enable static condensation.");
   args.AddOption(&inp.verbose, "-v", "--verbose", "-no-v", "--no-verbose",
-                "Enable verbose output.");
+                 "Enable verbose output.");
 
   // Note: STATE variables cannot be input from the command line as they will be
   // overwritten by reading the STATE block in the input file at for the first

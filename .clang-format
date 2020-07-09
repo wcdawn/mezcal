@@ -17,45 +17,29 @@ ConstructorInitializerAllOnOneLineOrOnePerLine: false
 AllowAllConstructorInitializersOnNextLine: true
 AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: true
-AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: true
-AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: true
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: true
 BinPackParameters: true
 BreakBeforeBinaryOperators: NonAssignment
 BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
 
-BreakBeforeBraces: Custom
+BreakBeforeBraces: Allman
 
-BraceWrapping:
-  AfterCaseLabel: true
-  AfterClass: true
-  AfterControlStatement: Always
-  AfterEnum: true
-  AfterFunction: true
-  AfterNamespace: true
-  AfterStruct: true
-  AfterUnion: true
-  AfterExternBlock: true
-  BeforeCatch: true
-  BeforeElse: true
-  IndentBraces: false
-  SplitEmptyFunction: false
-  SplitEmptyRecord: false
-  SplitEmptyNamespace: false
-
-BreakConstructorInitializers: BeforeColon
-BreakInheritanceList: AfterColon
 ColumnLimit: 80
 
-# regular expression that describec comments with special meaning, which should
+# regular expression that describes comments with special meaning, which should
 # not be split into lines or otherwise changed.
 CommentPragmas:  '^ IWYU pragma:'
 
 ConstructorInitializerIndentWidth: 2
-ContinuationIndentWidth: 2
+ContinuationIndentWidth: 0
+Cpp11BracedListStyle: true
 ExperimentalAutoDetectBinPacking: false
 ForEachMacros:
   - foreach
