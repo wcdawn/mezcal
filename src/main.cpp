@@ -6,7 +6,6 @@
 #include "solver.hpp"
 #include "xslibrary.hpp"
 #include "timer.hpp"
-#include "version.hpp"
 
 #include <cstring>
 #include <fstream>
@@ -20,7 +19,8 @@ using namespace mfem;
 #include <cmath>
 using std::abs;
 using std::sin;
-double oned_oneg_c_fun(const Vector& v);
+
+void version(std::ostream& os); // forward declaration
 
 int main(int argc, char* argv[])
 {
@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
    * - SPN.
    * - SLEPc & Trilinos solvers.
    * - Linting/formatting with MFEM tools.
-   * - Version info to terminal.
+   * - Loop over states.
    */
 
   Timer time;
@@ -43,10 +43,7 @@ int main(int argc, char* argv[])
 
   if (myid == 0)
   {
-    cout << "git version   " << Version::git_version << '\n';
-    cout << "git sha       " << Version::git_sha << '\n';
-    cout << "compiled date " << Version::compiled_date << '\n';
-    cout << "compiled on   " << Version::compiled_host << '\n';
+    version(cout);
   }
 
   // 1. Parse command-line options.
@@ -119,30 +116,29 @@ int main(int argc, char* argv[])
   // 3. Read the mesh from the given mesh file. We can handle triangular,
   //    quadrilateral, tetrahedral, hexahedral, surface and volume meshes with
   //    the same code.
-  auto mesh{new Mesh(inp.mesh_file, 1, 1)};
-  int dim = mesh->Dimension();
+  Mesh mesh{inp.mesh_file, 1, 1};
+  int dim = mesh.Dimension();
 
   // refine the mesh in serial
-  for (int lvl{0}; lvl < inp.refine_serial; ++lvl) mesh->UniformRefinement();
+  for (int lvl{0}; lvl < inp.refine_serial; ++lvl) mesh.UniformRefinement();
 
   // create a parallel mesh and refine as necessary
-  auto pmesh{new ParMesh(MPI_COMM_WORLD, *mesh)};
-  delete mesh;
-  for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh->UniformRefinement();
+  ParMesh pmesh{MPI_COMM_WORLD, mesh};
+  for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh.UniformRefinement();
 
   time.stop();
 
   // 5. Define a finite element space on the mesh. Here we use continuous
   //    Lagrange finite elements of the specified order. If order < 1, we
   //    instead use an isoparametric/isogeometric space.
-  FiniteElementCollection* fec;
+  FiniteElementCollection* fec{nullptr};
   if (inp.order > 0)
   {
     fec = new H1_FECollection(inp.order, dim);
   }
-  else if (pmesh->GetNodes())
+  else if (pmesh.GetNodes())
   {
-    fec = pmesh->GetNodes()->OwnFEC();
+    fec = pmesh.GetNodes()->OwnFEC();
     if (myid == 0)
       cout << "Using isoparametric FEs: " << fec->Name() << endl;
   }
@@ -150,8 +146,8 @@ int main(int argc, char* argv[])
   {
     fec = new H1_FECollection(inp.order = 1, dim);
   }
-  auto fespace = new ParFiniteElementSpace(pmesh, fec);
-  const HYPRE_Int size{fespace->GlobalTrueVSize()};
+  ParFiniteElementSpace fespace{&pmesh, fec};
+  const HYPRE_Int size{fespace.GlobalTrueVSize()};
   if (myid == 0)
     cout << "Number of finite element unknowns: " << size * xs.ngroup() << endl;
 
@@ -159,7 +155,7 @@ int main(int argc, char* argv[])
   //    In this example, the boundary conditions are defined by marking all
   //    the boundary attributes from the mesh as essential (Dirichlet) and
   //    converting them to a list of true dofs.
-  Array<int> ess_bdr(pmesh->bdr_attributes.Max());
+  Array<int> ess_bdr(pmesh.bdr_attributes.Max());
   // begin by setting all bcs to essential
   ess_bdr = 1;
 
@@ -169,23 +165,23 @@ int main(int argc, char* argv[])
     ess_bdr[i] = inp.boundary_conditions[i];
 
   // do the solving
-  Result res{fespace, xs.ngroup()};
+  Result res{&fespace, xs.ngroup()};
   // TODO loop over states
   inp.read_state();
 
   if (inp.ref == Analytic::fixed_src)
   {
-    res = diffusion_fixed_src(time, inp, mat_lib, ess_bdr, pmesh, fespace);
+    res = diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
   }
   else
   {
     switch (inp.sol)
     {
       case (Input::lobpcg):
-        res = diffusion_lobpcg(time, inp, mat_lib, ess_bdr, pmesh, fespace);
+        res = diffusion_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
         break;
       case (Input::power_iteration):
-        res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, pmesh, fespace);
+        res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
         break;
       default:
         cerr << "Invalid solver choice.\n";
@@ -201,7 +197,7 @@ int main(int argc, char* argv[])
 
   if (inp.ref != Analytic::invalid)
   {
-    Analytic anal(inp.ref, res, xs, pmesh);
+    Analytic anal(inp.ref, res, xs, &pmesh);
     anal.analyze(cout);
     ostringstream analysis_fname;
     analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
@@ -211,7 +207,7 @@ int main(int argc, char* argv[])
 
   time.start("Output");
 
-  ParaViewDataCollection output("output_dir", pmesh);
+  ParaViewDataCollection output("output_dir", &pmesh);
   const auto group_width{std::to_string(xs.ngroup()).length()};
   for (int g{0}; g < xs.ngroup(); ++g)
   {
@@ -228,12 +224,7 @@ int main(int argc, char* argv[])
 
   // 15. Free the used memory.
 
-  delete fespace;
-  if (inp.order > 0)
-  {
-    delete fec;
-  }
-  delete pmesh;
+  if (inp.order > 0) delete fec;
 
   MPI_Finalize();
 

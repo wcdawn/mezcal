@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include <memory>
 
 using namespace mfem;
 using std::numeric_limits;
@@ -16,6 +17,9 @@ using std::min;
 using std::cout;
 using std::endl;
 using std::flush;
+
+using std::unique_ptr;
+using std::make_unique;
 
 Result diffusion_lobpcg(Timer& time, const Input& inp, 
                         const Material_library& mat_lib,
@@ -28,7 +32,7 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
   //////////////////////////////////////////////////////////////////////////////
   // assemble A (LHS) matrix
   //////////////////////////////////////////////////////////////////////////////
-  auto a{new ParBilinearForm(fespace)};
+  ParBilinearForm a{fespace};
 
   // assemble leakage coefficient
   Vector leakage(pmesh->attributes.Max()); // length is number of materials
@@ -41,71 +45,64 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
   for (int i{0}; i < removal.Size(); ++i) removal[i] = mat_lib.mat[i].rec.sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
-  a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
-  a->AddDomainIntegrator(new MassIntegrator(removal_func));
+  a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
+  a.AddDomainIntegrator(new MassIntegrator(removal_func));
   if (inp.static_condensation)
-    a->EnableStaticCondensation();
+    a.EnableStaticCondensation();
 
-  a->Assemble();
-  a->EliminateEssentialBCDiag(ess_bdr, 1.0);
-  a->Finalize();
+  a.Assemble();
+  a.EliminateEssentialBCDiag(ess_bdr, 1.0);
+  a.Finalize();
 
-  HypreParMatrix* A = a->ParallelAssemble();
-  delete a;
+  const unique_ptr<HypreParMatrix> A{a.ParallelAssemble()};
 
   //////////////////////////////////////////////////////////////////////////////
   // assemble M (RHS) matrix
   //////////////////////////////////////////////////////////////////////////////
-  auto m{new ParBilinearForm(fespace)};
+  ParBilinearForm m{fespace};
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < removal.Size(); ++i) fission[i] = mat_lib.mat[i].rec.nusf[0];
   PWConstCoefficient fission_func(fission);
 
-  m->AddDomainIntegrator(new MassIntegrator(fission_func));
+  m.AddDomainIntegrator(new MassIntegrator(fission_func));
   if (inp.static_condensation)
-    m->EnableStaticCondensation();
+    m.EnableStaticCondensation();
 
-  m->Assemble();
+  m.Assemble();
   // shift the eigenvalue corresponding to eliminated dofs to a large value
-  m->EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
-  m->Finalize();
+  m.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+  m.Finalize();
 
-  HypreParMatrix* M = m->ParallelAssemble();
-  delete m;
+  const unique_ptr<HypreParMatrix> M{m.ParallelAssemble()};
 
   time.stop();
 
   // 11. Setup the preconditioner.
-  Solver* prec{nullptr};
-  auto amg{new HypreBoomerAMG(*A)};
-  amg->SetPrintLevel(inp.hypre_print_level());
-  prec = amg;
+  HypreBoomerAMG amg(*A);
+  amg.SetPrintLevel(inp.hypre_print_level());
 
-  auto lobpcg{new HypreLOBPCG(MPI_COMM_WORLD)};
-  lobpcg->SetNumModes(1); // solve for nev eigenmodes
+  HypreLOBPCG lobpcg{MPI_COMM_WORLD};
+  lobpcg.SetNumModes(1); // solve for nev eigenmodes
   // Random seed is set used to initialize the initial eigenvalues for the
   // lobpcg algorithm. This can significantly affect convergence time but
   // convergence time remains bounded.
-  lobpcg->SetRandomSeed(730);
-  lobpcg->SetPreconditioner(*prec);
-  lobpcg->SetMaxIter(inp.tol.max_outer);
-  lobpcg->SetTol(min(inp.tol.phi * inp.tol.phi, inp.tol.k * inp.tol.k));
-  lobpcg->SetPrecondUsageMode(1);
-  lobpcg->SetPrintLevel(inp.hypre_print_level());
-  lobpcg->SetMassMatrix(*M);
-  lobpcg->SetOperator(*A);
+  lobpcg.SetRandomSeed(730);
+  lobpcg.SetPreconditioner(amg);
+  lobpcg.SetMaxIter(inp.tol.max_outer);
+  lobpcg.SetTol(min(inp.tol.phi * inp.tol.phi, inp.tol.k * inp.tol.k));
+  lobpcg.SetPrecondUsageMode(1);
+  lobpcg.SetPrintLevel(inp.hypre_print_level());
+  lobpcg.SetMassMatrix(*M);
+  lobpcg.SetOperator(*A);
 
   // 9. Compute the eigenmodes and extract the array of eigenvalues. Define a
   //    parallel grid function to represent each of the eigenmodes returned by
   //    the solver.
   time.start(timing_solver);
-  lobpcg->Solve();
+  lobpcg.Solve();
   time.stop();
-
-  delete A;
-  delete M;
 
   Result res{fespace, mat_lib.ngroup()};
 
@@ -113,13 +110,9 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
 
   // store solution
   Array<double> eigenvalues;
-  lobpcg->GetEigenvalues(eigenvalues);
+  lobpcg.GetEigenvalues(eigenvalues);
   res.keff = 1.0 / eigenvalues[0];
-  res.phi[g] = lobpcg->GetEigenvector(0);
-
-  // free memory from solver
-  delete lobpcg;
-  delete prec; // don't also delete amg or that would be double delete
+  res.phi[g] = lobpcg.GetEigenvector(0);
 
   return res;
 }
@@ -138,10 +131,11 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   time.start(timing_matrix_assembly);
 
   // build streaming and removal operator (LHS) for each energy group
-  vector<ParBilinearForm*> a(mat_lib.ngroup());
+  // note ParBilinearForm has neither copy nor move constructor
+  vector<unique_ptr<ParBilinearForm>> a(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    a[g] = new ParBilinearForm(fespace);
+    a[g] = make_unique<ParBilinearForm>(fespace);
 
     Vector leakage(pmesh->attributes.Max());
     for (int i{0}; i < leakage.Size(); ++i)
@@ -198,18 +192,16 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
       ProductCoefficient{nusf_coeff[g], phi_coeff[g]});
 
   // build "outline" of fission source integrator for each energy group
-  vector<ParLinearForm*> fiss(mat_lib.ngroup());
+  vector<ParLinearForm> fiss(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); g++)
   {
-    fiss[g] = new ParLinearForm(fespace);
-    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_product_coeff[g]));
+    fiss[g].Update(fespace);
+    fiss[g].AddDomainIntegrator(new DomainLFIntegrator(fiss_product_coeff[g]));
   }
 
   // setup preconditioner
-  Solver* prec{nullptr};
-  auto amg{new HypreBoomerAMG};
-  amg->SetPrintLevel(inp.hypre_print_level());
-  prec = amg;
+  HypreBoomerAMG amg;
+  amg.SetPrintLevel(inp.hypre_print_level());
 
   // setup solver
   CGSolver cg(MPI_COMM_WORLD);
@@ -217,7 +209,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
   cg.SetPrintLevel(inp.mfem_print_level());
-  if (prec) cg.SetPreconditioner(*prec);
+  cg.SetPreconditioner(amg);
 
   // these are necessary for the solver
   OperatorPtr A;
@@ -248,12 +240,12 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     scat_term.push_back(ScatteringCoefficient{g, mat_lib, res.phi});
 
-  vector<ParLinearForm*> b(mat_lib.ngroup());
+  vector<ParLinearForm> b(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    b[g] = new ParLinearForm(fespace);
-    b[g]->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
-    b[g]->AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
+    b[g].Update(fespace);
+    b[g].AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
+    b[g].AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
   }
 
   time.start(timing_solver);
@@ -267,7 +259,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       // assemble source for this group
-      b[g]->Assemble();
+      b[g].Assemble();
 
       // necessary to enforce zero-flux boundary conditions
       if (iter == 0) res.phi[g] = 0.0;
@@ -276,10 +268,10 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
       phi_old = res.phi[g];
 
       // form, solve, and recover the linear system
-      a[g]->FormLinearSystem(ess_tdof_list, res.phi[g], *b[g], A, X, B);
+      a[g]->FormLinearSystem(ess_tdof_list, res.phi[g], b[g], A, X, B);
       cg.SetOperator(*A);
       cg.Mult(B, X); // solve
-      a[g]->RecoverFEMSolution(X, *b[g], res.phi[g]);
+      a[g]->RecoverFEMSolution(X, b[g], res.phi[g]);
       
       // determine the convergence of this energy group and store the maximum
       // value over all energy groups
@@ -306,8 +298,8 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
       double local_fiss_sum{0.0};
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        fiss[g]->Assemble();
-        local_fiss_sum += fiss[g]->Sum();
+        fiss[g].Assemble();
+        local_fiss_sum += fiss[g].Sum();
       }
       MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     }
@@ -330,16 +322,6 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   }
   time.stop();
 
-  delete prec;
-
-  // TODO consider creating a special class to adhere better to RAII
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    delete a[g];
-    delete b[g];
-    delete fiss[g];
-  }
-
   if ((iter == inp.tol.max_outer) && (myid == 0))
   {
     cout << "Failed to converge in maximum allowed power iterations.\n"
@@ -360,7 +342,7 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
                            ParFiniteElementSpace* const fespace)
 {
   time.start(timing_matrix_assembly);
-  auto a{new ParBilinearForm(fespace)};
+  ParBilinearForm a{fespace};
 
   Vector leakage(pmesh->attributes.Max());
   for (int i{0}; i < leakage.Size(); ++i)
@@ -371,23 +353,23 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   for (int i{0}; i < removal.Size(); ++i) removal[i] = mat_lib.mat[i].rec.sigma_r[0];
   PWConstCoefficient removal_func(removal);
 
-  a->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
-  a->AddDomainIntegrator(new MassIntegrator(removal_func));
+  a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
+  a.AddDomainIntegrator(new MassIntegrator(removal_func));
 
   if (inp.static_condensation)
-    a->EnableStaticCondensation();
+    a.EnableStaticCondensation();
 
-  a->Assemble();
+  a.Assemble();
 
-  auto b{new ParLinearForm(fespace)};
+  ParLinearForm b{fespace};
 
   Vector source(pmesh->attributes.Max());
   for (int i{0}; i < source.Size(); ++i) source[i] = mat_lib.mat[i].rec.source[0];
   PWConstCoefficient source_func{source};
 
-  b->AddDomainIntegrator(new DomainLFIntegrator(source_func));
+  b.AddDomainIntegrator(new DomainLFIntegrator(source_func));
 
-  b->Assemble();
+  b.Assemble();
 
   time.stop();
 
@@ -401,30 +383,23 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   Result res{fespace, mat_lib.ngroup()};
 
   // ASSUMPTION we require that the fixed source problem has a single energy group
-  a->FormLinearSystem(ess_tdof_list, res.phi[0], *b, A, X, B);
+  a.FormLinearSystem(ess_tdof_list, res.phi[0], b, A, X, B);
 
-  Solver* prec{nullptr};
-  auto amg{new HypreBoomerAMG};
-  amg->SetPrintLevel(inp.hypre_print_level());
-  prec = amg;
+  HypreBoomerAMG amg;
+  amg.SetPrintLevel(inp.hypre_print_level());
 
   CGSolver cg(MPI_COMM_WORLD);
   cg.SetRelTol(inp.tol.inner_rel);
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
   cg.SetPrintLevel(inp.mfem_print_level());
-  if (prec)
-    cg.SetPreconditioner(*prec);
+  cg.SetPreconditioner(amg);
   cg.SetOperator(*A);
   time.start(timing_solver);
   cg.Mult(B, X);
   time.stop();
-  delete prec;
 
-  a->RecoverFEMSolution(X, *b, res.phi[0]);
-
-  delete b;
-  delete a;
+  a.RecoverFEMSolution(X, b, res.phi[0]);
 
   return res;
 }

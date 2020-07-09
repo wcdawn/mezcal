@@ -1,5 +1,5 @@
 *.o
 
-version.hpp
+version.cpp
 
 micro.x

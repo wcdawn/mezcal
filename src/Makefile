@@ -1,6 +1,6 @@
 # Makefile
 
-CXX = g++
+CXX = clang++
 CXXFLAGS = -Wall -pedantic-errors -std=c++17
 
 MPICXX = /opt/mpich/bin/mpicxx -cxx=$(CXX)
@@ -47,6 +47,7 @@ CPP_FILES = main.cpp \
 			scattering_coefficient.cpp \
 			solver.cpp \
 			timer.cpp \
+			version.cpp \
 			xslibrary.cpp
 
 INCLUDE_DIR = ../include
@@ -59,7 +60,6 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
 			$(INCLUDE_DIR)/solver.hpp \
 			$(INCLUDE_DIR)/timer.hpp \
-			$(INCLUDE_DIR)/version.hpp \
 			$(INCLUDE_DIR)/xslibrary.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
@@ -68,13 +68,13 @@ EXEC = micro.x
 
 GIT_VERSION = $(shell git describe --dirty --always --tags)
 GIT_SHA     = $(shell git log -n1 --format=format:"%H")
-DATE        = $(shell date +"%a %d %b %Y %R %Z")
+DATE        = $(shell date +"%a %d %b %Y %T %Z") # TODO replace T with R
 HOST        = $(shell hostname)
 
 .SUFFIXES :
 .SUFFIXES : .cpp .o .hpp
 
-.PHONY : default all clean
+.PHONY : default all clean version
 
 default : all
 
@@ -82,39 +82,56 @@ all : $(EXEC)
 
 $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	@# delete any existing executable if linking fails
-	@$(MAKE) version
+	@$(MAKE) version -s
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) || $(RM) $(EXEC)
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) -I$(INCLUDE_DIR) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
 
-version : $(INCLUDE_DIR)/version.hpp
+version:
+	$(RM) $(INCLUDE_DIR)/version.hpp
+	$(MAKE) $(INCLUDE_DIR)/version.hpp
+	$(MAKE) version.o
 
-$(INCLUDE_DIR)/version.hpp : 
-	@echo "#ifndef VERSION" > $@
-	@echo "#define VERSION" >> $@
-	@echo "" >> $@
-	@echo "#include <string>" >> $@
-	@echo "" >> $@
-	@echo "namespace Version" >> $@
-	@echo "{" >> $@
-	@echo "  const std::string git_version   = \"$(GIT_VERSION)\";" >> $@
-	@echo "  const std::string git_sha       = \"$(GIT_SHA)\";" >> $@
-	@echo "  const std::string compiled_date = \"$(DATE)\";" >> $@
-	@echo "  const std::string compiled_host = \"$(HOST)\";" >> $@
-	@echo "} // namespace Version" >> $@
-	@echo "" >> $@
-	@echo "#endif" >> $@
+version.o : version.cpp $(INCLUDE_DIR)/version.hpp
+
+$(INCLUDE_DIR)/version.hpp :
+	@echo "#ifndef VERSION" > ../include/version.hpp
+	@echo "#define VERSION" >> ../include/version.hpp
+	@echo "" >> ../include/version.hpp
+	@echo "#include <string>" >> ../include/version.hpp
+	@echo "" >> ../include/version.hpp
+	@echo "namespace Version" >> ../include/version.hpp
+	@echo "{" >> ../include/version.hpp
+	@echo "  const std::string git_version   = \"$(GIT_VERSION)\";" >> ../include/version.hpp
+	@echo "  const std::string git_sha       = \"$(GIT_SHA)\";" >> ../include/version.hpp
+	@echo "  const std::string compiled_date = \"$(DATE)\";" >> ../include/version.hpp
+	@echo "  const std::string compiled_host = \"$(HOST)\";" >> ../include/version.hpp
+	@echo "} // namespace Version" >> ../include/version.hpp
+	@echo "" >> ../include/version.hpp
+	@echo "#endif" >> ../include/version.hpp
+
+version.cpp :
+	@echo "#include \"version.hpp\"" > version.cpp
+	@echo "#include <iostream>" >> version.cpp
+	@echo "" >> version.cpp
+	@echo "void version(std::ostream& os)" >> version.cpp
+	@echo "{" >> version.cpp
+	@echo "  os << \"git version   = \" << Version::git_version   << \"\\n\";" >> version.cpp
+	@echo "  os << \"git sha       = \" << Version::git_sha       << \"\\n\";" >> version.cpp
+	@echo "  os << \"compiled date = \" << Version::compiled_date << \"\\n\";" >> version.cpp
+	@echo "  os << \"compiled on   = \" << Version::compiled_host << \"\\n\";" >> version.cpp
+	@echo "}" >> version.cpp
 
 clean :
-	@$(RM) $(OBJ) $(EXEC) $(INCLUDE_DIR)/version.hpp
+	@$(RM) $(OBJ) $(EXEC) version.cpp $(INCLUDE_DIR)/version.hpp
 
 format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
 # Listing Order:
 # <object file> : $(MFEM_HEADER) <my header> <other headers>
-main.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/version.hpp $(INCLUDE_DIR)/xslibrary.hpp
+main.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp
 analytic.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
 input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/xslibrary.hpp
@@ -124,3 +141,4 @@ scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.
 fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 hdf5_access_wrapper.o : $(INCLUDE_DIR)/hdf5_access_wrapper.hpp
 timer.o : $(INCLUDE_DIR)/timer.hpp
+version.o : $(INCLUDE_DIR)/version.hpp
