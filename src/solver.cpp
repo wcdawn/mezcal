@@ -132,6 +132,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
 
   // build streaming and removal operator (LHS) for each energy group
   // note ParBilinearForm has neither copy nor move constructor
+
   vector<unique_ptr<ParBilinearForm>> a(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
@@ -159,13 +160,14 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
 
   // create a coefficientfor the nu*fission cross section in each energy group
   // this will be used for the flux integral at the end of each loop
-  vector<PWConstCoefficient> nusf_coeff(mat_lib.ngroup());
+  vector<PWConstCoefficient> nusf_coeff;
+  nusf_coeff.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     Vector fission(pmesh->attributes.Max()); // length is number of materials
     for (int i{0}; i < fission.Size(); ++i)
       fission[i] = mat_lib.mat[i].rec.nusf[g];
-    nusf_coeff[g].UpdateConstants(fission);
+    nusf_coeff.emplace_back(fission);
   }
 
   // set initial flux profile to be used for fission source
@@ -178,17 +180,17 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   for (auto& flux : res.phi) flux = 1.0;
 
   // set the grid function coefficient for each energy group flux
-  vector<GridFunctionCoefficient> phi_coeff(mat_lib.ngroup());
+  vector<GridFunctionCoefficient> phi_coeff;
+  phi_coeff.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    phi_coeff[g].SetGridFunction(&res.phi[g]);
+    phi_coeff.emplace_back(&res.phi[g]);
 
   // note that this one does not have a default constructor so we have to do
   // this a bit differently
   vector<ProductCoefficient> fiss_product_coeff;
   fiss_product_coeff.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    fiss_product_coeff.push_back(
-    ProductCoefficient{nusf_coeff[g], phi_coeff[g]});
+    fiss_product_coeff.emplace_back(nusf_coeff[g], phi_coeff[g]);
 
   // build "outline" of fission source integrator for each energy group
   vector<ParLinearForm> fiss(mat_lib.ngroup());
@@ -231,13 +233,12 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   vector<FissionCoefficient> fiss_term;
   fiss_term.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    fiss_term.push_back(
-    FissionCoefficient{g, res.keff, mat_lib, res.phi, inp.flux_free_chi});
+    fiss_term.emplace_back(g, res.keff, mat_lib, res.phi, inp.flux_free_chi);
 
   vector<ScatteringCoefficient> scat_term;
   scat_term.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    scat_term.push_back(ScatteringCoefficient{g, mat_lib, res.phi});
+    scat_term.emplace_back(g, mat_lib, res.phi);
 
   vector<ParLinearForm> b(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
