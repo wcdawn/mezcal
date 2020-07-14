@@ -28,7 +28,6 @@ int main(int argc, char* argv[])
    * Features to add:
    * - SPN.
    * - SLEPc & Trilinos solvers.
-   * - Linting/formatting with MFEM tools.
    * - Loop over states.
    */
 

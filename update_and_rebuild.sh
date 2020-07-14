@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# rely on environment variables:
+# - PETSC_DIR
+# - PETSC_ARCH
+# - Appropriate LD_LIBRARY_PATH (cuda & PETSc)
+
+set -x
+
+CUDA_DIR=/opt/cuda
+
 CXX=g++
 CC=gcc
 
@@ -103,16 +112,30 @@ then
   MFEM_MPICXX="${MPICXX} -cxx=${CXX}"
 
   NVCC=nvcc
-  CUDA=''
+  CUDA='NO'
+  CUDA_FLAGS_VAR=''
   if [ -x "$(command -v $NVCC)" ]
   then
-    CUDA='MFEM_USE_CUDA=YES'
+    CUDA='YES'
+    CUDA_FLAGS_VAR="-x=cu -arch=sm_60 --expt-extended-lambda --compiler-options -Wall --compiler-options -O3 --compiler-options -cxx=${CXX}"
     MFEM_MPICXX="${MPICXX}"
   fi
 
   make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX='nvcc' \
     BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
-    MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' ${CUDA}
+    MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' MFEM_USE_CUDA=${CUDA} \
+    CUDA_FLAGS="${CUDA_FLAGS_VAR}" \
+    MFEM_USE_PETSC=YES PETSC_DIR=${PETSC_DIR}/${PETSC_ARCH} PETSC_ARCH=${PETSC_ARCH} \
+    MFEM_USE_SLEPC=YES SLEPC_DIR=/home/wcdawn/projects/slepc
+
+  # configure using SLEPc
+  # PETSC_ARCH is necessary for SLEPc because MFEM has a weird default value 
+  # ("arch-linux2-c-debug")
+####  make config MPICXX=/opt/mpich/bin/mpicxx BUILD_DIR=../build/mfem \
+####    MFEM_USE_MPI=YES MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' \
+####    MFEM_USE_CUDA=YES \
+####    MFEM_USE_PETSC=YES PETSC_DIR=/home/wcdawn/projects/petsc/arch-linux-c-debug/ \
+####    MFEM_USE_SLEPC=YES SLEPC_DIR=/home/wcdawn/projects/slepc PETSC_ARCH=arch-linux-c-debug
 
 fi
 

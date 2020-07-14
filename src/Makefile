@@ -1,6 +1,6 @@
 # Makefile
 
-CXX = clang++
+CXX = g++
 CXXFLAGS = -Wall -pedantic-errors -std=c++17
 
 MPICXX = /opt/mpich/bin/mpicxx -cxx=$(CXX)
@@ -15,22 +15,29 @@ LD = $(MPICXX)
 LDFLAGS = -std=c++17
 
 MFEM_DIR = ../build/mfem
-MFEM_INCLUDE = $(MFEM_DIR)
-MFEM_HEADER = $(MFEM_INCLUDE)/mfem.hpp
+MFEM_INCLUDE = -I$(MFEM_DIR)
+MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
 MFEM_LIB = $(MFEM_DIR)/libmfem.a
 
 HYPRE_DIR = ../hypre/src/hypre
-HYPRE_INCLUDE = $(HYPRE_DIR)/include
+HYPRE_INCLUDE = -I$(HYPRE_DIR)/include
 HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 
 METIS_DIR = ../metis
-METIS_INCLUDE = $(METIS_DIR)/include
+METIS_INCLUDE = -I$(METIS_DIR)/include
 METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 CUDA_DIR = /opt/cuda
 CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread
 
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(CUDA_LIB) $(H5_LIB)
+PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
+PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
+
+INCLUDE_DIR = ../include
+
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB)
 
 ifeq ($(METHOD), dbg)
 CXXFLAGS += -O0 -g
@@ -49,8 +56,6 @@ CPP_FILES = main.cpp \
 			timer.cpp \
 			version.cpp \
 			xslibrary.cpp
-
-INCLUDE_DIR = ../include
 
 HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/fission_coefficient.hpp \
@@ -86,7 +91,7 @@ $(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) || $(RM) $(EXEC)
 
 %.o : %.cpp
-	$(MPICXX) $(MPICXXFLAGS) -I$(INCLUDE_DIR) -I$(MFEM_INCLUDE) -I$(HYPRE_INCLUDE) -I$(METIS_INCLUDE) -c $<
+	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<
 
 version:
 	$(RM) $(INCLUDE_DIR)/version.hpp
