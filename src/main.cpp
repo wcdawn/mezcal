@@ -163,11 +163,15 @@ int main(int argc, char* argv[])
     switch (inp.sol)
     {
       case (Input::lobpcg):
-        res = diffusion_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        res =
+        diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
         break;
       case (Input::power_iteration):
         res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh,
                                         &fespace);
+        break;
+      case (Input::slepc):
+        res = diffusion_slepc(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
         break;
       default:
         cerr << "Invalid solver choice.\n";

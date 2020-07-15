@@ -4,6 +4,7 @@
 #include "scattering_coefficient.hpp"
 
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -21,10 +22,11 @@ using std::flush;
 using std::make_unique;
 using std::unique_ptr;
 
-Result diffusion_lobpcg(Timer& time, const Input& inp,
-                        const Material_library& mat_lib,
-                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
-                        ParFiniteElementSpace* const fespace)
+Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
+                              const Material_library& mat_lib,
+                              const Array<int>& ess_bdr,
+                              const ParMesh* const pmesh,
+                              ParFiniteElementSpace* const fespace)
 {
 
   time.start(timing_matrix_assembly);
@@ -97,22 +99,108 @@ Result diffusion_lobpcg(Timer& time, const Input& inp,
   lobpcg.SetMassMatrix(*M);
   lobpcg.SetOperator(*A);
 
-  // 9. Compute the eigenmodes and extract the array of eigenvalues. Define a
-  //    parallel grid function to represent each of the eigenmodes returned by
-  //    the solver.
   time.start(timing_solver);
   lobpcg.Solve();
   time.stop();
 
   Result res{fespace, mat_lib.ngroup()};
 
-  constexpr int g{0};
-
   // store solution
   Array<double> eigenvalues;
   lobpcg.GetEigenvalues(eigenvalues);
   res.keff   = 1.0 / eigenvalues[0];
-  res.phi[g] = lobpcg.GetEigenvector(0);
+  res.phi[0] = lobpcg.GetEigenvector(0);
+
+  return res;
+}
+
+Result diffusion_slepc(Timer& time, const Input& inp,
+                       const Material_library& mat_lib,
+                       const Array<int>& ess_bdr, const ParMesh* const pmesh,
+                       ParFiniteElementSpace* const fespace)
+{
+  constexpr int g{0};
+
+  if (std::filesystem::exists(inp.concatenate_path("slepcrc")))
+    MFEMInitializeSlepc(NULL, NULL, inp.concatenate_path("slepcrc").c_str(),
+                        NULL);
+  else
+    MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
+
+  time.start(timing_matrix_assembly);
+
+  Vector leakage(pmesh->attributes.Max());
+  for (int i{0}; i < leakage.Size(); ++i)
+    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
+  PWConstCoefficient leakage_func{leakage};
+
+  Vector removal(pmesh->attributes.Max());
+  for (int i{0}; i < removal.Size(); ++i)
+    removal[i] = mat_lib.mat[i].rec.sigma_r[g];
+  PWConstCoefficient removal_func{removal};
+
+  ParBilinearForm a{fespace};
+  a.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+  a.AddDomainIntegrator(new MassIntegrator{removal_func});
+  a.Assemble();
+  a.EliminateEssentialBCDiag(ess_bdr, 1.0);
+  a.Finalize();
+
+  Vector fission(pmesh->attributes.Max());
+  for (int i{0}; i < fission.Size(); ++i)
+    fission[i] = mat_lib.mat[i].rec.nusf[g];
+  PWConstCoefficient fission_func{fission};
+
+  ParBilinearForm m{fespace};
+  m.AddDomainIntegrator(new MassIntegrator{fission_func});
+  m.Assemble();
+  m.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+  m.Finalize();
+
+  time.stop();
+
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetMaxIter(inp.tol.max_outer);
+
+  // spectral transformation will not be useful for Generalized Davidson solver
+  // as it uses a preconditioner instead of a spectral transformation
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+
+  // TODO clean this up
+  PetscParMatrix* A{nullptr};
+  PetscParMatrix* M{nullptr};
+  const Operator::Type tid{Operator::PETSC_MATAIJ};
+  OperatorHandle Ah(tid), Mh(tid);
+  a.ParallelAssemble(Ah);
+  Ah.Get(A);
+  Ah.SetOperatorOwner(false);
+  m.ParallelAssemble(Mh);
+  Mh.Get(M);
+  Mh.SetOperatorOwner(false);
+
+  slepc.SetOperators(*A, *M);
+
+  slepc.Customize();
+  time.start(timing_solver);
+  slepc.Solve();
+  time.stop();
+
+  // TODO better error handling
+  if (slepc.GetNumConverged() < 1)
+  {
+    std::cerr << "SLEPC failed to converge." << endl;
+    return {fespace, mat_lib.ngroup()};
+  }
+
+  Result res{fespace, mat_lib.ngroup()};
+
+  slepc.GetEigenvalue(0, res.keff);
+  res.keff = 1.0 / res.keff;
+  Vector tmp(fespace->GetTrueVSize());
+  slepc.GetEigenvector(0, tmp);
+  res.phi[g].Distribute(tmp);
 
   return res;
 }
@@ -182,8 +270,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   // set the grid function coefficient for each energy group flux
   vector<GridFunctionCoefficient> phi_coeff;
   phi_coeff.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    phi_coeff.emplace_back(&res.phi[g]);
+  for (int g{0}; g < mat_lib.ngroup(); ++g) phi_coeff.emplace_back(&res.phi[g]);
 
   // note that this one does not have a default constructor so we have to do
   // this a bit differently

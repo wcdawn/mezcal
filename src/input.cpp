@@ -258,6 +258,7 @@ std::string Input::solver_choice_enum_to_str(const Solver_choice& solver)
   {
     case (power_iteration): return "power_iteration";
     case (lobpcg): return "lobpcg";
+    case (slepc): return "slepc";
     default: return "invalid";
   }
 }
@@ -266,7 +267,13 @@ Input::Solver_choice Input::solver_choice_str_to_enum(const string& solver)
 {
   if (solver == "power_iteration") return power_iteration;
   if (solver == "lobpcg") return lobpcg;
+  if (solver == "slepc") return slepc;
   return invalid;
+}
+
+string Input::concatenate_path(const string& fname) const
+{
+  return stub + fname;
 }
 
 OptionsParser custom_arguments(Input& inp, int argc, char* argv[])

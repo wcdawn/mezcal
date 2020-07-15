@@ -324,5 +324,22 @@ class Test_light(unittest.TestCase):
         kref = 2.2769962268045236264
         self.assert_absolute_equal(keff, kref, tol=self.k_tol)
 
+    def test_1d1g_tri_slepc(self):
+        input_file = os.path.join(self.dirname,
+            "../analytic/1d1g/1d1g_slepc.inp")
+        data = driver.run_code(self.executable, "-i", input_file)
+
+        keff = driver.get_value(data, "keff")
+        kref = 0.96505010141496561094
+        self.assert_absolute_equal(keff, kref, tol=self.k_tol)
+
+        rmsnorm = driver.get_value(data, "rmsnorm")
+        rmsnorm_ref = 0.000109302
+        self.assert_absolute_equal(rmsnorm, rmsnorm_ref, tol=self.err_tol)
+
+        infnorm = driver.get_value(data, "infnorm")
+        infnorm_ref = 0.000386866
+        self.assert_absolute_equal(infnorm, infnorm_ref, tol=self.err_tol)
+
 if (__name__ == "__main__"):
     unittest.main()

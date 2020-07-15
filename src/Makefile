@@ -34,10 +34,14 @@ PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 
+SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(PETSC_DIR)/../include
+SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
+
 INCLUDE_DIR = ../include
 
 INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 ifeq ($(METHOD), dbg)
 CXXFLAGS += -O0 -g

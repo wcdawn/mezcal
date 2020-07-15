@@ -95,7 +95,8 @@ public:
   {
     invalid = -1,
     power_iteration,
-    lobpcg
+    lobpcg,
+    slepc
   };
 
   // actual enum value
@@ -103,6 +104,8 @@ public:
 
   // this is public so that other blocks (e.g. MATERIAL) can be read
   std::ifstream ifs;
+
+  std::string concatenate_path(const std::string& fname) const;
 
 private:
   static constexpr char comment_char{'#'};
