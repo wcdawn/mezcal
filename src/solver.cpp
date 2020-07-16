@@ -8,11 +8,15 @@
 #include <limits>
 #include <memory>
 #include <vector>
+#include <string>
+#include <algorithm>
+
 
 using namespace mfem;
 using std::numeric_limits;
 
-using std::min;
+using std::max;
+using std::string;
 using std::vector;
 
 using std::cout;
@@ -21,6 +25,8 @@ using std::flush;
 
 using std::make_unique;
 using std::unique_ptr;
+
+using std::filesystem::exists;
 
 Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
                               const Material_library& mat_lib,
@@ -93,7 +99,7 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   lobpcg.SetRandomSeed(730);
   lobpcg.SetPreconditioner(amg);
   lobpcg.SetMaxIter(inp.tol.max_outer);
-  lobpcg.SetTol(min(inp.tol.phi * inp.tol.phi, inp.tol.k * inp.tol.k));
+  lobpcg.SetTol(inp.tol.phi * inp.tol.k);
   lobpcg.SetPrecondUsageMode(1);
   lobpcg.SetPrintLevel(inp.hypre_print_level());
   lobpcg.SetMassMatrix(*M);
@@ -121,9 +127,9 @@ Result diffusion_slepc(Timer& time, const Input& inp,
 {
   constexpr int g{0};
 
-  if (std::filesystem::exists(inp.concatenate_path("slepcrc")))
-    MFEMInitializeSlepc(NULL, NULL, inp.concatenate_path("slepcrc").c_str(),
-                        NULL);
+  const string slepcrc_fname{inp.concatenate_path("slepcrc")};
+  if (exists(slepcrc_fname))
+    MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
   else
     MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
 
@@ -168,11 +174,12 @@ Result diffusion_slepc(Timer& time, const Input& inp,
   // as it uses a preconditioner instead of a spectral transformation
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
 
-  // TODO clean this up
+  // set PETSc operators appropriately
+  // not sure of a better way to do this
   PetscParMatrix* A{nullptr};
   PetscParMatrix* M{nullptr};
-  const Operator::Type tid{Operator::PETSC_MATAIJ};
-  OperatorHandle Ah(tid), Mh(tid);
+  OperatorHandle Ah(Operator::PETSC_MATAIJ);
+  OperatorHandle Mh(Operator::PETSC_MATAIJ);
   a.ParallelAssemble(Ah);
   Ah.Get(A);
   Ah.SetOperatorOwner(false);
@@ -182,17 +189,15 @@ Result diffusion_slepc(Timer& time, const Input& inp,
 
   slepc.SetOperators(*A, *M);
 
-  slepc.Customize();
   time.start(timing_solver);
   slepc.Solve();
   time.stop();
 
-  // TODO better error handling
+  // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
+  // cannot be accessed, even if they are *nearly* converged. Therefore, to
+  // avoid dereferencing bad memory, we must abort.
   if (slepc.GetNumConverged() < 1)
-  {
-    std::cerr << "SLEPC failed to converge." << endl;
-    return {fespace, mat_lib.ngroup()};
-  }
+    throw Failed_to_converge{"SLEPc failed to converge.\n"};
 
   Result res{fespace, mat_lib.ngroup()};
 
@@ -369,7 +374,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
       phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
 
       local_phi_conv =
-      std::max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
+      max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
     }
 
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX,
@@ -399,7 +404,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
     res.keff = res.keff * (fiss_sum / fiss_sum_old);
 
     // update convergence criteria
-    k_conv = std::abs(res.keff - keff_old);
+    k_conv = abs(res.keff - keff_old);
 
     // copy old values
     keff_old     = res.keff;
