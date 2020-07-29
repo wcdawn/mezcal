@@ -107,6 +107,8 @@ void Material_record::calculate_macroscopic_xs()
     rec.is_fiss = rec.is_fiss || iso[i].rec.is_fiss;
   }
   rec.sigma_s = scat;
+  rec.sigma_s.Finalize();
+  rec.sigma_s.SortColumnIndices();
   rec.chi = flux_free_chi(); // initialize chi with the flux_free_chi formula
 }
 
