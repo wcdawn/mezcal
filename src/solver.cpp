@@ -35,7 +35,7 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
                               ParFiniteElementSpace* const fespace)
 {
 
-  time.start(timing_matrix_assembly);
+  time.start(time.matrix_assembly);
 
   //////////////////////////////////////////////////////////////////////////////
   // assemble A (LHS) matrix
@@ -105,7 +105,7 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   lobpcg.SetMassMatrix(*M);
   lobpcg.SetOperator(*A);
 
-  time.start(timing_solver);
+  time.start(time.solver);
   lobpcg.Solve();
   time.stop();
 
@@ -133,7 +133,7 @@ Result diffusion_slepc(Timer& time, const Input& inp,
   else
     MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
 
-  time.start(timing_matrix_assembly);
+  time.start(time.matrix_assembly);
 
   Vector leakage(pmesh->attributes.Max());
   for (int i{0}; i < leakage.Size(); ++i)
@@ -178,18 +178,21 @@ Result diffusion_slepc(Timer& time, const Input& inp,
   // not sure of a better way to do this
   PetscParMatrix* A{nullptr};
   PetscParMatrix* M{nullptr};
-  OperatorHandle Ah(Operator::PETSC_MATAIJ);
-  OperatorHandle Mh(Operator::PETSC_MATAIJ);
-  a.ParallelAssemble(Ah);
-  Ah.Get(A);
-  Ah.SetOperatorOwner(false);
-  m.ParallelAssemble(Mh);
-  Mh.Get(M);
-  Mh.SetOperatorOwner(false);
+
+  {
+    OperatorHandle Ah{Operator::PETSC_MATAIJ};
+    OperatorHandle Mh{Operator::PETSC_MATAIJ};
+    a.ParallelAssemble(Ah);
+    Ah.Get(A);
+    Ah.SetOperatorOwner(false);
+    m.ParallelAssemble(Mh);
+    Mh.Get(M);
+    Mh.SetOperatorOwner(false);
+  }
 
   slepc.SetOperators(*A, *M);
 
-  time.start(timing_solver);
+  time.start(time.solver);
   slepc.Solve();
   time.stop();
 
@@ -221,7 +224,8 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  time.start(timing_matrix_assembly);
+  // NOTE: rebuilding the RHS matrix is not included in matrix assembly.
+  time.start(time.matrix_assembly);
 
   // build streaming and removal operator (LHS) for each energy group
   // note ParBilinearForm has neither copy nor move constructor
@@ -340,7 +344,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
     b[g].AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
   }
 
-  time.start(timing_solver);
+  time.start(time.solver);
   int iter{0};
   for (iter = 0; (iter < inp.tol.max_outer)
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi));
@@ -437,7 +441,7 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
                            const ParMesh* const pmesh,
                            ParFiniteElementSpace* const fespace)
 {
-  time.start(timing_matrix_assembly);
+  time.start(time.matrix_assembly);
   ParBilinearForm a{fespace};
 
   Vector leakage(pmesh->attributes.Max());
@@ -493,11 +497,284 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   cg.SetPrintLevel(inp.mfem_print_level());
   cg.SetPreconditioner(amg);
   cg.SetOperator(*A);
-  time.start(timing_solver);
+  time.start(time.solver);
   cg.Mult(B, X);
   time.stop();
 
   a.RecoverFEMSolution(X, b, res.phi[0]);
+
+  return res;
+}
+
+Result diffusion_slepc_vector(Timer& time, const Input& inp,
+                       const Material_library& mat_lib,
+                       const Array<int>& ess_bdr, const ParMesh* const pmesh,
+                       ParFiniteElementSpace* const fespace)
+{
+
+  const string slepcrc_fname{inp.concatenate_path("slepcrc")};
+  if (exists(slepcrc_fname))
+    MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
+  else
+    MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
+
+  time.start(time.matrix_assembly);
+
+  ParBilinearForm diffusion_bilinear{fespace};
+  ParBilinearForm fission_bilinear{fespace};
+
+  DenseMatrix leakage(mat_lib.ngroup()); // zero initialized
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    leakage(g,g) = 1.0 / (3.0 * mat_lib.mat[0].rec.sigma_tr[g]);
+  MatrixConstantCoefficient leakage_func{leakage};
+
+  DenseMatrix removal(mat_lib.ngroup());
+  mat_lib.mat[0].rec.sigma_s.ToDenseMatrix(removal);
+  removal.Neg(); // negate (for subtraction)
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    removal(g,g) += mat_lib.mat[0].rec.sigma_t[g];
+
+  // TODO this needs to be fixed to use the the proper chi treatment
+  MatrixConstantCoefficient removal_func{removal};
+  DenseMatrix fission(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+      fission(gprime,g) = mat_lib.mat[0].rec.chi[gprime] * mat_lib.mat[0].rec.nusf[g];
+
+  MatrixConstantCoefficient fission_func{fission};
+
+  // TODO figure out BCs
+
+  diffusion_bilinear.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+  diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+  diffusion_bilinear.Assemble();
+  diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+  diffusion_bilinear.Finalize();
+
+  fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
+  fission_bilinear.Assemble();
+  fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+  fission_bilinear.Finalize();
+
+  time.stop();
+
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetMaxIter(inp.tol.max_outer);
+
+  // spectral transformation will not be useful for Generalized Davidson solver
+  // as it uses a preconditioner instead of a spectral transformation
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+
+  // set PETSc operators appropriately
+  PetscParMatrix* A{nullptr};
+  PetscParMatrix* M{nullptr};
+
+  {
+
+    OperatorHandle Ah{Operator::PETSC_MATAIJ};
+    diffusion_bilinear.ParallelAssemble(Ah);
+    Ah.Get(A);
+    Ah.SetOperatorOwner(false);
+
+    OperatorHandle Mh{Operator::PETSC_MATAIJ};
+    fission_bilinear.ParallelAssemble(Mh);
+    Mh.Get(M);
+    Mh.SetOperatorOwner(false);
+
+  }
+
+  A->Print("petsc");
+
+  slepc.SetOperators(*A, *M);
+
+  time.start(time.solver);
+  slepc.Solve();
+  time.stop();
+
+  // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
+  // cannot be accessed, even if they are *nearly* converged. Therefore, to
+  // avoid dereferencing bad memory, we must abort.
+  if (slepc.GetNumConverged() < 1)
+    throw Failed_to_converge{"SLEPc failed to converge.\n"};
+
+  Result res{fespace, mat_lib.ngroup()};
+
+  slepc.GetEigenvalue(0, res.keff);
+  res.keff = 1.0 / res.keff;
+  Vector tmp(fespace->GetTrueVSize());
+  slepc.GetEigenvector(0, tmp);
+  // TODO figure this out...
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int idx{g}; idx < tmp.Size(); idx += mat_lib.ngroup())
+      std::cout << tmp[idx] << std::endl;
+    std::cout << std::endl;
+  }
+
+  res.phi[0].Distribute(tmp);
+
+  return res;
+}
+
+Result diffusion_slepc_manual(Timer& time, const Input& inp,
+                       const Material_library& mat_lib,
+                       const Array<int>& ess_bdr, const ParMesh* const pmesh,
+                       ParFiniteElementSpace* const fespace)
+{
+
+  const string slepcrc_fname{inp.concatenate_path("slepcrc")};
+  if (exists(slepcrc_fname))
+    MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
+  else
+    MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
+
+  time.start(time.matrix_assembly);
+
+  const int offset{fespace->GlobalTrueVSize()};
+  Array<int> offset_list(mat_lib.ngroup() + 1);
+  offset_list[0] = 0;
+  for (int g{1}; g < mat_lib.ngroup() + 1; ++g)
+    offset_list[g] = offset_list[g-1] + offset;
+
+  BlockOperator diffusion_block{offset_list};
+  BlockOperator fission_block{offset_list};
+
+  vector<unique_ptr<ParBilinearForm>> diffusion_bilinear(mat_lib.ngroup());
+  vector<unique_ptr<ParBilinearForm>> fission_bilinear(mat_lib.ngroup());
+
+  const int num_off_diagonal{mat_lib.ngroup() * (mat_lib.ngroup() - 1)};
+  vector<unique_ptr<ParBilinearForm>> scatter_bilinear(num_off_diagonal);
+  vector<unique_ptr<ParBilinearForm>> multigroup_fission_bilinear(num_off_diagonal);
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+
+    Vector leakage(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
+    PWConstCoefficient leakage_func{leakage};
+
+    Vector removal(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      removal[i] = mat_lib.mat[i].rec.sigma_r[g];
+    PWConstCoefficient removal_func{removal};
+
+    diffusion_bilinear[g] = make_unique<ParBilinearForm>(fespace);
+    diffusion_bilinear[g]->AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+    diffusion_bilinear[g]->AddDomainIntegrator(new MassIntegrator{removal_func});
+    diffusion_bilinear[g]->Assemble();
+    diffusion_bilinear[g]->EliminateEssentialBCDiag(ess_bdr, 1.0);
+    diffusion_bilinear[g]->Finalize();
+
+    diffusion_block.SetDiagonalBlock(g, &diffusion_bilinear[g]->SpMat());
+
+    // TODO proper chi treatment
+    Vector fission(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      fission[i] = mat_lib.mat[i].rec.chi[g] * mat_lib.mat[i].rec.nusf[g];
+    PWConstCoefficient fission_func{fission};
+
+    fission_bilinear[g] = make_unique<ParBilinearForm>(fespace);
+    fission_bilinear[g]->AddDomainIntegrator(new MassIntegrator{fission_func});
+    fission_bilinear[g]->Assemble();
+    fission_bilinear[g]->EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+    fission_bilinear[g]->Finalize();
+
+    fission_block.SetDiagonalBlock(g, &fission_bilinear[g]->SpMat());
+
+    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    {
+      if (gprime == g) continue;
+
+      Vector scatter(pmesh->attributes.Max());
+      scatter = 0.0; // not zero initialized by default
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      {
+        Array<int> col_idx;
+        Vector data;
+        mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
+        const int gprime_idx{col_idx.FindSorted(gprime)};
+        if (gprime_idx >= 0)
+          scatter[i] = -data[gprime_idx];
+      }
+      PWConstCoefficient scatter_func{scatter};
+
+      scatter_bilinear.emplace_back(make_unique<ParBilinearForm>(fespace));
+      scatter_bilinear.back()->AddDomainIntegrator(new MassIntegrator{scatter_func});
+      scatter_bilinear.back()->Assemble();
+      scatter_bilinear.back()->EliminateEssentialBCDiag(ess_bdr, 1.0);
+      scatter_bilinear.back()->Finalize();
+
+      diffusion_block.SetBlock(g, gprime, &scatter_bilinear.back()->SpMat());
+
+      // TODO proper chi treatment
+      Vector multigroup_fission(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+        multigroup_fission[i] = mat_lib.mat[i].rec.chi[g] * mat_lib.mat[i].rec.nusf[gprime];
+      PWConstCoefficient multigroup_fission_func{multigroup_fission};
+
+      multigroup_fission_bilinear.emplace_back(make_unique<ParBilinearForm>(fespace));
+      multigroup_fission_bilinear.back()->AddDomainIntegrator(new MassIntegrator{multigroup_fission_func});
+      multigroup_fission_bilinear.back()->Assemble();
+      multigroup_fission_bilinear.back()->EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+      multigroup_fission_bilinear.back()->Finalize();
+
+      fission_block.SetBlock(g, gprime, &multigroup_fission_bilinear.back()->SpMat());
+
+    }
+
+  }
+
+  time.stop();
+
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetMaxIter(inp.tol.max_outer);
+
+  // spectral transformation will not be useful for Generalized Davidson solver
+  // as it uses a preconditioner instead of a spectral transformation
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+
+  // set PETSc operators appropriately
+  PetscParMatrix Atmp{MPI_COMM_WORLD, &diffusion_block, Operator::PETSC_MATAIJ};
+  PetscParMatrix A{&Atmp, Operator::PETSC_MATAIJ};
+
+  PetscParMatrix Mtmp{MPI_COMM_WORLD, &fission_block, Operator::PETSC_MATAIJ};
+  PetscParMatrix M{&Mtmp, Operator::PETSC_MATAIJ};
+
+  A.Print("petsca");
+  M.Print("petscm");
+
+  slepc.SetOperators(A, M);
+
+  time.start(time.solver);
+  slepc.Solve();
+  time.stop();
+
+  // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
+  // cannot be accessed, even if they are *nearly* converged. Therefore, to
+  // avoid dereferencing bad memory, we must abort.
+  if (slepc.GetNumConverged() < 1)
+    throw Failed_to_converge{"SLEPc failed to converge.\n"};
+
+  Result res{fespace, mat_lib.ngroup()};
+
+  slepc.GetEigenvalue(0, res.keff);
+  res.keff = 1.0 / res.keff;
+  Vector tmp(fespace->GetTrueVSize()*mat_lib.ngroup());
+  slepc.GetEigenvector(0, tmp);
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    Vector group(fespace->GetTrueVSize());
+    for (int idx{0}; idx < fespace->GetTrueVSize(); ++idx)
+      group[idx] = tmp[idx + g * fespace->GetTrueVSize()];
+    res.phi[g].Distribute(group);
+  }
 
   return res;
 }

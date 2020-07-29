@@ -35,20 +35,28 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
                            const mfem::ParMesh* const pmesh,
                            mfem::ParFiniteElementSpace* const fespace);
 
-// note: matrix assembly does not include rebuilding RHS in power iteration
-// method
-const std::string timing_matrix_assembly{"Matrix assembly"};
-const std::string timing_solver{"Solver"};
+Result diffusion_slepc_vector(Timer& time, const Input& inp,
+                              const Material_library& mat_lib,
+                              const mfem::Array<int>& ess_bdr,
+                              const mfem::ParMesh* const pmesh,
+                              mfem::ParFiniteElementSpace* const fespace);
+
+Result diffusion_slepc_manual(Timer& time, const Input& inp,
+                              const Material_library& mat_lib,
+                              const mfem::Array<int>& ess_bdr,
+                              const mfem::ParMesh* const pmesh,
+                              mfem::ParFiniteElementSpace* const fespace);
 
 class Failed_to_converge : std::exception
 {
   public:
     Failed_to_converge () {}
-    Failed_to_converge (const std::string& message) : msg{message} {}
+    Failed_to_converge (const std::string& message) : 
+      msg{"Failed to converge.\n" + message} {}
 
     const char* what() const noexcept override
     {
-      return ("Failed to converge.\n" + msg).c_str();
+      return msg.c_str();
     }
 
   private:

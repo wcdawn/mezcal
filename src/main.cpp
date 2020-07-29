@@ -121,7 +121,10 @@ int main(int argc, char* argv[])
   //    Lagrange finite elements of the specified order. If order < 1, we
   //    instead use an isoparametric/isogeometric space.
   FiniteElementCollection* fec{nullptr};
-  if (inp.order > 0) { fec = new H1_FECollection(inp.order, dim); }
+  if (inp.order > 0)
+  { 
+    fec = new H1_FECollection(inp.order, dim); 
+  }
   else if (pmesh.GetNodes())
   {
     fec = pmesh.GetNodes()->OwnFEC();
@@ -131,10 +134,16 @@ int main(int argc, char* argv[])
   {
     fec = new H1_FECollection(inp.order = 1, dim);
   }
-  ParFiniteElementSpace fespace{&pmesh, fec};
+  // TODO it's here!
+
+  // TODO loop over states
+  inp.read_state();
+
+  const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup() : 1};
+  ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   const HYPRE_Int size{fespace.GlobalTrueVSize()};
   if (myid == 0)
-    cout << "Number of finite element unknowns: " << size * xs.ngroup() << endl;
+    cout << "Number of finite element unknowns: " << size << endl;
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
   //    In this example, the boundary conditions are defined by marking all
@@ -151,8 +160,6 @@ int main(int argc, char* argv[])
 
   // do the solving
   Result res{&fespace, xs.ngroup()};
-  // TODO loop over states
-  inp.read_state();
 
   if (inp.ref == Analytic::fixed_src)
   {
@@ -172,6 +179,12 @@ int main(int argc, char* argv[])
         break;
       case (Input::slepc):
         res = diffusion_slepc(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        break;
+      case (Input::slepc_vector):
+        res = diffusion_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        break;
+      case (Input::slepc_manual):
+        res = diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
         break;
       default:
         cerr << "Invalid solver choice.\n";
