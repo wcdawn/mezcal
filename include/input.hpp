@@ -96,7 +96,9 @@ public:
     invalid = -1,
     power_iteration,
     lobpcg,
-    slepc
+    slepc,
+    slepc_vector,
+    slepc_manual
   };
 
   // actual enum value

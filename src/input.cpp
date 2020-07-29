@@ -259,6 +259,8 @@ std::string Input::solver_choice_enum_to_str(const Solver_choice& solver)
     case (power_iteration): return "power_iteration";
     case (lobpcg): return "lobpcg";
     case (slepc): return "slepc";
+    case (slepc_vector): return "slepc_vector";
+    case (slepc_manual): return "slepc_manual";
     default: return "invalid";
   }
 }
@@ -268,6 +270,8 @@ Input::Solver_choice Input::solver_choice_str_to_enum(const string& solver)
   if (solver == "power_iteration") return power_iteration;
   if (solver == "lobpcg") return lobpcg;
   if (solver == "slepc") return slepc;
+  if (solver == "slepc_vector") return slepc_vector;
+  if (solver == "slepc_manual") return slepc_manual;
   return invalid;
 }
 
