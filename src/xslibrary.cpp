@@ -207,6 +207,13 @@ void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
       read_hdf5xs_isotxs(acc, lib_name);
     else
       throw Invalid_input_card{"Invalid HDF5 version and/or format"};
+
+    for (XSRecord& record : rec)
+    {
+      record.calculate_removal_xs();
+      record.self_scatter_rebalance();
+      record.evaluate_upscatter();
+    }
   }
 
   // catch failure caused by the H5File operations
@@ -403,10 +410,6 @@ void XSLibrary::read_hdf5xs_isotxs(Hdf5_access_wrapper& acc,
     tmp_sparse.SortColumnIndices();
     rec[i].sigma_s = tmp_sparse; // hopefully a move operation
 
-    // do extra processing for each isotope
-    rec[i].calculate_removal_xs();
-    rec[i].self_scatter_rebalance();
-    rec[i].evaluate_upscatter();
   }
 }
 
