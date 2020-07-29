@@ -26,6 +26,9 @@ public:
 
   void Print(std::ostream& os);
 
+  const std::string matrix_assembly{"Matrix assembly"};
+  const std::string solver{"Solver"};
+
 private:
   const point init_clock{clock::now()};
 
