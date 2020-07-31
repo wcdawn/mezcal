@@ -141,9 +141,9 @@ int main(int argc, char* argv[])
 
   const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup() : 1};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  const HYPRE_Int size{fespace.GlobalTrueVSize()};
+  const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Input::slepc_vector) ? 1 : mat_lib.ngroup())};
   if (myid == 0)
-    cout << "Number of finite element unknowns: " << size << endl;
+    cout << "Number of finite element unknowns: " << dof << endl;
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
   //    In this example, the boundary conditions are defined by marking all
@@ -182,6 +182,7 @@ int main(int argc, char* argv[])
         break;
       case (Input::slepc_vector):
         res = diffusion_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        time.stop("return");
         break;
       case (Input::slepc_manual):
         res = diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);

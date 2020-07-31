@@ -625,15 +625,19 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
                        ParFiniteElementSpace* const fespace)
 {
 
+  // NOTE: this call to MFEMInitializeSlepc() leaks.
+  // It leaks 112 bytes in 2 blocks. (definitely lost)
+  // Small, but really annoying.
+  // It seems to probably be a PETSc issue.
   const string slepcrc_fname{inp.concatenate_path("slepcrc")};
   if (exists(slepcrc_fname))
     MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
   else
-    MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
+    MFEMInitializeSlepc();
 
   time.start(time.matrix_assembly);
 
-  const int offset{fespace->GlobalTrueVSize()};
+  const int offset{fespace->TrueVSize()}; // needed for parallel
   Array<int> offset_list(mat_lib.ngroup() + 1);
   offset_list[0] = 0;
   for (int g{1}; g < mat_lib.ngroup() + 1; ++g)
@@ -642,12 +646,8 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
   BlockOperator diffusion_block{offset_list};
   BlockOperator fission_block{offset_list};
 
-  vector<unique_ptr<ParBilinearForm>> diffusion_bilinear(mat_lib.ngroup());
-  vector<unique_ptr<ParBilinearForm>> fission_bilinear(mat_lib.ngroup());
-
-  const int num_off_diagonal{mat_lib.ngroup() * (mat_lib.ngroup() - 1)};
-  vector<unique_ptr<ParBilinearForm>> scatter_bilinear(num_off_diagonal);
-  vector<unique_ptr<ParBilinearForm>> multigroup_fission_bilinear(num_off_diagonal);
+  vector<unique_ptr<PetscParMatrix>> matrix_list;
+  matrix_list.reserve(mat_lib.ngroup() * mat_lib.ngroup());
 
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
@@ -662,14 +662,22 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
       removal[i] = mat_lib.mat[i].rec.sigma_r[g];
     PWConstCoefficient removal_func{removal};
 
-    diffusion_bilinear[g] = make_unique<ParBilinearForm>(fespace);
-    diffusion_bilinear[g]->AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
-    diffusion_bilinear[g]->AddDomainIntegrator(new MassIntegrator{removal_func});
-    diffusion_bilinear[g]->Assemble();
-    diffusion_bilinear[g]->EliminateEssentialBCDiag(ess_bdr, 1.0);
-    diffusion_bilinear[g]->Finalize();
+    ParBilinearForm diffusion_bilinear{fespace};
+    diffusion_bilinear.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+    diffusion_bilinear.AddDomainIntegrator(new MassIntegrator{removal_func});
+    diffusion_bilinear.Assemble();
+    diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+    diffusion_bilinear.Finalize();
 
-    diffusion_block.SetDiagonalBlock(g, &diffusion_bilinear[g]->SpMat());
+    {
+      OperatorHandle oh{Operator::PETSC_MATAIJ};
+      PetscParMatrix* A{nullptr};
+      diffusion_bilinear.ParallelAssemble(oh);
+      oh.Get(A);
+      oh.SetOperatorOwner(false);
+      matrix_list.emplace_back(A);
+      diffusion_block.SetDiagonalBlock(g, matrix_list.back().get());
+    }
 
     // TODO proper chi treatment
     Vector fission(pmesh->attributes.Max());
@@ -677,13 +685,21 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
       fission[i] = mat_lib.mat[i].rec.chi[g] * mat_lib.mat[i].rec.nusf[g];
     PWConstCoefficient fission_func{fission};
 
-    fission_bilinear[g] = make_unique<ParBilinearForm>(fespace);
-    fission_bilinear[g]->AddDomainIntegrator(new MassIntegrator{fission_func});
-    fission_bilinear[g]->Assemble();
-    fission_bilinear[g]->EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
-    fission_bilinear[g]->Finalize();
+    ParBilinearForm fission_bilinear{fespace};
+    fission_bilinear.AddDomainIntegrator(new MassIntegrator{fission_func});
+    fission_bilinear.Assemble();
+    fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+    fission_bilinear.Finalize();
 
-    fission_block.SetDiagonalBlock(g, &fission_bilinear[g]->SpMat());
+    {
+      OperatorHandle oh{Operator::PETSC_MATAIJ};
+      PetscParMatrix* A{nullptr};
+      fission_bilinear.ParallelAssemble(oh);
+      oh.Get(A);
+      oh.SetOperatorOwner(false);
+      matrix_list.emplace_back(A);
+      fission_block.SetDiagonalBlock(g, matrix_list.back().get());
+    }
 
     for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     {
@@ -702,13 +718,21 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
       }
       PWConstCoefficient scatter_func{scatter};
 
-      scatter_bilinear.emplace_back(make_unique<ParBilinearForm>(fespace));
-      scatter_bilinear.back()->AddDomainIntegrator(new MassIntegrator{scatter_func});
-      scatter_bilinear.back()->Assemble();
-      scatter_bilinear.back()->EliminateEssentialBCDiag(ess_bdr, 1.0);
-      scatter_bilinear.back()->Finalize();
+      ParBilinearForm scatter_bilinear{fespace};
+      scatter_bilinear.AddDomainIntegrator(new MassIntegrator{scatter_func});
+      scatter_bilinear.Assemble();
+      scatter_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+      scatter_bilinear.Finalize();
 
-      diffusion_block.SetBlock(g, gprime, &scatter_bilinear.back()->SpMat());
+      {
+        OperatorHandle oh{Operator::PETSC_MATAIJ};
+        PetscParMatrix* A{nullptr};
+        scatter_bilinear.ParallelAssemble(oh);
+        oh.Get(A);
+        oh.SetOperatorOwner(false);
+        matrix_list.emplace_back(A);
+        diffusion_block.SetBlock(g, gprime, matrix_list.back().get());
+      }
 
       // TODO proper chi treatment
       Vector multigroup_fission(pmesh->attributes.Max());
@@ -716,13 +740,21 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
         multigroup_fission[i] = mat_lib.mat[i].rec.chi[g] * mat_lib.mat[i].rec.nusf[gprime];
       PWConstCoefficient multigroup_fission_func{multigroup_fission};
 
-      multigroup_fission_bilinear.emplace_back(make_unique<ParBilinearForm>(fespace));
-      multigroup_fission_bilinear.back()->AddDomainIntegrator(new MassIntegrator{multigroup_fission_func});
-      multigroup_fission_bilinear.back()->Assemble();
-      multigroup_fission_bilinear.back()->EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
-      multigroup_fission_bilinear.back()->Finalize();
+      ParBilinearForm multigroup_fission_bilinear{fespace};
+      multigroup_fission_bilinear.AddDomainIntegrator(new MassIntegrator{multigroup_fission_func});
+      multigroup_fission_bilinear.Assemble();
+      multigroup_fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+      multigroup_fission_bilinear.Finalize();
 
-      fission_block.SetBlock(g, gprime, &multigroup_fission_bilinear.back()->SpMat());
+      {
+        OperatorHandle oh{Operator::PETSC_MATAIJ};
+        PetscParMatrix* A{nullptr};
+        multigroup_fission_bilinear.ParallelAssemble(oh);
+        oh.Get(A);
+        oh.SetOperatorOwner(false);
+        matrix_list.emplace_back(A);
+        fission_block.SetBlock(g, gprime, matrix_list.back().get());
+      }
 
     }
 
@@ -746,11 +778,12 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
   PetscParMatrix Mtmp{MPI_COMM_WORLD, &fission_block, Operator::PETSC_MATAIJ};
   PetscParMatrix M{&Mtmp, Operator::PETSC_MATAIJ};
 
-  A.Print("petsca");
-  M.Print("petscm");
-
   slepc.SetOperators(A, M);
 
+  // NOTE: this call to SlepcEigenSolver::Solve() leaks.
+  // It leaks 124 bytes in 6 blocks. (definitely lost)
+  // It leaks 1,408 bytes in 4 blocks. (indirecly lost)
+  // It seems to probably be a SLEPc issue.
   time.start(time.solver);
   slepc.Solve();
   time.stop();
@@ -776,5 +809,6 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
     res.phi[g].Distribute(group);
   }
 
+  time.start("return");
   return res;
 }
