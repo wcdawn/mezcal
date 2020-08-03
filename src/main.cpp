@@ -50,7 +50,8 @@ int main(int argc, char* argv[])
     if (((strcmp(argv[i], "-i") == 0) || (strcmp(argv[i], "--input") == 0))
         && (argc >= (i + 1)))
     {
-      input_file = argv[i + 1];
+      if (argv[i+1])
+        input_file = argv[i+1];
       break;
     }
   }
