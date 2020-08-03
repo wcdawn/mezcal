@@ -28,6 +28,8 @@ using std::unique_ptr;
 
 using std::filesystem::exists;
 
+PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
+
 Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
                               const Material_library& mat_lib,
                               const Array<int>& ess_bdr,
@@ -669,20 +671,22 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
     diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
     diffusion_bilinear.Finalize();
 
-    {
-      OperatorHandle oh{Operator::PETSC_MATAIJ};
-      PetscParMatrix* A{nullptr};
-      diffusion_bilinear.ParallelAssemble(oh);
-      oh.Get(A);
-      oh.SetOperatorOwner(false);
-      matrix_list.emplace_back(A);
-      diffusion_block.SetDiagonalBlock(g, matrix_list.back().get());
-    }
+    matrix_list.emplace_back(bilinear_to_petscparmatrix(diffusion_bilinear));
+    diffusion_block.SetDiagonalBlock(g, matrix_list.back().get());
 
-    // TODO proper chi treatment
     Vector fission(pmesh->attributes.Max());
+    fission = 0.0;
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      fission[i] = mat_lib.mat[i].rec.chi[g] * mat_lib.mat[i].rec.nusf[g];
+    {
+      const auto& mat{mat_lib.mat[i]};
+      for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+      {
+        const auto& isotope{mat.iso[iso_idx]};
+        const auto& record{isotope.rec};
+        const double nden{isotope.nden};
+        fission[i] += record.chi[g] * nden * record.nusf[g];
+      }
+    }
     PWConstCoefficient fission_func{fission};
 
     ParBilinearForm fission_bilinear{fespace};
@@ -691,15 +695,8 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
     fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
     fission_bilinear.Finalize();
 
-    {
-      OperatorHandle oh{Operator::PETSC_MATAIJ};
-      PetscParMatrix* A{nullptr};
-      fission_bilinear.ParallelAssemble(oh);
-      oh.Get(A);
-      oh.SetOperatorOwner(false);
-      matrix_list.emplace_back(A);
-      fission_block.SetDiagonalBlock(g, matrix_list.back().get());
-    }
+    matrix_list.emplace_back(bilinear_to_petscparmatrix(fission_bilinear));
+    fission_block.SetDiagonalBlock(g, matrix_list.back().get());
 
     for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     {
@@ -724,20 +721,22 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
       scatter_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
       scatter_bilinear.Finalize();
 
-      {
-        OperatorHandle oh{Operator::PETSC_MATAIJ};
-        PetscParMatrix* A{nullptr};
-        scatter_bilinear.ParallelAssemble(oh);
-        oh.Get(A);
-        oh.SetOperatorOwner(false);
-        matrix_list.emplace_back(A);
-        diffusion_block.SetBlock(g, gprime, matrix_list.back().get());
-      }
+      matrix_list.emplace_back(bilinear_to_petscparmatrix(scatter_bilinear));
+      diffusion_block.SetBlock(g, gprime, matrix_list.back().get());
 
-      // TODO proper chi treatment
       Vector multigroup_fission(pmesh->attributes.Max());
+      multigroup_fission = 0.0;
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        multigroup_fission[i] = mat_lib.mat[i].rec.chi[g] * mat_lib.mat[i].rec.nusf[gprime];
+      {
+        const auto& mat{mat_lib.mat[i]};
+        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+        {
+          const auto& isotope{mat.iso[iso_idx]};
+          const auto& record{isotope.rec};
+          const double nden{isotope.nden};
+          multigroup_fission[i] += record.chi[g] * nden * record.nusf[gprime];
+        }
+      }
       PWConstCoefficient multigroup_fission_func{multigroup_fission};
 
       ParBilinearForm multigroup_fission_bilinear{fespace};
@@ -746,15 +745,8 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
       multigroup_fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
       multigroup_fission_bilinear.Finalize();
 
-      {
-        OperatorHandle oh{Operator::PETSC_MATAIJ};
-        PetscParMatrix* A{nullptr};
-        multigroup_fission_bilinear.ParallelAssemble(oh);
-        oh.Get(A);
-        oh.SetOperatorOwner(false);
-        matrix_list.emplace_back(A);
-        fission_block.SetBlock(g, gprime, matrix_list.back().get());
-      }
+      matrix_list.emplace_back(bilinear_to_petscparmatrix(multigroup_fission_bilinear));
+      fission_block.SetBlock(g, gprime, matrix_list.back().get());
 
     }
 
@@ -811,4 +803,14 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
 
   time.start("return");
   return res;
+}
+
+PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf)
+{
+  OperatorHandle oh{Operator::PETSC_MATAIJ};
+  PetscParMatrix* A{nullptr};
+  pbf.ParallelAssemble(oh);
+  oh.Get(A);
+  oh.SetOperatorOwner(false);
+  return A;
 }
