@@ -674,58 +674,11 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
     matrix_list.emplace_back(bilinear_to_petscparmatrix(diffusion_bilinear));
     diffusion_block.SetDiagonalBlock(g, matrix_list.back().get());
 
-    Vector fission(pmesh->attributes.Max());
-    fission = 0.0;
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-    {
-      const auto& mat{mat_lib.mat[i]};
-      for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
-      {
-        const auto& isotope{mat.iso[iso_idx]};
-        const auto& record{isotope.rec};
-        const double nden{isotope.nden};
-        fission[i] += record.chi[g] * nden * record.nusf[g];
-      }
-    }
-    PWConstCoefficient fission_func{fission};
-
-    ParBilinearForm fission_bilinear{fespace};
-    fission_bilinear.AddDomainIntegrator(new MassIntegrator{fission_func});
-    fission_bilinear.Assemble();
-    fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
-    fission_bilinear.Finalize();
-
-    matrix_list.emplace_back(bilinear_to_petscparmatrix(fission_bilinear));
-    fission_block.SetDiagonalBlock(g, matrix_list.back().get());
-
     for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     {
-      if (gprime == g) continue;
 
-      Vector scatter(pmesh->attributes.Max());
-      scatter = 0.0; // not zero initialized by default
-      for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      {
-        Array<int> col_idx;
-        Vector data;
-        mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
-        const int gprime_idx{col_idx.FindSorted(gprime)};
-        if (gprime_idx >= 0)
-          scatter[i] = -data[gprime_idx];
-      }
-      PWConstCoefficient scatter_func{scatter};
-
-      ParBilinearForm scatter_bilinear{fespace};
-      scatter_bilinear.AddDomainIntegrator(new MassIntegrator{scatter_func});
-      scatter_bilinear.Assemble();
-      scatter_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
-      scatter_bilinear.Finalize();
-
-      matrix_list.emplace_back(bilinear_to_petscparmatrix(scatter_bilinear));
-      diffusion_block.SetBlock(g, gprime, matrix_list.back().get());
-
-      Vector multigroup_fission(pmesh->attributes.Max());
-      multigroup_fission = 0.0;
+      Vector fission(pmesh->attributes.Max());
+      fission = 0.0;
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
       {
         const auto& mat{mat_lib.mat[i]};
@@ -734,19 +687,51 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
           const auto& isotope{mat.iso[iso_idx]};
           const auto& record{isotope.rec};
           const double nden{isotope.nden};
-          multigroup_fission[i] += record.chi[g] * nden * record.nusf[gprime];
+          fission[i] += record.chi[g] * nden * record.nusf[gprime];
         }
       }
-      PWConstCoefficient multigroup_fission_func{multigroup_fission};
+      PWConstCoefficient fission_func{fission};
 
-      ParBilinearForm multigroup_fission_bilinear{fespace};
-      multigroup_fission_bilinear.AddDomainIntegrator(new MassIntegrator{multigroup_fission_func});
-      multigroup_fission_bilinear.Assemble();
-      multigroup_fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
-      multigroup_fission_bilinear.Finalize();
+      ParBilinearForm fission_bilinear{fespace};
+      fission_bilinear.AddDomainIntegrator(new MassIntegrator{fission_func});
+      fission_bilinear.Assemble();
+      fission_bilinear.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
+      fission_bilinear.Finalize();
 
-      matrix_list.emplace_back(bilinear_to_petscparmatrix(multigroup_fission_bilinear));
+      matrix_list.emplace_back(bilinear_to_petscparmatrix(fission_bilinear));
       fission_block.SetBlock(g, gprime, matrix_list.back().get());
+
+      if (gprime != g)
+      {
+        Vector scatter(pmesh->attributes.Max());
+        scatter = 0.0; // not zero initialized by default
+        for (int i{0}; i < pmesh->attributes.Max(); ++i)
+        {
+          if (gprime == g)
+          {
+            scatter[i] = mat_lib.mat[i].rec.sigma_r[g];
+            continue;
+          }
+
+          Array<int> col_idx;
+          Vector data;
+          mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
+          const auto gprime_idx{col_idx.FindSorted(gprime)};
+          if (gprime_idx >= 0)
+            scatter[i] -= data[gprime_idx];
+        }
+        PWConstCoefficient scatter_func{scatter};
+
+        ParBilinearForm scatter_bilinear{fespace};
+        scatter_bilinear.AddDomainIntegrator(new MassIntegrator{scatter_func});
+        scatter_bilinear.Assemble();
+        scatter_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+        scatter_bilinear.Finalize();
+
+        matrix_list.emplace_back(bilinear_to_petscparmatrix(scatter_bilinear));
+        diffusion_block.SetBlock(g, gprime, matrix_list.back().get());
+
+      }
 
     }
 
