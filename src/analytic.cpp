@@ -22,7 +22,6 @@ using std::sqrt;
 using std::abs;
 using std::cos;
 using std::cosh;
-using std::cyl_bessel_j; // NOTE: requires c++17
 using std::sin;
 using std::sinh;
 using std::tanh;
@@ -281,6 +280,32 @@ namespace Analytic_solutions
     return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y) * sin((M_PI / Lz) * z);
   }
 
+  // Note: this may not be the most efficient implementation but it works and
+  // only the most minimal dependencies. The C++ implmentation of cyl_bessel_j0
+  // requires C++17 which is not compatible with many compilers including nvcc
+  // and IBM's xl compiler series.
+  double bessel_j0(double x)
+  {
+#if __cplusplus >= 201703L
+    return std::cyl_bessel_j(0, x);
+#else
+    constexpr double abs_tol{1e-12};
+    constexpr int max_iter{100};
+
+    double fct{1.0};
+    double sum{0.0};
+
+    for (int k{0}; k < max_iter; fct*=++k)
+    {
+      const double term{std::pow(-1,k) * std::pow(0.5*x, 2*k) / std::pow(fct,2)};
+      sum += term;
+      if (std::abs(term) <= abs_tol)
+        return sum;
+    }
+    return sum;
+#endif
+  }
+
   double finite_cyl_fun(const Vector& v)
   {
     static constexpr double R{50.0};
@@ -289,7 +314,7 @@ namespace Analytic_solutions
     const double r{sqrt(v[0] * v[0] + v[1] * v[1])}; // distance to origin
     const double z{v[2]};
 
-    return cyl_bessel_j(0, (alpha0 / R) * r) * sin((M_PI / H) * z);
+    return bessel_j0((alpha0 / R) * r) * sin((M_PI / H) * z);
   }
 
   double tworeg_fun(const Vector& v)

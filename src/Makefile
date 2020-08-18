@@ -1,5 +1,8 @@
 # Makefile
 
+# can support c++17 or c++14 but lower than that, we lose std::make_unique which
+# is too useful to forego
+
 CXX = g++
 CXXFLAGS = -Wall -pedantic-errors -std=c++17
 

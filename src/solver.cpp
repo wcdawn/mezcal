@@ -20,13 +20,21 @@ using std::string;
 using std::vector;
 
 using std::cout;
-using std::endl;
 using std::flush;
 
 using std::make_unique;
 using std::unique_ptr;
 
-using std::filesystem::exists;
+#if __cplusplus >= 201703L
+using std::filesystem::exists; // requires C++17
+#else
+#include <fstream>
+bool exists(const std::string& fname)
+{
+  std::ifstream ifs{fname};
+  return ifs.good();
+}
+#endif
 
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
 
@@ -419,7 +427,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
     if (myid == 0)
     {
       cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv
-           << " dphi=" << phi_conv << endl;
+           << " dphi=" << phi_conv << '\n' << flush;
     }
   }
   time.stop();
@@ -587,8 +595,6 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
 
   }
 
-  A->Print("petsc");
-
   slepc.SetOperators(*A, *M);
 
   time.start(time.solver);
@@ -707,12 +713,6 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
         scatter = 0.0; // not zero initialized by default
         for (int i{0}; i < pmesh->attributes.Max(); ++i)
         {
-          if (gprime == g)
-          {
-            scatter[i] = mat_lib.mat[i].rec.sigma_r[g];
-            continue;
-          }
-
           Array<int> col_idx;
           Vector data;
           mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
