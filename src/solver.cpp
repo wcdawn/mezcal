@@ -543,14 +543,26 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   removal.Neg(); // negate (for subtraction)
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     removal(g,g) += mat_lib.mat[0].rec.sigma_t[g];
-
-  // TODO this needs to be fixed to use the the proper chi treatment
   MatrixConstantCoefficient removal_func{removal};
-  DenseMatrix fission(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-      fission(gprime,g) = mat_lib.mat[0].rec.chi[gprime] * mat_lib.mat[0].rec.nusf[g];
 
+  // TODO i need to write a custom coefficient for a MatrixPWConstCoefficient
+
+  DenseMatrix fission(mat_lib.ngroup()); // zero initialized
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    {
+      // fission(gprime,g) = mat_lib.mat[0].rec.chi[gprime] * mat_lib.mat[0].rec.nusf[g];
+      const auto& mat{mat_lib.mat[0]};
+      for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+      {
+        const auto& isotope{mat.iso[iso_idx]};
+        const auto& record{isotope.rec};
+        const double nden{isotope.nden};
+        fission(gprime,g) = record.chi[g] * nden * record.nusf[gprime];
+      }
+    }
+  }
   MatrixConstantCoefficient fission_func{fission};
 
   // TODO figure out BCs
@@ -596,6 +608,9 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   }
 
   slepc.SetOperators(*A, *M);
+
+  A->Print("petsca");
+  M->Print("petscm");
 
   time.start(time.solver);
   slepc.Solve();
