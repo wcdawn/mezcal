@@ -1,7 +1,5 @@
 # Makefile
 
-MACH=SUMMIT
-
 ifeq ($(MACH),SUMMIT)
 STD = c++11
 MPICXX = mpixlC
@@ -35,7 +33,7 @@ PETSC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 
 else
 
-$(error Invalid MACH.)
+$(error Invalid MACH)
 
 endif
 
