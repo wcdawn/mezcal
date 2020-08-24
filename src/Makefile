@@ -1,50 +1,78 @@
 # Makefile
 
-# can support c++17 or c++14 but lower than that, we lose std::make_unique which
-# is too useful to forego
+MACH=SUMMIT
 
-CXX = g++
-CXXFLAGS = -Wall -pedantic-errors -std=c++17
+ifeq ($(MACH),SUMMIT)
+STD = c++11
+MPICXX = mpixlC
+H5_DIR = $(OLCF_HDF5_ROOT)/lib
 
-MPICXX = /opt/mpich/bin/mpicxx -cxx=$(CXX)
-MPICXXFLAGS = $(CXXFLAGS)
+PROJ = /ccs/proj/csc404
+MFEM_DIR = $(PROJ)/mfem
+HYPRE_DIR = $(PROJ)/hypre-2.16.0/src/hypre
+METIS_DIR = $(OLCF_METIS_ROOT)
+METIS_LIB = -L$(METIS_DIR)/lib -l:libmetis.so
 
-H5CXX = h5c++
-H5CXXFLAGS = $(CXXFLAGS)
-# generated using "h5c++ -show"
-H5_LIB = /usr/lib/libhdf5_hl_cpp.a /usr/lib/libhdf5_cpp.a /usr/lib/libhdf5_hl.a /usr/lib/libhdf5.a -L/usr/lib -lsz -lz
+# CUDA_DIR is set automatically by the module
 
-LD = $(MPICXX) 
-LDFLAGS = -std=c++17
+PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
+SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
+
+else ifeq ($(MACH),ARCHBUILD)
+STD = c++17
+MPICXX = /opt/mpich/bin/mpicxx
+H5_DIR = /usr/lib
 
 MFEM_DIR = ../build/mfem
+HYPRE_DIR = ../hypre/src/hypre
+METIS_DIR = ../metis
+
+METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
+
+CUDA_DIR = /opt/cuda
+PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
+PETSC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+
+else
+
+$(error Invalid MACH.)
+
+endif
+
+CXXFLAGS = -Wall -pedantic-errors -std=$(STD)
+
+MPICXXFLAGS = $(CXXFLAGS)
+
+H5CXXFLAGS = $(CXXFLAGS)
+# generated using "h5c++ -show"
+H5_LIB = -L$(OLCF_HDF5_ROOT) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
+
+LD = $(MPICXX) 
+LDFLAGS = -std=$(STD)
+
+PROJ = /ccs/proj/csc404
+
 MFEM_INCLUDE = -I$(MFEM_DIR)
 MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
 MFEM_LIB = $(MFEM_DIR)/libmfem.a
 
-HYPRE_DIR = ../hypre/src/hypre
 HYPRE_INCLUDE = -I$(HYPRE_DIR)/include
 HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 
-METIS_DIR = ../metis
 METIS_INCLUDE = -I$(METIS_DIR)/include
-METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
-CUDA_DIR = /opt/cuda
 CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread
 
-PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 
-SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(PETSC_DIR)/../include
 SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 INCLUDE_DIR = ../include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 ifeq ($(METHOD), dbg)
 CXXFLAGS += -O0 -g
@@ -68,6 +96,7 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/fission_coefficient.hpp \
 			$(INCLUDE_DIR)/hdf5_access_wrapper.hpp \
 			$(INCLUDE_DIR)/input.hpp \
+			$(INCLUDE_DIR)/make_unique.hpp \
 			$(INCLUDE_DIR)/material_library.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
 			$(INCLUDE_DIR)/solver.hpp \
@@ -92,7 +121,7 @@ default : all
 
 all : $(EXEC)
 
-$(EXEC) : $(OBJ) $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB)
+$(EXEC) : $(OBJ)
 	@# delete any existing executable if linking fails
 	@$(MAKE) version -s
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) || $(RM) $(EXEC)
