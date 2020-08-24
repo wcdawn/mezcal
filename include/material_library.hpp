@@ -78,7 +78,6 @@ public:
 private:
   const XSLibrary& xs; // associated microscopic cross section library
   const int G;         // set in constructor
-  int nMat{0};
 
   static void reset_block(std::ifstream& ifs, const std::string& block_head);
   static constexpr char comment_char{'#'};

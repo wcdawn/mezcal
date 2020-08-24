@@ -2,6 +2,7 @@
 #define HDF5_ACCESS_WRAPPER
 
 #include "H5Cpp.h"
+#include "make_unique.hpp"
 
 #include <memory>
 

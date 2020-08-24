@@ -2,9 +2,9 @@
 
 #include "fission_coefficient.hpp"
 #include "scattering_coefficient.hpp"
+#include "make_unique.hpp"
 
 #include <cmath>
-#include <filesystem>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -22,10 +22,11 @@ using std::vector;
 using std::cout;
 using std::flush;
 
-using std::make_unique;
 using std::unique_ptr;
+using std::make_unique;
 
 #if __cplusplus >= 201703L
+#include <filesystem>
 using std::filesystem::exists; // requires C++17
 #else
 #include <fstream>
@@ -418,7 +419,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
     res.keff = res.keff * (fiss_sum / fiss_sum_old);
 
     // update convergence criteria
-    k_conv = abs(res.keff - keff_old);
+    k_conv = std::abs(res.keff - keff_old);
 
     // copy old values
     keff_old     = res.keff;
