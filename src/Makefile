@@ -29,7 +29,7 @@ METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 CUDA_DIR = /opt/cuda
 PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
-PETSC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 
 else
 
@@ -59,7 +59,8 @@ HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 
 METIS_INCLUDE = -I$(METIS_DIR)/include
 
-CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread
+CUDA_INCLUDE = -I$(CUDA_DIR)/include
+CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread -lcusparse_static
 
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
@@ -69,7 +70,7 @@ SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 INCLUDE_DIR = ../include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
 LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 ifeq ($(METHOD), dbg)
