@@ -534,10 +534,10 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   ParBilinearForm diffusion_bilinear{fespace};
   ParBilinearForm fission_bilinear{fespace};
 
-  DenseMatrix leakage(mat_lib.ngroup()); // zero initialized
+  Vector leakage(mat_lib.ngroup()); // NOT zero initialized
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    leakage(g,g) = 1.0 / (3.0 * mat_lib.mat[0].rec.sigma_tr[g]);
-  MatrixConstantCoefficient leakage_func{leakage};
+    leakage(g) = 1.0 / (3.0 * mat_lib.mat[0].rec.sigma_tr[g]);
+  VectorConstantCoefficient leakage_func{leakage};
 
   DenseMatrix removal(mat_lib.ngroup());
   mat_lib.mat[0].rec.sigma_s.ToDenseMatrix(removal);
@@ -553,22 +553,19 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   {
     for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     {
-      // fission(gprime,g) = mat_lib.mat[0].rec.chi[gprime] * mat_lib.mat[0].rec.nusf[g];
       const auto& mat{mat_lib.mat[0]};
       for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
       {
         const auto& isotope{mat.iso[iso_idx]};
         const auto& record{isotope.rec};
         const double nden{isotope.nden};
-        fission(gprime,g) = record.chi[g] * nden * record.nusf[gprime];
+        fission(g,gprime) += record.chi[g] * nden * record.nusf[gprime];
       }
     }
   }
   MatrixConstantCoefficient fission_func{fission};
 
-  // TODO figure out BCs
-
-  diffusion_bilinear.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+  diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
   diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
   diffusion_bilinear.Assemble();
   diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
@@ -610,8 +607,8 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
 
   slepc.SetOperators(*A, *M);
 
-  A->Print("petsca");
-  M->Print("petscm");
+  A->Print("petsca_vector");
+  M->Print("petscm_vector");
 
   time.start(time.solver);
   slepc.Solve();
@@ -629,16 +626,15 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   res.keff = 1.0 / res.keff;
   Vector tmp(fespace->GetTrueVSize());
   slepc.GetEigenvector(0, tmp);
+
   // TODO figure this out...
-
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  for (int g{0}; g < fespace->GetVDim(); ++g)
   {
-    for (int idx{g}; idx < tmp.Size(); idx += mat_lib.ngroup())
-      std::cout << tmp[idx] << std::endl;
-    std::cout << std::endl;
+    Vector group(fespace->GetNDofs());
+    for (int idx{0}; idx < fespace->GetNDofs(); ++idx)
+      group[idx] = tmp[idx + g * fespace->GetNDofs()];
+    res.phi[g].Distribute(group);
   }
-
-  res.phi[0].Distribute(tmp);
 
   return res;
 }
@@ -772,6 +768,9 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
   PetscParMatrix M{&Mtmp, Operator::PETSC_MATAIJ};
 
   slepc.SetOperators(A, M);
+
+  A.Print("petsca_manual");
+  M.Print("petscm_manual");
 
   // NOTE: this call to SlepcEigenSolver::Solve() leaks.
   // It leaks 124 bytes in 6 blocks. (definitely lost)
