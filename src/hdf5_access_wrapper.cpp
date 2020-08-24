@@ -20,7 +20,7 @@ std::string Hdf5_access_wrapper::read_string() const
 
 int Hdf5_access_wrapper::read_int() const
 {
-  int val;
+  int val{};
   if (dset) dset->read(&val, dset->getIntType(), dset->getSpace());
   return val;
 }

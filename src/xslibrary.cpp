@@ -1,4 +1,5 @@
 #include "xslibrary.hpp"
+#include "make_unique.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -18,11 +19,11 @@ using std::vector;
 using std::accumulate;
 using std::max_element;
 
+using std::make_unique;
+
 using std::setfill;
 using std::setw;
 using std::stringstream;
-
-using std::make_unique;
 
 void XSRecord::set_ngroup(int ngroup)
 {
@@ -145,7 +146,7 @@ void XSLibrary::read_userxs(const std::string& fname)
         {
           ifs >> val;
           // abs to potentially allow for higher-order scattering in the future
-          if (abs(val) > 0.0) tmp_sparse.Set(i, j, val);
+          if (std::abs(val) > 0.0) tmp_sparse.Set(i, j, val);
         }
       }
       // 0 - do not skip zero entries (necessary for diagonal)
