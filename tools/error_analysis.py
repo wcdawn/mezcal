@@ -6,8 +6,9 @@ data = np.zeros([0,6]);
 i = 0;
 while (True):
     try:
-        this_data = np.loadtxt("../src/out_{:06d}.csv".format(i), delimiter=',')
-        print("../src/out_{:06d}.csv".format(i))
+        fname = "../debug/out_{:06d}.csv".format(i)
+        this_data = np.loadtxt(fname, delimiter=',')
+        print(fname)
     except:
         print("last file")
         print(i)
