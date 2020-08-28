@@ -3,6 +3,8 @@
 #include "fission_coefficient.hpp"
 #include "scattering_coefficient.hpp"
 #include "make_unique.hpp"
+#include "vector_pwconst_coefficient.hpp"
+#include "matrix_pwconst_coefficient.hpp"
 
 #include <cmath>
 #include <limits>
@@ -534,36 +536,45 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   ParBilinearForm diffusion_bilinear{fespace};
   ParBilinearForm fission_bilinear{fespace};
 
-  Vector leakage(mat_lib.ngroup()); // NOT zero initialized
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    leakage(g) = 1.0 / (3.0 * mat_lib.mat[0].rec.sigma_tr[g]);
-  VectorConstantCoefficient leakage_func{leakage};
-
-  DenseMatrix removal(mat_lib.ngroup());
-  mat_lib.mat[0].rec.sigma_s.ToDenseMatrix(removal);
-  removal.Neg(); // negate (for subtraction)
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    removal(g,g) += mat_lib.mat[0].rec.sigma_t[g];
-  MatrixConstantCoefficient removal_func{removal};
-
-  // TODO i need to write a custom coefficient for a MatrixPWConstCoefficient
-
-  DenseMatrix fission(mat_lib.ngroup()); // zero initialized
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  vector<Vector> leakage(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    leakage[i].SetSize(mat_lib.ngroup());
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      leakage[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
+  }
+  VectorPWConstCoefficient leakage_func{leakage};
+
+  vector<DenseMatrix> removal(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    mat_lib.mat[i].rec.sigma_s.ToDenseMatrix(removal[i]);
+    removal[i].Neg(); // negate (for subtraction)
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      removal[i](g,g) += mat_lib.mat[i].rec.sigma_t[g];
+  }
+  MatrixPWConstCoefficient removal_func{removal};
+
+  vector<DenseMatrix> fission(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    fission[i].SetSize(mat_lib.ngroup()); // zero initialized
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      const auto& mat{mat_lib.mat[0]};
-      for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
-        const auto& isotope{mat.iso[iso_idx]};
-        const auto& record{isotope.rec};
-        const double nden{isotope.nden};
-        fission(g,gprime) += record.chi[g] * nden * record.nusf[gprime];
+        const auto& mat{mat_lib.mat[i]};
+        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+        {
+          const auto& isotope{mat.iso[iso_idx]};
+          const auto& record{isotope.rec};
+          const double nden{isotope.nden};
+          fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
+        }
       }
     }
   }
-  MatrixConstantCoefficient fission_func{fission};
+  MatrixPWConstCoefficient fission_func{fission};
 
   diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
   diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
@@ -626,15 +637,13 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   res.keff = 1.0 / res.keff;
   Vector tmp(fespace->GetTrueVSize());
   slepc.GetEigenvector(0, tmp);
+  
 
-  // TODO figure this out...
-  for (int g{0}; g < fespace->GetVDim(); ++g)
-  {
-    Vector group(fespace->GetNDofs());
-    for (int idx{0}; idx < fespace->GetNDofs(); ++idx)
-      group[idx] = tmp[idx + g * fespace->GetNDofs()];
-    res.phi[g].Distribute(group);
-  }
+  // each group/moment is currently stored as a vector quantity
+  // parsing this is then handled by ParaView
+  // for dimensions <= 3, the vector is listed {x,y,z}
+  // for higher dimensions, the fector is listed {0,1,2,3,4,...}
+  res.phi[0].Distribute(tmp);
 
   return res;
 }

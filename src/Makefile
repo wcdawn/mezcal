@@ -85,9 +85,11 @@ CPP_FILES = main.cpp \
 			hdf5_access_wrapper.cpp \
 			input.cpp \
 			material_library.cpp \
+			matrix_pwconst_coefficient.cpp \
 			scattering_coefficient.cpp \
 			solver.cpp \
 			timer.cpp \
+			vector_pwconst_coefficient.cpp \
 			version.cpp \
 			xslibrary.cpp
 
@@ -97,9 +99,11 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/input.hpp \
 			$(INCLUDE_DIR)/make_unique.hpp \
 			$(INCLUDE_DIR)/material_library.hpp \
+			$(INCLUDE_DIR)/matrix_pwconst_coefficient.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
 			$(INCLUDE_DIR)/solver.hpp \
 			$(INCLUDE_DIR)/timer.hpp \
+			$(INCLUDE_DIR)/vector_pwconst_coefficient.hpp \
 			$(INCLUDE_DIR)/xslibrary.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
@@ -176,9 +180,11 @@ analytic.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/result.hp
 xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
 input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/xslibrary.hpp
 material_library.o : $(MFEM_HEADER) $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
+matrix_pwconst_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/matrix_pwconst_coefficient.hpp
 solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
 scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 hdf5_access_wrapper.o : $(INCLUDE_DIR)/hdf5_access_wrapper.hpp
 timer.o : $(INCLUDE_DIR)/timer.hpp
 version.o : $(INCLUDE_DIR)/version.hpp
+vector_pwconst_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/vector_pwconst_coefficient.hpp

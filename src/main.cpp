@@ -160,7 +160,8 @@ int main(int argc, char* argv[])
     ess_bdr[i] = inp.boundary_conditions[i];
 
   // do the solving
-  Result res{&fespace, xs.ngroup()};
+  const int flux_length{(inp.sol == Input::slepc_vector) ? 1 : xs.ngroup()};
+  Result res{&fespace, flux_length};
 
   if (inp.ref == Analytic::fixed_src)
   {
@@ -214,11 +215,18 @@ int main(int argc, char* argv[])
 
   ParaViewDataCollection output("output_dir", &pmesh);
   const auto group_width{std::to_string(xs.ngroup()).length()};
-  for (int g{0}; g < xs.ngroup(); ++g)
+  if (flux_length == 1)
   {
-    ostringstream record_name;
-    record_name << "phi_g" << setfill('0') << setw(group_width) << g;
-    output.RegisterField(record_name.str(), &res.phi[g]);
+    output.RegisterField("phi", &res.phi[0]);
+  }
+  else
+  {
+    for (int g{0}; g < xs.ngroup(); ++g)
+    {
+      ostringstream record_name;
+      record_name << "phi_g" << setfill('0') << setw(group_width) << g;
+      output.RegisterField(record_name.str(), &res.phi[g]);
+    }
   }
   output.SetFormat(DataCollection::PARALLEL_FORMAT);
   output.Save();
