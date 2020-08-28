@@ -6,6 +6,7 @@
 struct Result
 {
   public:
+    Result() {}
     Result(mfem::ParFiniteElementSpace* fespace, int ngroup) : G{ngroup}
     { 
       phi.resize(G);
@@ -21,7 +22,7 @@ struct Result
     double keff{1.0};
 
   private:
-    int G;
+    int G{};
 
 };
 
