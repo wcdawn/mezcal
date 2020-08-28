@@ -631,7 +631,7 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   if (slepc.GetNumConverged() < 1)
     throw Failed_to_converge{"SLEPc failed to converge.\n"};
 
-  Result res{fespace, mat_lib.ngroup()};
+  Result res{fespace, 1};
 
   slepc.GetEigenvalue(0, res.keff);
   res.keff = 1.0 / res.keff;
