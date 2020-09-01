@@ -140,7 +140,9 @@ int main(int argc, char* argv[])
   // TODO loop over states
   inp.read_state();
 
-  const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup() : 1};
+  // const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup() : 1};
+  // TODO hardwire for SP3
+  const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup()*2 : 1};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Input::slepc_vector) ? 1 : mat_lib.ngroup())};
   if (myid == 0)

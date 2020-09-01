@@ -7,6 +7,9 @@
 #include <iostream>
 #include <string>
 
+#include <algorithm>
+using std::max_element;
+
 using namespace mfem;
 
 using std::ostream;
@@ -34,6 +37,11 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
   Analytic_solutions::xs_global = &xslib;
 
   if (reference_solution == oned_twog) phi2 = &res.phi[1];
+  if (reference_solution == oned_oneg_spn)
+  {
+    phi2 = new Vector;
+    res.phi[0].GetNodalValues(*phi2, 2);
+  }
 
   // set node
   Vector vec_node;
@@ -79,6 +87,10 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
       fun           = &Analytic_solutions::oned_oneg_fun; // same profile shape
       analytic_keff = &Analytic_solutions::oned_twog_keff;
       break;
+    case (oned_oneg_spn):
+      fun = &Analytic_solutions::oned_oneg_fun; // same profile
+      analytic_keff = &Analytic_solutions::oned_oneg_spn_keff; // same profile
+      break;
     default:
       std::cerr << reference_enum_to_str(reference_solution) << std::endl;
       throw Invalid_reference_name{};
@@ -87,9 +99,11 @@ Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
 
 void Analytic::analyze(ostream& os) const
 {
-  Vector err(phi->Size());
+  Vector err(node.size());
   for (int i{0}; i < err.Size(); ++i) err[i] = fun(node[i]);
-  err -= *phi;
+  Vector phi_vec;
+  phi->GetNodalValues(phi_vec, 1);
+  err -= phi_vec;
 
   // These are computed as they are in LUPINE and are here for compatibility.
   // This method does not account properly for differently sized elements.
@@ -125,9 +139,22 @@ void Analytic::analyze(ostream& os) const
   double ratio_calc{0.0};
   if (phi2)
   {
-    const double local_ratio_calc{phi2->Max()};
-    MPI_Allreduce(&local_ratio_calc, &ratio_calc, 1, MPI_DOUBLE, MPI_MAX,
-                  MPI_COMM_WORLD);
+    double local_ratio_calc;
+    switch (reference_solution)
+    {
+      case (oned_twog):
+        local_ratio_calc = phi2->Max();
+        MPI_Allreduce(&local_ratio_calc, &ratio_calc, 1, MPI_DOUBLE, MPI_MAX,
+                      MPI_COMM_WORLD);
+        break;
+      case (oned_oneg_spn):
+        local_ratio_calc = phi2->Min();
+        MPI_Allreduce(&local_ratio_calc, &ratio_calc, 1, MPI_DOUBLE, MPI_MIN,
+                      MPI_COMM_WORLD);
+        break;
+      default:
+        throw Invalid_reference_name{};
+    }
   }
 
   int myid;
@@ -161,6 +188,19 @@ void Analytic::analyze(ostream& os) const
       os << "ratio_err  = " << (ratio_ref - ratio_calc) << '\n';
       os << setprecision(previous_precision);
       os << "(errors only for fast group)\n";
+    }
+
+    if (reference_solution == oned_oneg_spn)
+    {
+      const auto previous_precision{os.precision()};
+      const double ratio_ref{Analytic_solutions::oned_oneg_spn_ratio()};
+      os << "RATIO:" << '\n';
+      os << setprecision(20);
+      os << "ratio_calc = " << ratio_calc << '\n';
+      os << "ratio_ref  = " << ratio_ref << '\n';
+      os << "ratio_err  = " << (ratio_ref - ratio_calc) << '\n';
+      os << setprecision(previous_precision);
+      os << "(errors only for scalar flux)\n";
     }
 
     os << "(norms do not account for element sizes)\n";
@@ -199,6 +239,7 @@ Analytic::Reference Analytic::reference_str_to_enum(string str)
   if (str == "square") return square;
   if (str == "tworeg") return tworeg;
   if (str == "oned_twog") return oned_twog;
+  if (str == "oned_oneg_spn") return oned_oneg_spn;
   return invalid;
 }
 
@@ -214,18 +255,30 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
     case (square): return "square";
     case (tworeg): return "tworeg";
     case (oned_twog): return "oned_twog";
+    case (oned_oneg_spn): return "oned_oneg_spn";
     default: return "invalid";
   }
 }
 
 void Analytic::normalize_solution_flux() const
 {
-  double* access{phi->GetData()};
-  for (int i{0}; i < phi->Size(); ++i, ++access) *access = abs(*access);
+
+  Vector phi_vec;
+  phi->GetNodalValues(phi_vec, 1);
+
+  const double* const max_elem{
+    max_element(phi_vec.GetData(), phi_vec.GetData()+phi_vec.Size(), 
+    [](const double& v1, const double& v2){ return abs(v1) < abs(v2); })};
+  const double sign{(*max_elem > 0) ? 1.0 : ((*max_elem < 0) ? -1.0 : 0.0)};
+
+  *phi *= sign;
+  if (phi2) *phi2 *= sign;
+
   const double local_phi_max{phi->Max()};
   double phi_max;
   MPI_Allreduce(&local_phi_max, &phi_max, 1, MPI_DOUBLE, MPI_MAX,
                 MPI_COMM_WORLD);
+
   *phi /= phi_max;
   if (phi2) *phi2 /= phi_max;
 }
@@ -434,17 +487,29 @@ namespace Analytic_solutions
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
-    const double bsq{pow(M_PI / Lx, 2)};
+    constexpr double bsq{pow(M_PI / Lx, 2)};
     const double k2k1{oned_twog_ratio()};
     return (rec.nusf[0] + rec.nusf[1] * k2k1)
            / (diffusion[0] * bsq + rec.sigma_r[0]);
+  }
+
+  double oned_oneg_spn_keff()
+  {
+    const double c22_c20{oned_oneg_spn_ratio()};
+    constexpr double Lx{100.0};
+    constexpr double bsq{pow(M_PI/Lx,2)};
+    const XSRecord& rec{xs_global->rec[0]};
+
+    return rec.nusf[0] / 
+      ((1.0/3.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_r[0] + 
+       (2.0/3.0) * (1.0/rec.sigma_t[0]) * bsq * c22_c20);
   }
 
   double oned_twog_ratio()
   {
     static constexpr double Lx{100.0};
     const XSRecord& rec{xs_global->rec[0]};
-    const double bsq{pow(M_PI / Lx, 2)};
+    const double bsq{pow(M_PI/Lx, 2)};
 
     vector<double> diffusion(xs_global->ngroup());
     for (size_t g{0}; g < diffusion.size(); ++g)
@@ -452,4 +517,19 @@ namespace Analytic_solutions
 
     return rec.sigma_s.Elem(1, 0) / (diffusion[1] * bsq + rec.sigma_r[1]);
   }
+
+  double oned_oneg_spn_ratio()
+  {
+    constexpr double Lx{100.0};
+    constexpr double bsq{pow(M_PI / Lx,2)};
+    const XSRecord& rec{xs_global->rec[0]};
+    return ((-2.0/15.0) * (1.0/rec.sigma_t[0]) * bsq) / 
+      ((11.0/21.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_t[0]);
+  }
+
 } // namespace Analytic_solutions
+
+Analytic::~Analytic()
+{
+  if (reference_solution == oned_oneg_spn) delete phi2;
+}

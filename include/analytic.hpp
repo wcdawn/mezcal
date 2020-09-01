@@ -14,6 +14,7 @@ namespace Analytic_solutions
   // Zeroth zero of the first Bessel function of the first kind.
   static constexpr double alpha0{2.404825557695772768622};
 
+  // TODO these will have to be rewritten to be VectorFunctionCoefficient
   double fixed_src_fun(const mfem::Vector&);
   double oned_oneg_fun(const mfem::Vector&);
   double twod_oneg_fun(const mfem::Vector&);
@@ -27,8 +28,10 @@ namespace Analytic_solutions
   double finite_cyl_keff();
   double tworeg_keff();
   double oned_twog_keff();
+  double oned_oneg_spn_keff();
 
   double oned_twog_ratio();
+  double oned_oneg_spn_ratio();
 
 } // namespace Analytic_solutions
 
@@ -49,7 +52,8 @@ public:
     square,
     finite_cyl,
     tworeg,
-    oned_twog
+    oned_twog,
+    oned_oneg_spn
   };
 
   Analytic(const Reference ref, Result& res, const XSLibrary& xs,
@@ -62,6 +66,8 @@ public:
   static Reference reference_str_to_enum(std::string str);
   static std::string reference_enum_to_str(Reference ref);
 
+  ~Analytic();
+
 private:
   void normalize_solution_flux() const;
 
@@ -72,9 +78,10 @@ private:
 
   std::vector<mfem::Vector> node;
   mfem::GridFunction* phi{nullptr};
-  mfem::GridFunction* phi2{nullptr};
+  mfem::Vector* phi2{nullptr};
 
   using mfem_function = double(const mfem::Vector&);
+  using mfem_vector_function = void(const mfem::Vector&, mfem::Vector&);
   using keff_function = double();
   mfem_function* fun;
   keff_function* analytic_keff;

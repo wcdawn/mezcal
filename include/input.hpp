@@ -35,6 +35,7 @@ public:
 
   int hypre_print_level() const { return verbose ? 1 : 0; };
   int mfem_print_level() const { return verbose ? 1 : 0; };
+  int spn_eq() const { return (spn + 1) / 2; }
 
   class Invalid_input_card : std::exception
   {
@@ -90,6 +91,7 @@ public:
   Tolerance_control tol;
   const char* solver{"lobpcg"};
   bool flux_free_chi{false};
+  int spn{1};
 
   enum Solver_choice
   {

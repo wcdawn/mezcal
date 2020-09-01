@@ -525,6 +525,11 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
                        ParFiniteElementSpace* const fespace)
 {
 
+  constexpr int spn{3};
+  constexpr int spn_eq{(spn+1)/ 2};
+  std::cout << "SPN=" << spn << std::endl;
+  std::cout << "SPN_EQ=" << spn_eq << std::endl;
+
   const string slepcrc_fname{inp.concatenate_path("slepcrc")};
   if (exists(slepcrc_fname))
     MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
@@ -536,38 +541,75 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   ParBilinearForm diffusion_bilinear{fespace};
   ParBilinearForm fission_bilinear{fespace};
 
-  vector<Vector> leakage(pmesh->attributes.Max());
+  vector<DenseMatrix> leakage(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    leakage[i].SetSize(mat_lib.ngroup());
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-      leakage[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
+    leakage[i].SetSize(mat_lib.ngroup()*spn_eq);
+    const XSRecord& record{mat_lib.mat[i].rec};
+    for (int n{0}; n < spn_eq; ++n)
+    {
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const int idx_dia{g + mat_lib.ngroup() * n};
+        const int idx_sup{idx_dia + mat_lib.ngroup()};
+        const int idx_sub{idx_dia - mat_lib.ngroup()};
+        const double dble_n{2.0*n};
+
+        const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+        const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
+        const double ymult{(dble_n*dble_n - dble_n) / (4.0*dble_n*dble_n - 1.0)};
+        const double zmult{(dble_n+1.0)*(dble_n+2.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+
+        // TODO properly track the SPN "removal" xs
+        leakage[i](idx_dia,idx_dia) = xmult_next / record.sigma_t[g];
+
+        if (n > 0)
+        {
+          leakage[i](idx_dia,idx_dia) += xmult_prev / record.sigma_t[g];
+          leakage[i](idx_dia,idx_sub) = ymult / record.sigma_t[g]; 
+        }
+
+        if (n != (spn_eq - 1))
+        {
+          leakage[i](idx_dia,idx_sup) = zmult / record.sigma_t[g];
+        }
+
+      }
+    }
   }
-  VectorPWConstCoefficient leakage_func{leakage};
+  MatrixPWConstCoefficient leakage_func{leakage};
 
   vector<DenseMatrix> removal(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    mat_lib.mat[i].rec.sigma_s.ToDenseMatrix(removal[i]);
-    removal[i].Neg(); // negate (for subtraction)
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-      removal[i](g,g) += mat_lib.mat[i].rec.sigma_t[g];
+    removal[i].SetSize(mat_lib.ngroup()*spn_eq);
+    const XSRecord& record{mat_lib.mat[i].rec};
+    const DenseMatrix tmp{*record.sigma_s.ToDenseMatrix()};
+    removal[i].AddMatrix(-1.0, tmp, 0, 0);
+    for (int n{0}; n < spn_eq; ++n)
+    {
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const int idx{g + mat_lib.ngroup() * n};
+        removal[i](idx,idx) += record.sigma_t[g];
+      }
+    }
   }
   MatrixPWConstCoefficient removal_func{removal};
 
   vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    fission[i].SetSize(mat_lib.ngroup()); // zero initialized
+    fission[i].SetSize(mat_lib.ngroup()*spn_eq); // zero initialized
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
-        const auto& mat{mat_lib.mat[i]};
+        const Material_record& mat{mat_lib.mat[i]};
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
-          const auto& isotope{mat.iso[iso_idx]};
-          const auto& record{isotope.rec};
+          const Material_isotope& isotope{mat.iso[iso_idx]};
+          const XSRecord& record{isotope.rec};
           const double nden{isotope.nden};
           fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
         }
@@ -642,7 +684,7 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   // each group/moment is currently stored as a vector quantity
   // parsing this is then handled by ParaView
   // for dimensions <= 3, the vector is listed {x,y,z}
-  // for higher dimensions, the fector is listed {0,1,2,3,4,...}
+  // for higher dimensions, the vector is listed {0,1,2,3,4,...}
   res.phi[0].Distribute(tmp);
 
   return res;

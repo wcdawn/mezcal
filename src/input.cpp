@@ -161,6 +161,10 @@ void Input::read_state()
     {
       flux_free_chi = read_bool(ifs);
     }
+    else if (card == "spn")
+    {
+      ifs >> spn;
+    }
     else if (card == "[STATE]")
     {
       // prepare to head into another state block
