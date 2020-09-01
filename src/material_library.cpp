@@ -99,11 +99,15 @@ void Material_record::calculate_macroscopic_xs()
     {
       rec.sigma_tr[g] += iso[i].nden * iso[i].rec.sigma_tr[g];
       rec.sigma_t[g] += iso[i].nden * iso[i].rec.sigma_t[g];
-      rec.sigma_r[g] += iso[i].nden * iso[i].rec.sigma_r[g];
       rec.nusf[g] += iso[i].nden * iso[i].rec.nusf[g];
       // note: fixed source is simply summed without number densities
       rec.source[g] += iso[i].rec.source[g];
     }
+
+    for (int n{0}; n < rec.nmoment(); ++n)
+      for (int g{0}; g < rec.ngroup(); ++g)
+        rec.sigma_r(g,n) += iso[i].nden * iso[i].rec.sigma_r(g,n);
+
     rec.is_fiss = rec.is_fiss || iso[i].rec.is_fiss;
   }
   rec.sigma_s = scat;

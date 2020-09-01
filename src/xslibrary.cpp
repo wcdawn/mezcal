@@ -25,12 +25,13 @@ using std::setfill;
 using std::setw;
 using std::stringstream;
 
-void XSRecord::set_ngroup(int ngroup)
+void XSRecord::set_ngroup(int ngroup, int nmoment)
 {
   G = ngroup;
+  N = nmoment;
   sigma_tr.resize(G);
   sigma_t.resize(G);
-  sigma_r.resize(G);
+  sigma_r.SetSize(G, nmoment);
   nusf.resize(G);
   chi.resize(G);
   source.resize(G);
@@ -39,7 +40,16 @@ void XSRecord::set_ngroup(int ngroup)
 
 void XSRecord::calculate_removal_xs()
 {
-  for (int g{0}; g < G; ++g) sigma_r[g] = sigma_t[g] - sigma_s.Elem(g, g);
+  for (int n{0}; n < N; ++n)
+  {
+    for (int g{0}; g < G; ++g)
+    {
+      if (n == 0)
+        sigma_r(g, n) = sigma_t[g] - sigma_s.Elem(g, g);
+      else
+        sigma_r(g, n) = sigma_t[g];
+    }
+  }
 }
 
 void XSRecord::self_scatter_rebalance()

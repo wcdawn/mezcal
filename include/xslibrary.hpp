@@ -13,9 +13,11 @@ struct XSRecord
 {
   XSRecord() {}
   XSRecord(int ngroup) { set_ngroup(ngroup); }
+  XSRecord(int ngroup, int nmoment) { set_ngroup(ngroup, nmoment); }
 
-  void set_ngroup(int ngroup);
+  void set_ngroup(int ngroup, int nmoment=1);
   int ngroup() const { return G; };
+  int nmoment() const { return N; };
 
   void calculate_removal_xs();
   void self_scatter_rebalance();
@@ -27,10 +29,11 @@ struct XSRecord
   bool is_fiss{false};
 
   int G{0};
+  int N{0};
 
   std::vector<double> sigma_tr;
   std::vector<double> sigma_t;
-  std::vector<double> sigma_r;
+  mfem::DenseMatrix sigma_r;
   std::vector<double> nusf;
   std::vector<double> chi;
   std::vector<double> source; // fixed source

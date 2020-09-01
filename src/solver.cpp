@@ -48,6 +48,8 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
                               ParFiniteElementSpace* const fespace)
 {
 
+  static constexpr int ell{0}; // for P0 xs
+
   time.start(time.matrix_assembly);
 
   //////////////////////////////////////////////////////////////////////////////
@@ -64,7 +66,7 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = mat_lib.mat[i].rec.sigma_r[0];
+    removal[i] = mat_lib.mat[i].rec.sigma_r(0,ell);
   PWConstCoefficient removal_func(removal);
 
   a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -84,7 +86,7 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
 
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
-  for (int i{0}; i < removal.Size(); ++i)
+  for (int i{0}; i < fission.Size(); ++i)
     fission[i] = mat_lib.mat[i].rec.nusf[0];
   PWConstCoefficient fission_func(fission);
 
@@ -133,12 +135,14 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   return res;
 }
 
+// TODO throw this away
 Result diffusion_slepc(Timer& time, const Input& inp,
                        const Material_library& mat_lib,
                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
                        ParFiniteElementSpace* const fespace)
 {
-  constexpr int g{0};
+  static constexpr int g{0}; // NOTE: restricted to one-group problems
+  static constexpr int ell{0}; // for P0 xs
 
   const string slepcrc_fname{inp.concatenate_path("slepcrc")};
   if (exists(slepcrc_fname))
@@ -155,7 +159,7 @@ Result diffusion_slepc(Timer& time, const Input& inp,
 
   Vector removal(pmesh->attributes.Max());
   for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = mat_lib.mat[i].rec.sigma_r[g];
+    removal[i] = mat_lib.mat[i].rec.sigma_r(g,ell);
   PWConstCoefficient removal_func{removal};
 
   ParBilinearForm a{fespace};
@@ -233,6 +237,8 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
                                  ParFiniteElementSpace* const fespace)
 {
 
+  static constexpr int ell{0}; // for P0 xs
+
   // this is necessary to specify bcs for the inner solver
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
@@ -255,7 +261,7 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
 
     Vector removal(pmesh->attributes.Max());
     for (int i{0}; i < removal.Size(); ++i)
-      removal[i] = mat_lib.mat[i].rec.sigma_r[g];
+      removal[i] = mat_lib.mat[i].rec.sigma_r(g,ell);
     PWConstCoefficient removal_func{removal};
 
     a[g]->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -454,6 +460,8 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
                            const ParMesh* const pmesh,
                            ParFiniteElementSpace* const fespace)
 {
+  static constexpr int ell{0}; // for P0 xs
+
   time.start(time.matrix_assembly);
   ParBilinearForm a{fespace};
 
@@ -464,7 +472,7 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
 
   Vector removal(pmesh->attributes.Max());
   for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = mat_lib.mat[i].rec.sigma_r[0];
+    removal[i] = mat_lib.mat[i].rec.sigma_r(0,ell);
   PWConstCoefficient removal_func(removal);
 
   a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -696,6 +704,8 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
                        ParFiniteElementSpace* const fespace)
 {
 
+  static constexpr int ell{0}; // for P0 xs
+
   // NOTE: this call to MFEMInitializeSlepc() leaks.
   // It leaks 112 bytes in 2 blocks. (definitely lost)
   // Small, but really annoying.
@@ -730,7 +740,7 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
 
     Vector removal(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      removal[i] = mat_lib.mat[i].rec.sigma_r[g];
+      removal[i] = mat_lib.mat[i].rec.sigma_r(g,ell);
     PWConstCoefficient removal_func{removal};
 
     ParBilinearForm diffusion_bilinear{fespace};

@@ -290,8 +290,9 @@ namespace Analytic_solutions
 
   double fixed_src_fun(const Vector& v)
   {
+    static constexpr int ell{0}; // for P0 xs
     const double sigma_tr{xs_global->rec[0].sigma_tr[0]};
-    const double sigma_r{xs_global->rec[0].sigma_r[0]};
+    const double sigma_r{xs_global->rec[0].sigma_r(0,ell)};
     const double q_fixed{xs_global->rec[0].source[0]};
 
     static constexpr double Lx_small{1.0};
@@ -309,7 +310,7 @@ namespace Analytic_solutions
   double oned_oneg_fun(const Vector& v)
   {
     const double x{v[0]};
-    constexpr double Lx{100.0};
+    static constexpr double Lx{100.0};
     return sin((M_PI / Lx) * x);
   }
 
@@ -372,10 +373,11 @@ namespace Analytic_solutions
 
   double tworeg_fun(const Vector& v)
   {
+    static constexpr int ell{0}; // for P0 xs
     const XSRecord& fuel{xs_global->rec[0]};
     const XSRecord& reflector{xs_global->rec[1]};
     const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
-    const vector<double> sigma_r{fuel.sigma_r[0], reflector.sigma_r[0]};
+    const vector<double> sigma_r{fuel.sigma_r(0,ell), reflector.sigma_r(0,ell)};
     const vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
 
     vector<double> diffusion(sigma_tr.size());
@@ -401,8 +403,9 @@ namespace Analytic_solutions
 
   double oned_oneg_keff()
   {
+    static constexpr int ell{0}; // for P0 xs
     const double transport{xs_global->rec[0].sigma_tr[0]};
-    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double removal{xs_global->rec[0].sigma_r(0,ell)};
     const double nusf{xs_global->rec[0].nusf[0]};
 
     static constexpr double Lx{100.0};
@@ -414,8 +417,9 @@ namespace Analytic_solutions
 
   double twod_oneg_keff()
   {
+    static constexpr int ell{0}; // for P0 xs
     const double transport{xs_global->rec[0].sigma_tr[0]};
-    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double removal{xs_global->rec[0].sigma_r(0,ell)};
     const double nusf{xs_global->rec[0].nusf[0]};
 
     static constexpr double Lx{100.0};
@@ -428,8 +432,9 @@ namespace Analytic_solutions
   }
   double threed_oneg_keff()
   {
+    static constexpr int ell{0}; // for P0 xs
     const double transport{xs_global->rec[0].sigma_tr[0]};
-    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double removal{xs_global->rec[0].sigma_r(0,ell)};
     const double nusf{xs_global->rec[0].nusf[0]};
 
     static constexpr double Lx{100.0};
@@ -446,8 +451,9 @@ namespace Analytic_solutions
 
   double finite_cyl_keff()
   {
+    static constexpr int ell{0}; // for P0 xs
     const double transport{xs_global->rec[0].sigma_tr[0]};
-    const double removal{xs_global->rec[0].sigma_r[0]};
+    const double removal{xs_global->rec[0].sigma_r(0,ell)};
     const double nusf{xs_global->rec[0].nusf[0]};
 
     static constexpr double R{50.0};
@@ -461,10 +467,11 @@ namespace Analytic_solutions
 
   double tworeg_keff()
   {
+    static constexpr int ell{0}; // for P0 xs
     const XSRecord& fuel{xs_global->rec[0]};
     const XSRecord& reflector{xs_global->rec[1]};
     const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
-    const vector<double> sigma_r{fuel.sigma_r[0], reflector.sigma_r[0]};
+    const vector<double> sigma_r{fuel.sigma_r(0,ell), reflector.sigma_r(0,ell)};
     const vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
 
     vector<double> diffusion(sigma_tr.size());
@@ -480,6 +487,7 @@ namespace Analytic_solutions
   double oned_twog_keff()
   {
     static constexpr double Lx{100.0};
+    static constexpr int ell{0}; // for P0 xs
 
     const XSRecord& rec{xs_global->rec[0]};
 
@@ -490,23 +498,24 @@ namespace Analytic_solutions
     constexpr double bsq{pow(M_PI / Lx, 2)};
     const double k2k1{oned_twog_ratio()};
     return (rec.nusf[0] + rec.nusf[1] * k2k1)
-           / (diffusion[0] * bsq + rec.sigma_r[0]);
+           / (diffusion[0] * bsq + rec.sigma_r(0,ell));
   }
 
   double oned_oneg_spn_keff()
   {
     const double c22_c20{oned_oneg_spn_ratio()};
-    constexpr double Lx{100.0};
+    static constexpr double Lx{100.0};
     constexpr double bsq{pow(M_PI/Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
 
     return rec.nusf[0] / 
-      ((1.0/3.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_r[0] + 
+      ((1.0/3.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_r(0,0) +
        (2.0/3.0) * (1.0/rec.sigma_t[0]) * bsq * c22_c20);
   }
 
   double oned_twog_ratio()
   {
+    static constexpr int ell{0}; // for P0 xs
     static constexpr double Lx{100.0};
     const XSRecord& rec{xs_global->rec[0]};
     const double bsq{pow(M_PI/Lx, 2)};
@@ -515,16 +524,16 @@ namespace Analytic_solutions
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
-    return rec.sigma_s.Elem(1, 0) / (diffusion[1] * bsq + rec.sigma_r[1]);
+    return rec.sigma_s.Elem(1, 0) / (diffusion[1] * bsq + rec.sigma_r(0,ell));
   }
 
   double oned_oneg_spn_ratio()
   {
-    constexpr double Lx{100.0};
+    static constexpr double Lx{100.0};
     constexpr double bsq{pow(M_PI / Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
-    return ((-2.0/15.0) * (1.0/rec.sigma_t[0]) * bsq) / 
-      ((11.0/21.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_t[0]);
+    return ((-2.0/15.0) * (1.0/rec.sigma_r(0,1)) * bsq) / 
+      ((11.0/21.0) * (1.0/rec.sigma_r(0,1)) * bsq + rec.sigma_t[0]);
   }
 
 } // namespace Analytic_solutions
