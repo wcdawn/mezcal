@@ -24,8 +24,10 @@ struct Material_record
   std::string name;
   int niso;
   int G;
+  int N;
 
   int ngroup() const { return G; }
+  int nmoment() const { return N; }
 
   // utility functions
 
@@ -72,12 +74,16 @@ public:
   };
 
   int ngroup() const { return G; }
+  int nmoment() const { return M; }
+
+  void set_nmoment(int m) { M = m; }
 
   std::vector<Material_record> mat;
 
 private:
   const XSLibrary& xs; // associated microscopic cross section library
   const int G;         // set in constructor
+  int M; // non-const, can be updated/expanded with more moments for spn
 
   static void reset_block(std::ifstream& ifs, const std::string& block_head);
   static constexpr char comment_char{'#'};

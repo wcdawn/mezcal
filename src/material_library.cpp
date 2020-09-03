@@ -13,7 +13,7 @@ using std::string;
 using std::vector;
 
 Material_library::Material_library(const XSLibrary& xslib)
-  : xs{xslib}, G{xs.ngroup()}
+  : xs{xslib}, G{xs.ngroup()}, M{xs.nmoment()}
 {
 }
 
