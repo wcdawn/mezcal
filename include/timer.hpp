@@ -4,7 +4,7 @@
 #include <chrono>
 #include <iostream>
 #include <string>
-#include <vector>
+#include <map>
 
 // TODO this currently only tracks a single thread, using wall-clock time.
 // may want to accumulate accross threads.
@@ -20,7 +20,7 @@ public:
   Timer() = default;
 
   void start(const std::string& time_name);
-  void restart(const std::string& time_name);
+  //void restart(const std::string& time_name);
   void stop(const std::string& time_name);
   void stop();
 
@@ -32,27 +32,24 @@ public:
 private:
   const point init_clock{clock::now()};
 
+  std::string most_recent;
+
   class Time_record
   {
   public:
     Time_record() = default;
-    void set_name(const std::string& str) { name_time = str; }
-    std::string name() const { return name_time; }
     duration elapsed() const { return elapsed_time; }
-
     void start();
     void stop();
 
   private:
     bool running{true};
-    std::string name_time;
     point start_time;
     duration elapsed_time;
   };
 
-  std::vector<Time_record> times;
+  std::map<std::string,Time_record> timers;
 
-  std::vector<Time_record>::iterator find_record(const std::string& time_name);
 };
 
 #endif

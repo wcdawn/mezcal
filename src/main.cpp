@@ -135,18 +135,6 @@ int main(int argc, char* argv[])
   {
     fec = new H1_FECollection(inp.order = 1, dim);
   }
-  // TODO it's here!
-
-  // TODO loop over states
-  inp.read_state();
-
-  // const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup() : 1};
-  // TODO hardwire for SP3
-  const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup()*2 : 1};
-  ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Input::slepc_vector) ? 1 : mat_lib.ngroup())};
-  if (myid == 0)
-    cout << "Number of finite element unknowns: " << dof << endl;
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
   //    In this example, the boundary conditions are defined by marking all
@@ -161,79 +149,100 @@ int main(int argc, char* argv[])
        ++i)
     ess_bdr[i] = inp.boundary_conditions[i];
 
-  // do the solving
-  const int flux_length{(inp.sol == Input::slepc_vector) ? 1 : xs.ngroup()};
-  Result res{&fespace, flux_length};
+  // TODO loop over states
+  std::cout << "NSTATE=" << inp.nstate() << std::endl;
+  for (int state{0}; state < inp.nstate(); ++state)
+  {
+    inp.read_state();
 
-  if (inp.ref == Analytic::fixed_src)
-  {
-    res = diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
-  }
-  else
-  {
-    switch (inp.sol)
+    const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 1};
+    ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
+    const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Input::slepc_vector) ? 1 : mat_lib.ngroup())};
+    if (myid == 0)
+      cout << "Number of finite element unknowns: " << dof << endl;
+
+    // do the solving
+
+    // TODO this should move outside of the [STATE] loop but we need to disallow
+    // changing the solver type between states (maybe move to [CORE] block)
+    const int flux_length{(inp.sol == Input::slepc_vector) ? 1 : xs.ngroup()};
+    Result res{&fespace, flux_length};
+
+    // TODO use out params to enable restarting with different [STATE] blocks
+
+    if (inp.ref == Analytic::fixed_src)
     {
-      case (Input::lobpcg):
-        res =
-        diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
-        break;
-      case (Input::power_iteration):
-        res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh,
-                                        &fespace);
-        break;
-      case (Input::slepc):
-        res = diffusion_slepc(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
-        break;
-      case (Input::slepc_vector):
-        res = diffusion_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
-        time.stop("return");
-        break;
-      case (Input::slepc_manual):
-        res = diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
-        break;
-      default:
-        cerr << "Invalid solver choice.\n";
-        MPI_Finalize();
-        return 1;
+      res = diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
     }
-  }
-
-  const auto old_precision{cout.precision()};
-  if ((myid == 0) && (inp.ref != Analytic::fixed_src))
-    cout << "keff = " << setprecision(20) << res.keff
-         << setprecision(old_precision) << '\n';
-
-  if (inp.ref != Analytic::invalid)
-  {
-    Analytic anal(inp.ref, res, xs, &pmesh);
-    anal.analyze(cout);
-    ostringstream analysis_fname;
-    analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
-    ofstream ofs{analysis_fname.str()};
-    anal.print(ofs);
-  }
-
-  time.start("Output");
-
-  ParaViewDataCollection output("output_dir", &pmesh);
-  const auto group_width{std::to_string(xs.ngroup()).length()};
-  if (flux_length == 1)
-  {
-    output.RegisterField("phi", &res.phi[0]);
-  }
-  else
-  {
-    for (int g{0}; g < xs.ngroup(); ++g)
+    else
     {
-      ostringstream record_name;
-      record_name << "phi_g" << setfill('0') << setw(group_width) << g;
-      output.RegisterField(record_name.str(), &res.phi[g]);
+      switch (inp.sol)
+      {
+        case (Input::lobpcg):
+          res =
+          diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+          break;
+        case (Input::power_iteration):
+          res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh,
+                                          &fespace);
+          break;
+        case (Input::slepc_vector):
+          res = spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+          break;
+        case (Input::slepc_manual):
+          res = diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+          time.stop("return");
+          break;
+        default:
+          cerr << "Invalid solver choice.\n";
+          MPI_Finalize();
+          return 1;
+      }
     }
-  }
-  output.SetFormat(DataCollection::PARALLEL_FORMAT);
-  output.Save();
 
-  time.stop();
+    // output
+
+    time.start("Output");
+
+    const auto old_precision{cout.precision()};
+    if ((myid == 0) && (inp.ref != Analytic::fixed_src))
+      cout << "keff = " << setprecision(20) << res.keff
+           << setprecision(old_precision) << '\n';
+
+    if (inp.ref != Analytic::invalid)
+    {
+      Analytic anal(inp.ref, res, xs, &pmesh);
+      anal.analyze(cout);
+      ostringstream analysis_fname;
+      analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
+      ofstream ofs{analysis_fname.str()};
+      anal.print(ofs);
+    }
+
+    ParaViewDataCollection output("output_dir", &pmesh);
+    const auto group_width{std::to_string(xs.ngroup()).length()};
+    if (flux_length == 1)
+    {
+      // TODO fix this so that this can be more descriptive
+      // Will probably require constructing a new FiniteElementSpace, a new
+      // Vector, and a new GridFunction
+      output.RegisterField("phi", &res.phi[0]);
+    }
+    else
+    {
+      for (int g{0}; g < xs.ngroup(); ++g)
+      {
+        ostringstream record_name;
+        record_name << "phi_g" << setfill('0') << setw(group_width) << g;
+        output.RegisterField(record_name.str(), &res.phi[g]);
+      }
+    }
+    output.SetFormat(DataCollection::PARALLEL_FORMAT);
+    output.Save();
+
+    time.stop();
+
+  }
 
   if (myid == 0) time.Print(cout);
 

@@ -120,6 +120,9 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   lobpcg.SetMassMatrix(*M);
   lobpcg.SetOperator(*A);
 
+  A->Print("hypre_lobpcg_a");
+  M->Print("hypre_lobpcg_m");
+
   time.start(time.solver);
   lobpcg.Solve();
   time.stop();
@@ -131,101 +134,6 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   lobpcg.GetEigenvalues(eigenvalues);
   res.keff   = 1.0 / eigenvalues[0];
   res.phi[0] = lobpcg.GetEigenvector(0);
-
-  return res;
-}
-
-// TODO throw this away
-Result diffusion_slepc(Timer& time, const Input& inp,
-                       const Material_library& mat_lib,
-                       const Array<int>& ess_bdr, const ParMesh* const pmesh,
-                       ParFiniteElementSpace* const fespace)
-{
-  static constexpr int g{0}; // NOTE: restricted to one-group problems
-  static constexpr int ell{0}; // for P0 xs
-
-  const string slepcrc_fname{inp.concatenate_path("slepcrc")};
-  if (exists(slepcrc_fname))
-    MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
-  else
-    MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
-
-  time.start(time.matrix_assembly);
-
-  Vector leakage(pmesh->attributes.Max());
-  for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
-  PWConstCoefficient leakage_func{leakage};
-
-  Vector removal(pmesh->attributes.Max());
-  for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = mat_lib.mat[i].rec.sigma_r(g,ell);
-  PWConstCoefficient removal_func{removal};
-
-  ParBilinearForm a{fespace};
-  a.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
-  a.AddDomainIntegrator(new MassIntegrator{removal_func});
-  a.Assemble();
-  a.EliminateEssentialBCDiag(ess_bdr, 1.0);
-  a.Finalize();
-
-  Vector fission(pmesh->attributes.Max());
-  for (int i{0}; i < fission.Size(); ++i)
-    fission[i] = mat_lib.mat[i].rec.nusf[g];
-  PWConstCoefficient fission_func{fission};
-
-  ParBilinearForm m{fespace};
-  m.AddDomainIntegrator(new MassIntegrator{fission_func});
-  m.Assemble();
-  m.EliminateEssentialBCDiag(ess_bdr, numeric_limits<double>::min());
-  m.Finalize();
-
-  time.stop();
-
-  SlepcEigenSolver slepc{MPI_COMM_WORLD};
-  slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
-  slepc.SetMaxIter(inp.tol.max_outer);
-
-  // spectral transformation will not be useful for Generalized Davidson solver
-  // as it uses a preconditioner instead of a spectral transformation
-  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
-
-  // set PETSc operators appropriately
-  // not sure of a better way to do this
-  PetscParMatrix* A{nullptr};
-  PetscParMatrix* M{nullptr};
-
-  {
-    OperatorHandle Ah{Operator::PETSC_MATAIJ};
-    OperatorHandle Mh{Operator::PETSC_MATAIJ};
-    a.ParallelAssemble(Ah);
-    Ah.Get(A);
-    Ah.SetOperatorOwner(false);
-    m.ParallelAssemble(Mh);
-    Mh.Get(M);
-    Mh.SetOperatorOwner(false);
-  }
-
-  slepc.SetOperators(*A, *M);
-
-  time.start(time.solver);
-  slepc.Solve();
-  time.stop();
-
-  // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
-  // cannot be accessed, even if they are *nearly* converged. Therefore, to
-  // avoid dereferencing bad memory, we must abort.
-  if (slepc.GetNumConverged() < 1)
-    throw Failed_to_converge{"SLEPc failed to converge.\n"};
-
-  Result res{fespace, mat_lib.ngroup()};
-
-  slepc.GetEigenvalue(0, res.keff);
-  res.keff = 1.0 / res.keff;
-  Vector tmp(fespace->GetTrueVSize());
-  slepc.GetEigenvector(0, tmp);
-  res.phi[g].Distribute(tmp);
 
   return res;
 }
@@ -527,16 +435,33 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   return res;
 }
 
-Result diffusion_slepc_vector(Timer& time, const Input& inp,
-                       const Material_library& mat_lib,
-                       const Array<int>& ess_bdr, const ParMesh* const pmesh,
-                       ParFiniteElementSpace* const fespace)
+Result spn_slepc_vector(Timer& time, const Input& inp,
+                        Material_library& mat_lib,
+                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
+                        ParFiniteElementSpace* const fespace)
 {
 
-  constexpr int spn{3};
-  constexpr int spn_eq{(spn+1)/ 2};
-  std::cout << "SPN=" << spn << std::endl;
-  std::cout << "SPN_EQ=" << spn_eq << std::endl;
+  if (mat_lib.nmoment() < (inp.spn_order()+1))
+  {
+    mat_lib.set_nmoment(inp.spn_order()+1);
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+    {
+      XSRecord& record{mat_lib.mat[i].rec};
+      // after SetSize, need to rebuild entire matrix because the new matrix is
+      // zero-initialized
+      record.sigma_r.SetSize(mat_lib.ngroup(), mat_lib.nmoment());
+      for (int n{0}; n < mat_lib.nmoment(); ++n)
+      {
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+        {
+          if (n == 0)
+            record.sigma_r(g,n) = record.sigma_t[g] - record.sigma_s.Elem(g,g);
+          else
+            record.sigma_r(g,n) = record.sigma_t[g];
+        }
+      }
+    }
+  }
 
   const string slepcrc_fname{inp.concatenate_path("slepcrc")};
   if (exists(slepcrc_fname))
@@ -552,34 +477,32 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   vector<DenseMatrix> leakage(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    leakage[i].SetSize(mat_lib.ngroup()*spn_eq);
+    leakage[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
     const XSRecord& record{mat_lib.mat[i].rec};
-    for (int n{0}; n < spn_eq; ++n)
+    for (int n{0}; n < inp.spn_eq(); ++n)
     {
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
         const int idx_dia{g + mat_lib.ngroup() * n};
-        const int idx_sup{idx_dia + mat_lib.ngroup()};
-        const int idx_sub{idx_dia - mat_lib.ngroup()};
         const double dble_n{2.0*n};
-
         const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
-        const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
-        const double ymult{(dble_n*dble_n - dble_n) / (4.0*dble_n*dble_n - 1.0)};
-        const double zmult{(dble_n+1.0)*(dble_n+2.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
 
-        // TODO properly track the SPN "removal" xs
-        leakage[i](idx_dia,idx_dia) = xmult_next / record.sigma_t[g];
+        leakage[i](idx_dia,idx_dia) = xmult_next / record.sigma_r(g,2*n+1);
 
         if (n > 0)
         {
-          leakage[i](idx_dia,idx_dia) += xmult_prev / record.sigma_t[g];
-          leakage[i](idx_dia,idx_sub) = ymult / record.sigma_t[g]; 
+          const int idx_sub{idx_dia - mat_lib.ngroup()};
+          const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
+          const double ymult{(dble_n*dble_n - dble_n) / (4.0*dble_n*dble_n - 1.0)};
+          leakage[i](idx_dia,idx_dia) += xmult_prev / record.sigma_r(g,2*n-1);
+          leakage[i](idx_dia,idx_sub) = ymult / record.sigma_r(g,2*n-1);
         }
 
-        if (n != (spn_eq - 1))
+        if ((n+1) < inp.spn_eq())
         {
-          leakage[i](idx_dia,idx_sup) = zmult / record.sigma_t[g];
+          const int idx_sup{idx_dia + mat_lib.ngroup()};
+          const double zmult{(dble_n+1.0)*(dble_n+2.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+          leakage[i](idx_dia,idx_sup) = zmult / record.sigma_r(g,2*n+1);
         }
 
       }
@@ -590,16 +513,16 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   vector<DenseMatrix> removal(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    removal[i].SetSize(mat_lib.ngroup()*spn_eq);
+    removal[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
     const XSRecord& record{mat_lib.mat[i].rec};
     const DenseMatrix tmp{*record.sigma_s.ToDenseMatrix()};
     removal[i].AddMatrix(-1.0, tmp, 0, 0);
-    for (int n{0}; n < spn_eq; ++n)
+    for (int n{0}; n < inp.spn_eq(); ++n)
     {
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
         const int idx{g + mat_lib.ngroup() * n};
-        removal[i](idx,idx) += record.sigma_t[g];
+        removal[i](idx,idx) = record.sigma_r(g,2*n);
       }
     }
   }
@@ -608,7 +531,7 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
   vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    fission[i].SetSize(mat_lib.ngroup()*spn_eq); // zero initialized
+    fission[i].SetSize(mat_lib.ngroup()*inp.spn_eq()); // zero initialized
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
@@ -666,10 +589,10 @@ Result diffusion_slepc_vector(Timer& time, const Input& inp,
 
   }
 
-  slepc.SetOperators(*A, *M);
-
   A->Print("petsca_vector");
   M->Print("petscm_vector");
+
+  slepc.SetOperators(*A, *M);
 
   time.start(time.solver);
   slepc.Solve();

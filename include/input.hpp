@@ -30,12 +30,14 @@ public:
   void open();
   void read_core();
   void read_state();
+  int nstate();
   void reconcile_enums();
   void echo(std::ostream& os) const;
 
   int hypre_print_level() const { return verbose ? 1 : 0; };
   int mfem_print_level() const { return verbose ? 1 : 0; };
   int spn_eq() const { return (spn + 1) / 2; }
+  int spn_order() const { return spn; }
 
   class Invalid_input_card : std::exception
   {
@@ -98,7 +100,6 @@ public:
     invalid = -1,
     power_iteration,
     lobpcg,
-    slepc,
     slepc_vector,
     slepc_manual
   };
@@ -112,7 +113,10 @@ public:
   std::string concatenate_path(const std::string& fname) const;
 
 private:
+
+  // general
   static constexpr char comment_char{'#'};
+  int number_of_state{0};
 
   // strings corresponding to const char*
   // [CORE]

@@ -35,11 +35,11 @@ void Timer::Time_record::start()
 
 void Timer::start(const string& time_name)
 {
-  times.push_back(Time_record());
-  times.back().set_name(time_name);
-  times.back().start();
+  timers[time_name].start();
+  most_recent = time_name;
 }
 
+/*
 void Timer::restart(const string& time_name)
 {
   auto this_time_record{find_record(time_name)};
@@ -51,16 +51,16 @@ void Timer::restart(const string& time_name)
     this_time_record->start();
   }
 }
+*/
 
 void Timer::stop(const string& time_name)
 {
-  auto this_time_record{find_record(time_name)};
-  if (this_time_record != times.end()) this_time_record->stop();
+  timers[time_name].stop();
 }
 
 void Timer::stop()
 {
-  times.back().stop();
+  timers[most_recent].stop();
 }
 
 void Timer::Print(ostream& os)
@@ -70,21 +70,28 @@ void Timer::Print(ostream& os)
   const auto total_elapsed{final_clock - init_clock};
 
   // finalize times
-  for (Time_record& tr : times) tr.stop();
+  for (auto& tr : timers)
+    tr.second.stop();
 
   os << "=== Timing Summary [s] ===\n";
-  for (const Time_record& time : times)
-    os << left << setw(20) << time.name() << right << setw(5)
+  for (const auto& tr : timers)
+  {
+    const string& name{tr.first};
+    const Time_record& time{tr.second};
+    os << left << setw(20) << name << right << setw(5)
        << duration_cast<milliseconds>(time.elapsed()).count() / 1000.0 << " ("
        << setprecision(4)
        << static_cast<double>(time.elapsed().count()) / total_elapsed.count()
           * 100.
        << "%)\n";
+  }
+
   os << left << setw(20) << "Total" << right << setw(5)
      << duration_cast<milliseconds>(clock::now() - init_clock).count() / 1000.
      << '\n';
 }
 
+/*
 std::vector<Timer::Time_record>::iterator
 Timer::find_record(const string& time_name)
 {
@@ -92,3 +99,4 @@ Timer::find_record(const string& time_name)
   times.begin(), times.end(),
   [&time_name](const Time_record& tr) { return tr.name() == time_name; });
 }
+*/
