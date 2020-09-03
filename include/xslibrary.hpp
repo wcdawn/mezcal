@@ -47,6 +47,7 @@ class XSLibrary
 {
 public:
   int ngroup() const { return G; }
+  int nmoment() const { return M; }
   int niso() const { return N; }
 
   void read_userxs(const char* const fname);
@@ -88,6 +89,7 @@ public:
 private:
   int G{0}; // number of energy groups
   int N{0}; // number of materials/isotopes present
+  int M{1}; // number of removal cross section moments present
 
   void initialize_records();
 
