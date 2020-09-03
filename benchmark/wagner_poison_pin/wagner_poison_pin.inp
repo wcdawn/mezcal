@@ -1,0 +1,14 @@
+[CORE]
+mesh_file wagner_poison_pin.mesh
+boundary_conditions 0 0 0 0
+
+userxs wagner_poison_pin.xs
+
+[MATERIAL]
+name M1 M1 1.0
+name M2 M2 1.0
+
+[STATE]
+# default options
+solver slepc_vector
+spn 1
