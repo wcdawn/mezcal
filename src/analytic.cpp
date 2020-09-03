@@ -266,6 +266,9 @@ void Analytic::normalize_solution_flux() const
   Vector phi_vec;
   phi->GetNodalValues(phi_vec, 1);
 
+  // This procedure identifies the maximum absolute value in the first energy
+  // group or moment, forces it to be positive, and adjusts all subsequent
+  // energy groups and moments appropriately.
   const double* const max_elem{
     max_element(phi_vec.GetData(), phi_vec.GetData()+phi_vec.Size(), 
     [](const double& v1, const double& v2){ return abs(v1) < abs(v2); })};
@@ -532,8 +535,8 @@ namespace Analytic_solutions
     static constexpr double Lx{100.0};
     constexpr double bsq{pow(M_PI / Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
-    return ((-2.0/15.0) * (1.0/rec.sigma_r(0,1)) * bsq) / 
-      ((11.0/21.0) * (1.0/rec.sigma_r(0,1)) * bsq + rec.sigma_t[0]);
+    return ((-2.0/15.0) * (1.0/rec.sigma_t[0]) * bsq) / 
+      ((11.0/21.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_t[0]);
   }
 
 } // namespace Analytic_solutions
