@@ -527,7 +527,7 @@ namespace Analytic_solutions
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
-    return rec.sigma_s.Elem(1, 0) / (diffusion[1] * bsq + rec.sigma_r(0,ell));
+    return rec.sigma_s.Elem(1, 0) / (diffusion[1] * bsq + rec.sigma_r(1,ell));
   }
 
   double oned_oneg_spn_ratio()
