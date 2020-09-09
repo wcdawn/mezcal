@@ -5,6 +5,8 @@
 #include "result.hpp"
 #include "xslibrary.hpp"
 
+#include "solver_choice.hpp"
+
 #include <functional>
 
 namespace Analytic_solutions
@@ -56,7 +58,8 @@ public:
     oned_oneg_spn
   };
 
-  Analytic(const Reference ref, Result& res, const XSLibrary& xs,
+  Analytic(const Reference ref, const Solver_choice sol, Result& res, 
+           const XSLibrary& xs,
            const mfem::Mesh* const mesh);
 
   void analyze(std::ostream& os) const;
@@ -71,7 +74,8 @@ public:
 private:
   void normalize_solution_flux() const;
 
-  Reference reference_solution;
+  const Reference reference_solution;
+  const Solver_choice solver;
   int nVert;
   int nDim;
   double keff;

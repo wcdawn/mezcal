@@ -2,9 +2,12 @@
 
 #include "fission_coefficient.hpp"
 #include "scattering_coefficient.hpp"
+#include "spn_source_coefficient.hpp"
 #include "make_unique.hpp"
 #include "vector_pwconst_coefficient.hpp"
 #include "matrix_pwconst_coefficient.hpp"
+
+#include "slepceps.h"
 
 #include <cmath>
 #include <limits>
@@ -41,11 +44,11 @@ bool exists(const std::string& fname)
 
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
 
-Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
+void diffusion_hypre_lobpcg(Timer& time, const Input& inp,
                               const Material_library& mat_lib,
                               const Array<int>& ess_bdr,
                               const ParMesh* const pmesh,
-                              ParFiniteElementSpace* const fespace)
+                              ParFiniteElementSpace* const fespace, Result& res)
 {
 
   static constexpr int ell{0}; // for P0 xs
@@ -127,25 +130,22 @@ Result diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   lobpcg.Solve();
   time.stop();
 
-  Result res{fespace, mat_lib.ngroup()};
-
   // store solution
   Array<double> eigenvalues;
   lobpcg.GetEigenvalues(eigenvalues);
-  res.keff   = 1.0 / eigenvalues[0];
-  res.phi[0] = lobpcg.GetEigenvector(0);
+  res.keff = 1.0 / eigenvalues[0];
+  res(0)   = lobpcg.GetEigenvector(0);
 
-  return res;
 }
 
-Result diffusion_power_iteration(Timer& time, const Input& inp,
-                                 const Material_library& mat_lib,
-                                 const Array<int>& ess_bdr,
-                                 const ParMesh* const pmesh,
-                                 ParFiniteElementSpace* const fespace)
+void diffusion_power_iteration(Timer& time, const Input& inp,
+                               Material_library& mat_lib,
+                               Array<int>& ess_bdr,
+                               const ParMesh* const pmesh,
+                               ParFiniteElementSpace* const fespace, Result& res)
 {
 
-  static constexpr int ell{0}; // for P0 xs
+  mat_lib.set_nmoment(inp.spn_order()+1);
 
   // this is necessary to specify bcs for the inner solver
   Array<int> ess_tdof_list;
@@ -156,28 +156,38 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
 
   // build streaming and removal operator (LHS) for each energy group
   // note ParBilinearForm has neither copy nor move constructor
-
-  vector<unique_ptr<ParBilinearForm>> a(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  SPNWrapper<unique_ptr<ParBilinearForm>> a(mat_lib.ngroup(), inp.spn_eq());
+  a.resize();
+  for (int n{0}; n < inp.spn_eq(); ++n)
   {
-    a[g] = make_unique<ParBilinearForm>(fespace);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      a(g,n) = make_unique<ParBilinearForm>(fespace);
 
-    Vector leakage(pmesh->attributes.Max());
-    for (int i{0}; i < leakage.Size(); ++i)
-      leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
-    PWConstCoefficient leakage_func{leakage};
+      const double dble_n{2.0*n};
+      const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+      const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
 
-    Vector removal(pmesh->attributes.Max());
-    for (int i{0}; i < removal.Size(); ++i)
-      removal[i] = mat_lib.mat[i].rec.sigma_r(g,ell);
-    PWConstCoefficient removal_func{removal};
+      Vector leakage(pmesh->attributes.Max());
 
-    a[g]->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
-    a[g]->AddDomainIntegrator(new MassIntegrator(removal_func));
+      for (int i{0}; i < leakage.Size(); ++i)
+      {
+        leakage[i] = xmult_next / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        if (n > 0)
+          leakage[i] += xmult_prev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+      }
 
-    if (inp.static_condensation) a[g]->EnableStaticCondensation();
+      PWConstCoefficient leakage_func{leakage};
 
-    a[g]->Assemble();
+      Vector removal(pmesh->attributes.Max());
+      for (int i{0}; i < removal.Size(); ++i)
+        removal[i] = mat_lib.mat[i].rec.sigma_r(g,2*n);
+      PWConstCoefficient removal_func{removal};
+
+      a(g,n)->AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
+      a(g,n)->AddDomainIntegrator(new MassIntegrator(removal_func));
+      a(g,n)->Assemble();
+    }
   }
 
   time.stop();
@@ -199,14 +209,29 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   ParGridFunction phi_old(fespace);
   phi_old = 1.0;
 
-  // prepare solution that will be returned
-  Result res{fespace, mat_lib.ngroup()};
-  for (auto& flux : res.phi) flux = 1.0;
+  // prepare solution that will be returned for first iteration
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+
+    if (res(g).Normlinf() < numeric_limits<double>::min())
+    {
+      res(g) = 1.0;
+    }
+
+    for (int n{0}; n < inp.spn_eq(); ++n)
+    {
+
+      ConstantCoefficient zero{0.0};
+      res(g,n).ProjectBdrCoefficient(zero, ess_bdr);
+    }
+
+  }
 
   // set the grid function coefficient for each energy group flux
+  // NOTE: only scalar flux
   vector<GridFunctionCoefficient> phi_coeff;
   phi_coeff.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g) phi_coeff.emplace_back(&res.phi[g]);
+  for (int g{0}; g < mat_lib.ngroup(); ++g) phi_coeff.emplace_back(&res(g));
 
   // note that this one does not have a default constructor so we have to do
   // this a bit differently
@@ -256,83 +281,98 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
   vector<FissionCoefficient> fiss_term;
   fiss_term.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    fiss_term.emplace_back(g, res.keff, mat_lib, res.phi, inp.flux_free_chi);
+    fiss_term.emplace_back(g, res.keff, mat_lib, res, inp.flux_free_chi);
 
   vector<ScatteringCoefficient> scat_term;
   scat_term.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    scat_term.emplace_back(g, mat_lib, res.phi);
+    scat_term.emplace_back(g, mat_lib, res);
 
-  vector<ParLinearForm> b(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  SPNWrapper<SPNSourceCoefficient> spn_term(mat_lib.ngroup(), inp.spn_eq());
+  spn_term.reserve();
+  for (int n{0}; n < inp.spn_eq(); ++n)
   {
-    b[g].Update(fespace);
-    b[g].AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
-    b[g].AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      spn_term.emplace_back(g, n, inp.spn_eq(), mat_lib, res);
+    }
+  }
+
+  SPNWrapper<unique_ptr<ParLinearForm>> b(mat_lib.ngroup(), inp.spn_eq());
+  b.resize();
+  for (int n{0}; n < inp.spn_eq(); ++ n)
+  {
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      b(g,n) = make_unique<ParLinearForm>(fespace);
+
+      b(g,n)->AddDomainIntegrator(new DomainLFGradIntegrator(spn_term(g,n)));
+
+      if (n == 0)
+      {
+        b(g,n)->AddDomainIntegrator(new DomainLFIntegrator(fiss_term[g]));
+        b(g,n)->AddDomainIntegrator(new DomainLFIntegrator(scat_term[g]));
+      }
+
+    }
   }
 
   time.start(time.solver);
-  int iter{0};
-  for (iter = 0; (iter < inp.tol.max_outer)
-                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi));
-       ++iter)
+  for (int iter{0}; (iter <= inp.tol.max_outer)
+                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
-    // Solve this fixed source problem for each energy group.
+    // Solve this fixed source problem for each energy group and each moment.
     // Note that FormLinearSystem is designed to be called multiple times.
+
     double local_phi_conv{0.0};
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
+
+    for (int n{0}; n < inp.spn_eq(); ++n)
     {
-      // assemble source for this group
-      b[g].Assemble();
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
 
-      // necessary to enforce zero-flux boundary conditions
-      if (iter == 0) res.phi[g] = 0.0;
+        // assemble source for this group
+        b(g,n)->Assemble();
 
-      // store the old flux value for this group
-      phi_old = res.phi[g];
+        // store the old flux value for this group
+        phi_old = res(g,n);
 
-      // form, solve, and recover the linear system
-      a[g]->FormLinearSystem(ess_tdof_list, res.phi[g], b[g], A, X, B);
-      cg.SetOperator(*A);
-      cg.Mult(B, X); // solve
-      a[g]->RecoverFEMSolution(X, b[g], res.phi[g]);
+        // form, solve, and recover the linear system
+        a(g,n)->FormLinearSystem(ess_tdof_list, res(g,n), *b(g,n), A, X, B);
+        cg.SetOperator(*A);
+        cg.Mult(B, X); // solve
+        a(g,n)->RecoverFEMSolution(X, *b(g,n), res(g,n));
 
-      // determine the convergence of this energy group and store the maximum
-      // value over all energy groups
-      phi_old -= res.phi[g];
+        // flux convergence critria on all moments
+        // determine the convergence of this energy group and store the maximum
+        // value over all energy groups
+        phi_old -= res(g,n);
 
-      // need to sync memory for gpu problems
-      phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
+        // need to sync memory for gpu problems
+        phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
 
-      local_phi_conv =
-      max(local_phi_conv, phi_old.Normlinf() / res.phi[g].Max());
+        local_phi_conv =
+          max(local_phi_conv, phi_old.Normlinf() / res(g).Max());
+
+      }
     }
 
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX,
                   MPI_COMM_WORLD);
 
     // Calculate fission sum.
-    if (iter == 0)
+    double local_fiss_sum{0.0};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      // Don't update keff.
-      // This is important for multi-state problems but also avoids extreme
-      // values of keff.
-      fiss_sum = fiss_sum_old;
+      fiss[g].Assemble();
+      local_fiss_sum += fiss[g].Sum();
     }
-    else
-    {
-      double local_fiss_sum{0.0};
-      for (int g{0}; g < mat_lib.ngroup(); ++g)
-      {
-        fiss[g].Assemble();
-        local_fiss_sum += fiss[g].Sum();
-      }
-      MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM,
-                    MPI_COMM_WORLD);
-    }
+    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
 
     // update keff
-    res.keff = res.keff * (fiss_sum / fiss_sum_old);
+    if (iter > 0) res.keff *= (fiss_sum / fiss_sum_old);
 
     // update convergence criteria
     k_conv = std::abs(res.keff - keff_old);
@@ -346,27 +386,27 @@ Result diffusion_power_iteration(Timer& time, const Input& inp,
       cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv
            << " dphi=" << phi_conv << '\n' << flush;
     }
+
+    if ((iter == inp.tol.max_outer) && (myid == 0))
+    {
+      cout << "Failed to converge in maximum allowed power iterations.\n"
+           << "max_outer = " << inp.tol.max_outer << "\n"
+           << "(k_tol, k_conv) = "
+           << "(" << inp.tol.k << ", " << k_conv << ")\n"
+           << "(phi_tol, phi_conv) = "
+           << "(" << inp.tol.phi << ", " << phi_conv << ")\n";
+    }
+
   }
   time.stop();
 
-  if ((iter == inp.tol.max_outer) && (myid == 0))
-  {
-    cout << "Failed to converge in maximum allowed power iterations.\n"
-         << "max_outer = " << inp.tol.max_outer << "\n"
-         << "(k_tol, k_conv) = "
-         << "(" << inp.tol.k << ", " << k_conv << ")\n"
-         << "(phi_tol, phi_conv) = "
-         << "(" << inp.tol.phi << ", " << phi_conv << ")\n";
-  }
-
-  return res;
 }
 
-Result diffusion_fixed_src(Timer& time, const Input& inp,
+void diffusion_fixed_src(Timer& time, const Input& inp,
                            const Material_library& mat_lib,
                            const Array<int>& ess_bdr,
                            const ParMesh* const pmesh,
-                           ParFiniteElementSpace* const fespace)
+                           ParFiniteElementSpace* const fespace, Result& res)
 {
   static constexpr int ell{0}; // for P0 xs
 
@@ -410,11 +450,9 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  Result res{fespace, mat_lib.ngroup()};
-
   // ASSUMPTION we require that the fixed source problem has a single energy
   // group
-  a.FormLinearSystem(ess_tdof_list, res.phi[0], b, A, X, B);
+  a.FormLinearSystem(ess_tdof_list, res(0), b, A, X, B);
 
   HypreBoomerAMG amg;
   amg.SetPrintLevel(inp.hypre_print_level());
@@ -430,38 +468,17 @@ Result diffusion_fixed_src(Timer& time, const Input& inp,
   cg.Mult(B, X);
   time.stop();
 
-  a.RecoverFEMSolution(X, b, res.phi[0]);
+  a.RecoverFEMSolution(X, b, res(0));
 
-  return res;
 }
 
-Result spn_slepc_vector(Timer& time, const Input& inp,
+void spn_slepc_vector(Timer& time, const Input& inp,
                         Material_library& mat_lib,
                         const Array<int>& ess_bdr, const ParMesh* const pmesh,
-                        ParFiniteElementSpace* const fespace)
+                        ParFiniteElementSpace* const fespace, Result& res)
 {
 
-  if (mat_lib.nmoment() < (inp.spn_order()+1))
-  {
-    mat_lib.set_nmoment(inp.spn_order()+1);
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-    {
-      XSRecord& record{mat_lib.mat[i].rec};
-      // after SetSize, need to rebuild entire matrix because the new matrix is
-      // zero-initialized
-      record.sigma_r.SetSize(mat_lib.ngroup(), mat_lib.nmoment());
-      for (int n{0}; n < mat_lib.nmoment(); ++n)
-      {
-        for (int g{0}; g < mat_lib.ngroup(); ++g)
-        {
-          if (n == 0)
-            record.sigma_r(g,n) = record.sigma_t[g] - record.sigma_s.Elem(g,g);
-          else
-            record.sigma_r(g,n) = record.sigma_t[g];
-        }
-      }
-    }
-  }
+  mat_lib.set_nmoment(inp.spn_order()+1);
 
   const string slepcrc_fname{inp.concatenate_path("slepcrc")};
   if (exists(slepcrc_fname))
@@ -594,6 +611,14 @@ Result spn_slepc_vector(Timer& time, const Input& inp,
 
   slepc.SetOperators(*A, *M);
 
+  // set based on the previous state
+  Vector true_dof;
+  res(0).GetTrueDofs(true_dof);
+  const PetscParVector tv{MPI_COMM_WORLD, true_dof, true};
+  const std::unique_ptr<Vec[]> array{std::make_unique<Vec[]>(1)};
+  array[0] = tv;
+  EPSSetInitialSpace(slepc, 1, array.get());
+
   time.start(time.solver);
   slepc.Solve();
   time.stop();
@@ -603,8 +628,6 @@ Result spn_slepc_vector(Timer& time, const Input& inp,
   // avoid dereferencing bad memory, we must abort.
   if (slepc.GetNumConverged() < 1)
     throw Failed_to_converge{"SLEPc failed to converge.\n"};
-
-  Result res{fespace, 1};
 
   slepc.GetEigenvalue(0, res.keff);
   res.keff = 1.0 / res.keff;
@@ -616,15 +639,13 @@ Result spn_slepc_vector(Timer& time, const Input& inp,
   // parsing this is then handled by ParaView
   // for dimensions <= 3, the vector is listed {x,y,z}
   // for higher dimensions, the vector is listed {0,1,2,3,4,...}
-  res.phi[0].Distribute(tmp);
-
-  return res;
+  res(0).Distribute(tmp);
 }
 
-Result diffusion_slepc_manual(Timer& time, const Input& inp,
+void diffusion_slepc_manual(Timer& time, const Input& inp,
                        const Material_library& mat_lib,
                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
-                       ParFiniteElementSpace* const fespace)
+                       ParFiniteElementSpace* const fespace, Result& res)
 {
 
   static constexpr int ell{0}; // for P0 xs
@@ -770,8 +791,6 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
   if (slepc.GetNumConverged() < 1)
     throw Failed_to_converge{"SLEPc failed to converge.\n"};
 
-  Result res{fespace, mat_lib.ngroup()};
-
   slepc.GetEigenvalue(0, res.keff);
   res.keff = 1.0 / res.keff;
   Vector tmp(fespace->GetTrueVSize()*mat_lib.ngroup());
@@ -782,11 +801,9 @@ Result diffusion_slepc_manual(Timer& time, const Input& inp,
     Vector group(fespace->GetTrueVSize());
     for (int idx{0}; idx < fespace->GetTrueVSize(); ++idx)
       group[idx] = tmp[idx + g * fespace->GetTrueVSize()];
-    res.phi[g].Distribute(group);
+    res(g).Distribute(group);
   }
 
-  time.start("return");
-  return res;
 }
 
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf)

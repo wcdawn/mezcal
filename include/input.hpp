@@ -4,6 +4,7 @@
 #include "analytic.hpp"
 #include "mfem.hpp" // Array<int>
 #include "xslibrary.hpp"
+#include "solver_choice.hpp"
 
 #include <exception>
 #include <fstream>
@@ -95,22 +96,13 @@ public:
   bool flux_free_chi{false};
   int spn{1};
 
-  enum Solver_choice
-  {
-    invalid = -1,
-    power_iteration,
-    lobpcg,
-    slepc_vector,
-    slepc_manual
-  };
-
-  // actual enum value
-  Solver_choice sol{lobpcg};
+  Solver_choice sol{Solver_choice::lobpcg};
 
   // this is public so that other blocks (e.g. MATERIAL) can be read
   std::ifstream ifs;
 
   std::string concatenate_path(const std::string& fname) const;
+  std::string input_file_stub();
 
 private:
 
@@ -119,8 +111,9 @@ private:
   int number_of_state{0};
 
   // strings corresponding to const char*
-  // [CORE]
   std::string input_file_str;
+  std::string input_file_stub_str;
+  // [CORE]
   std::string mesh_file_str;
   std::string device_str;
   std::string reference_str;
@@ -134,8 +127,6 @@ private:
   static bool read_bool(std::ifstream& ifs);
   static void read_vector(std::ifstream& ifs, mfem::Array<int>& vec);
 
-  static std::string solver_choice_enum_to_str(const Solver_choice& solver);
-  static Solver_choice solver_choice_str_to_enum(const std::string& solver);
 };
 
 mfem::OptionsParser custom_arguments(Input& inp, int argc, char* argv[]);

@@ -65,12 +65,12 @@ CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread -lcusparse_sta
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 
-SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(PETSC_DIR)/../include
+SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
 SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 INCLUDE_DIR = ../include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) -I$(INCLUDE_DIR)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) -I$(INCLUDE_DIR)
 LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 ifeq ($(METHOD), dbg)
@@ -86,8 +86,11 @@ CPP_FILES = main.cpp \
 			input.cpp \
 			material_library.cpp \
 			matrix_pwconst_coefficient.cpp \
+			result.cpp \
 			scattering_coefficient.cpp \
 			solver.cpp \
+			solver_choice.cpp \
+			spn_source_coefficient.cpp \
 			timer.cpp \
 			vector_pwconst_coefficient.cpp \
 			version.cpp \
@@ -102,6 +105,8 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/matrix_pwconst_coefficient.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
 			$(INCLUDE_DIR)/solver.hpp \
+			$(INCLUDE_DIR)/solver_choice.hpp \
+			$(INCLUDE_DIR)/spn_source_coefficient.hpp \
 			$(INCLUDE_DIR)/timer.hpp \
 			$(INCLUDE_DIR)/vector_pwconst_coefficient.hpp \
 			$(INCLUDE_DIR)/xslibrary.hpp
@@ -181,10 +186,13 @@ xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
 input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/xslibrary.hpp
 material_library.o : $(MFEM_HEADER) $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
-scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
-fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
+solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/spn_source_coefficient.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
+scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
+fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
 hdf5_access_wrapper.o : $(INCLUDE_DIR)/hdf5_access_wrapper.hpp
 timer.o : $(INCLUDE_DIR)/timer.hpp
 version.o : $(INCLUDE_DIR)/version.hpp
 vector_pwconst_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/vector_pwconst_coefficient.hpp
+spn_source_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/spn_source_coefficient.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
+solver_choice.o : $(INCLUDE_DIR)/solver_choice.hpp
+result.o : $(MFEM_HEADER) $(INCLUDE_DIR)/result.hpp

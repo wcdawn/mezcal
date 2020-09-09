@@ -149,49 +149,53 @@ int main(int argc, char* argv[])
        ++i)
     ess_bdr[i] = inp.boundary_conditions[i];
 
-  // TODO loop over states
-  std::cout << "NSTATE=" << inp.nstate() << std::endl;
+  // TODO more elegant...
+  const auto position{inp.ifs.tellg()};
+  inp.read_state();
+  inp.ifs.clear();
+  inp.ifs.seekg(position);
+
+  // TODO this needs to allow for differing values of spn_eq with different states
+  const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 1};
+  ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
+  const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Solver_choice::slepc_vector) ? 1 : mat_lib.ngroup())};
+  if (myid == 0)
+    cout << "Number of finite element unknowns: " << dof << endl;
+
+  // TODO this should move outside of the [STATE] loop but we need to disallow
+  // changing the solver type between states (maybe move to [CORE] block)
+  const int flux_length{(inp.sol == Solver_choice::slepc_vector) ? 1 : xs.ngroup()};
+  Result res{&fespace, flux_length, inp.spn_eq()};
+
+  ofstream sum{inp.input_file_stub() + ".sum"};
+  sum << "=== STATEPOINT SUMMARY ===\n" << "state, spn_order, keff\n";
+
   for (int state{0}; state < inp.nstate(); ++state)
   {
     inp.read_state();
-
-    const int vdim{(inp.sol == Input::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 1};
-    ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-    const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Input::slepc_vector) ? 1 : mat_lib.ngroup())};
-    if (myid == 0)
-      cout << "Number of finite element unknowns: " << dof << endl;
+    res.resize(mat_lib.ngroup(), inp.spn_eq());
 
     // do the solving
 
-    // TODO this should move outside of the [STATE] loop but we need to disallow
-    // changing the solver type between states (maybe move to [CORE] block)
-    const int flux_length{(inp.sol == Input::slepc_vector) ? 1 : xs.ngroup()};
-    Result res{&fespace, flux_length};
-
-    // TODO use out params to enable restarting with different [STATE] blocks
-
     if (inp.ref == Analytic::fixed_src)
     {
-      res = diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+      diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
     }
     else
     {
       switch (inp.sol)
       {
-        case (Input::lobpcg):
-          res =
-          diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        case (Solver_choice::lobpcg):
+          diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
-        case (Input::power_iteration):
-          res = diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh,
-                                          &fespace);
+        case (Solver_choice::power_iteration):
+          diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
-        case (Input::slepc_vector):
-          res = spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
+        case (Solver_choice::slepc_vector):
+          spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
-        case (Input::slepc_manual):
-          res = diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace);
-          time.stop("return");
+        case (Solver_choice::slepc_manual):
+          diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
         default:
           cerr << "Invalid solver choice.\n";
@@ -211,7 +215,7 @@ int main(int argc, char* argv[])
 
     if (inp.ref != Analytic::invalid)
     {
-      Analytic anal(inp.ref, res, xs, &pmesh);
+      Analytic anal(inp.ref, inp.sol, res, xs, &pmesh);
       anal.analyze(cout);
       ostringstream analysis_fname;
       analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
@@ -219,28 +223,42 @@ int main(int argc, char* argv[])
       anal.print(ofs);
     }
 
-    ParaViewDataCollection output("output_dir", &pmesh);
+    ostringstream state_name;
+    state_name << "STATE" << setfill('0') << setw(3) << state;
+
+    ParaViewDataCollection output(inp.input_file_stub() + "_" + state_name.str(), &pmesh);
+
     const auto group_width{std::to_string(xs.ngroup()).length()};
-    if (flux_length == 1)
+    const auto moment_width{std::to_string(2*inp.spn_eq()).length()};
+
+    if (inp.sol == Solver_choice::slepc_vector)
     {
       // TODO fix this so that this can be more descriptive
       // Will probably require constructing a new FiniteElementSpace, a new
       // Vector, and a new GridFunction
-      output.RegisterField("phi", &res.phi[0]);
+      output.RegisterField("phi", &res(0));
     }
     else
     {
-      for (int g{0}; g < xs.ngroup(); ++g)
+      for (int n{0}; n < inp.spn_eq(); ++n)
       {
-        ostringstream record_name;
-        record_name << "phi_g" << setfill('0') << setw(group_width) << g;
-        output.RegisterField(record_name.str(), &res.phi[g]);
+        for (int g{0}; g < xs.ngroup(); ++g)
+        {
+          ostringstream record_name;
+          record_name << "phi_g" << setfill('0') << setw(group_width) << g
+                      << "_n" << setfill('0') << setw(moment_width) << 2*n;
+          output.RegisterField(record_name.str(), &res(g,n));
+        }
       }
     }
+
     output.SetFormat(DataCollection::PARALLEL_FORMAT);
     output.Save();
 
+    sum << state << ',' << inp.spn_order() << ',' << res.keff << '\n';
+
     time.stop();
+
 
   }
 

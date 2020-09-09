@@ -76,7 +76,7 @@ public:
   int ngroup() const { return G; }
   int nmoment() const { return M; }
 
-  void set_nmoment(int m) { M = m; }
+  void set_nmoment(int m);
 
   std::vector<Material_record> mat;
 

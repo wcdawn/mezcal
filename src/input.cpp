@@ -193,6 +193,7 @@ void Input::read_state()
     else if (card == "spn")
     {
       ifs >> spn;
+      if (((spn + 1) % 2) != 0) throw Invalid_input_card{"SPN must be odd."};
     }
     else if (card == "[STATE]")
     {
@@ -285,27 +286,6 @@ void Input::read_vector(ifstream& ifs, Array<int>& arr)
   ifs.clear();
 }
 
-std::string Input::solver_choice_enum_to_str(const Solver_choice& solver)
-{
-  switch (solver)
-  {
-    case (power_iteration): return "power_iteration";
-    case (lobpcg): return "lobpcg";
-    case (slepc_vector): return "slepc_vector";
-    case (slepc_manual): return "slepc_manual";
-    default: return "invalid";
-  }
-}
-
-Input::Solver_choice Input::solver_choice_str_to_enum(const string& solver)
-{
-  if (solver == "power_iteration") return power_iteration;
-  if (solver == "lobpcg") return lobpcg;
-  if (solver == "slepc_vector") return slepc_vector;
-  if (solver == "slepc_manual") return slepc_manual;
-  return invalid;
-}
-
 string Input::concatenate_path(const string& fname) const
 {
   return stub + fname;
@@ -346,4 +326,19 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
   // state.
 
   return args;
+}
+
+string Input::input_file_stub()
+{
+  if (input_file_stub_str != "") return input_file_stub_str;
+
+  input_file_stub_str = input_file_str;
+
+  const size_t last_slash{input_file_stub_str.find_last_of("/")};
+  if (last_slash != input_file_stub_str.length()) 
+    input_file_stub_str = input_file_stub_str.substr(last_slash+1, input_file_stub_str.length());
+  const size_t last_dot{input_file_stub_str.find_last_of(".")};
+  input_file_stub_str = input_file_stub_str.substr(0, last_dot);
+
+  return input_file_stub_str;
 }

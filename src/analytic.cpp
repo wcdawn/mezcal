@@ -29,18 +29,36 @@ using std::sin;
 using std::sinh;
 using std::tanh;
 
-Analytic::Analytic(const Reference ref, Result& res, const XSLibrary& xslib,
-                   const Mesh* const mesh)
-  : reference_solution{ref}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
-    keff{res.keff}, phi{&res.phi[0]}
+Analytic::Analytic(const Reference ref, const Solver_choice sol, Result& res, 
+                   const XSLibrary& xslib, const Mesh* const mesh)
+  : reference_solution{ref}, solver{sol}, nVert{mesh->GetNV()}, nDim{mesh->SpaceDimension()},
+    keff{res.keff}, phi{&res(0)}
 {
   Analytic_solutions::xs_global = &xslib;
 
-  if (reference_solution == oned_twog) phi2 = &res.phi[1];
-  if (reference_solution == oned_oneg_spn)
+  if (reference_solution == oned_twog)
   {
-    phi2 = new Vector;
-    res.phi[0].GetNodalValues(*phi2, 2);
+    if (solver == Solver_choice::power_iteration)
+    {
+      phi2 = &res(1,0);
+    }
+    else if (solver == Solver_choice::slepc_vector)
+    {
+      phi2 = new Vector;
+      res(0).GetNodalValues(*phi2, 2);
+    }
+  }
+  else if (reference_solution == oned_oneg_spn)
+  {
+    if (solver == Solver_choice::power_iteration)
+    {
+      phi2 = &res(0,1);
+    }
+    else if (solver == Solver_choice::slepc_vector)
+    {
+      phi2 = new Vector;
+      res(0).GetNodalValues(*phi2, 2);
+    }
   }
 
   // set node
@@ -543,5 +561,7 @@ namespace Analytic_solutions
 
 Analytic::~Analytic()
 {
-  if (reference_solution == oned_oneg_spn) delete phi2;
+  if (solver == Solver_choice::slepc_vector && 
+      ((reference_solution == oned_oneg_spn) || 
+       (reference_solution == oned_twog))) delete phi2;
 }

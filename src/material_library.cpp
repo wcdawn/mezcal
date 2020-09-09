@@ -190,3 +190,29 @@ void Material_library::reset_block(ifstream& ifs, const string& block_head)
 {
   for (size_t i{0}; i < block_head.size(); ++i) ifs.unget();
 }
+
+void Material_library::set_nmoment(int m)
+{
+  M = m;
+
+  if (M > mat[0].rec.sigma_r.Width())
+  {
+    for (Material_record& this_mat : mat)
+    {
+      XSRecord& record{this_mat.rec};
+      // after SetSize, need to rebuild entire matrix because the new matrix is
+      // zero-initialized
+      record.sigma_r.SetSize(G,M);
+      for (int n{0}; n < M; ++n)
+      {
+        for (int g{0}; g < G; ++g)
+        {
+          if (n == 0)
+            record.sigma_r(g,n) = record.sigma_t[g] - record.sigma_s.Elem(g,g);
+          else
+            record.sigma_r(g,n) = record.sigma_t[g];
+        }
+      }
+    }
+  }
+}

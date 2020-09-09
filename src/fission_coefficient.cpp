@@ -8,7 +8,6 @@ double FissionCoefficient::Eval(ElementTransformation& T,
                                 const IntegrationPoint& ip)
 {
   const int attribute{T.Attribute - 1};
-  const int element_id{T.ElementNo};
 
   const XSRecord& record{mat_lib.mat[attribute].rec};
   const vector<double>& nusf{record.nusf};
@@ -17,7 +16,7 @@ double FissionCoefficient::Eval(ElementTransformation& T,
 
   double sum{0.0};
   for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-    sum += nusf[gprime] * phi[gprime].GetValue(element_id, ip);
+    sum += nusf[gprime] * phi(gprime).GetValue(T, ip);
 
   sum /= keff;
 
@@ -35,8 +34,8 @@ double FissionCoefficient::get_chi(const ElementTransformation& T,
 
   // collect flux spectrum
   vector<double> spectrum(mat_lib.ngroup());
-  for (size_t gprime{0}; gprime < phi.size(); ++gprime)
-    spectrum[gprime] = phi[gprime].GetValue(element_id, ip);
+  for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    spectrum[gprime] = phi(gprime).GetValue(element_id, ip);
 
   return mat_lib.mat[attribute].calculate_chi(spectrum, g);
 }

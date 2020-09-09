@@ -4,6 +4,7 @@
 #include "material_library.hpp"
 #include "mfem.hpp"
 #include "xslibrary.hpp"
+#include "result.hpp"
 
 #include <vector>
 
@@ -12,21 +13,19 @@ class FissionCoefficient : public mfem::Coefficient
 public:
   FissionCoefficient(int group, const double& init_keff,
                      const Material_library& mat_lib_lib,
-                     const std::vector<mfem::ParGridFunction>& flux,
+                     const Result& flux,
                      bool flux_free_chi_choice = false)
     : g{group}, keff{init_keff}, mat_lib{mat_lib_lib}, phi{flux},
       flux_free_chi{flux_free_chi_choice}
   {
   }
 
-  // void SetGroup(int gnew) { g = gnew; }
-
   virtual double Eval(mfem::ElementTransformation& T,
                       const mfem::IntegrationPoint& ip) override;
 
 private:
-  // Current working group.
-  int g;
+  // Current energy group.
+  const int g;
 
   // Store a reference to the current value of keff.
   const double& keff;
@@ -36,7 +35,7 @@ private:
   const Material_library& mat_lib;
 
   // Store a reference to the flux vector.
-  const std::vector<mfem::ParGridFunction>& phi;
+  const Result& phi;
 
   // option for whether to recalculate chi using flux
   // true = do not recalculate chi

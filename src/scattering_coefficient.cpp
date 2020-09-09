@@ -6,7 +6,6 @@ double ScatteringCoefficient::Eval(ElementTransformation& T,
                                    const IntegrationPoint& ip)
 {
   const int attribute{T.Attribute - 1};
-  const int element_id{T.ElementNo};
 
   const XSRecord& record{mat_lib.mat[attribute].rec};
   const SparseMatrix& scat{record.sigma_s};
@@ -19,8 +18,7 @@ double ScatteringCoefficient::Eval(ElementTransformation& T,
   for (int i{0}; i < col_idx.Size(); ++i)
   {
     const int gprime{col_idx[i]};
-    if (gprime == g) continue;
-    sum += data[i] * phi[gprime].GetValue(element_id, ip);
+    if (gprime != g) sum += data[i] * phi(gprime).GetValue(T, ip);
   }
 
   return sum;
