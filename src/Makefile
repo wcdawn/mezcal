@@ -84,6 +84,8 @@ CPP_FILES = main.cpp \
 			fission_coefficient.cpp \
 			hdf5_access_wrapper.cpp \
 			input.cpp \
+			legendre_chebyschev_quadrature.cpp \
+			level_symmetric_quadrature.cpp \
 			material_library.cpp \
 			matrix_pwconst_coefficient.cpp \
 			result.cpp \
@@ -100,9 +102,12 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/fission_coefficient.hpp \
 			$(INCLUDE_DIR)/hdf5_access_wrapper.hpp \
 			$(INCLUDE_DIR)/input.hpp \
+			$(INCLUDE_DIR)/legendre_chebyschev_quadrature.hpp \
+			$(INCLUDE_DIR)/level_symmetric_quadrature.hpp \
 			$(INCLUDE_DIR)/make_unique.hpp \
 			$(INCLUDE_DIR)/material_library.hpp \
 			$(INCLUDE_DIR)/matrix_pwconst_coefficient.hpp \
+			$(INCLUDE_DIR)/quadrature.hpp \
 			$(INCLUDE_DIR)/scattering_coefficient.hpp \
 			$(INCLUDE_DIR)/solver.hpp \
 			$(INCLUDE_DIR)/solver_choice.hpp \
@@ -196,3 +201,5 @@ vector_pwconst_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/vector_pwconst_coef
 spn_source_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/spn_source_coefficient.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 solver_choice.o : $(INCLUDE_DIR)/solver_choice.hpp
 result.o : $(MFEM_HEADER) $(INCLUDE_DIR)/result.hpp
+legendre_chebyschev_quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/legendre_chebyschev_quadrature.hpp $(INCLUDE_DIR)/quadrature.hpp
+level_symmetric_quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/level_symmetric_quadrature.hpp $(INCLUDE_DIR)/quadrature.hpp
