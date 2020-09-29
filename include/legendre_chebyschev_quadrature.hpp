@@ -2,6 +2,7 @@
 #define LEGENDRE_CHEBYSCHEV_QUADRATURE
 
 #include "quadrature.hpp"
+#include "mfem.hpp"
 
 #include <sstream>
 #include <cmath>
@@ -13,31 +14,33 @@ class Legendre_chebyschev_quadrature final : public Quadrature
 
 public:
 
-  Legendre_chebyschev_quadrature(int order)
-    : nl{order}, nc{order}, nl2{nl/2}, nc2{nc/2}
+  Legendre_chebyschev_quadrature(int order, int spatial_dimension=3)
+    : Quadrature{spatial_dimension}, nl{order}, nc{order}, nl2{order/2}, nc2{order/2}
   {
     ord = order-1;
-    n_dir = nl2*nc2;
+    n_dir_per_octant = nl2*nc2;
+    n_dir = n_dir_per_octant * std::pow(2, spatial_dimension);
     initialize_weights_and_abscissae();
   }
 
-  Legendre_chebyschev_quadrature(int n_legendre, int n_chebyschev)
-    : nl{n_legendre}, nc{n_chebyschev}, nl2{nl/2}, nc2{nc/2}
+  Legendre_chebyschev_quadrature(int n_legendre, int n_chebyschev, int spatial_dimension)
+    : Quadrature{spatial_dimension}, nl{n_legendre}, nc{n_chebyschev}, nl2{n_legendre/2}, nc2{n_chebyschev/2}
   {
     // we can approximate the order of the production quadrature based on the
     // order of the individual quadratures
     ord = std::min(n_legendre, n_chebyschev) - 1;
-    n_dir = nl2*nc2;
+    n_dir_per_octant = nl2*nc2;
+    n_dir = n_dir_per_octant * std::pow(2, spatial_dimension);
     initialize_weights_and_abscissae();
   }
 
-  mfem::Vector omega(int n) const override;
-  double omega_x(int n) const override;
-  double omega_y(int n) const override;
-  double omega_z(int n) const override;
-  double weight(int n)  const override;
-
 private:
+
+  mfem::Vector omega_octant(int n) const override;
+  double omega_x_octant(int n) const override;
+  double omega_y_octant(int n) const override;
+  double omega_z_octant(int n) const override;
+  double weight_octant(int n)  const override;
 
   void initialize_weights_and_abscissae();
 

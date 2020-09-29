@@ -12,7 +12,8 @@ using std::size_t;
 using std::array;
 using std::vector;
 
-using std::reverse;
+using std::sort;
+using std::greater;
 using std::distance;
 using std::unique;
 
@@ -36,8 +37,7 @@ array<int,3> Level_symmetric_quadrature::calc_ijk(int n) const
   i -= 1;
   const int k{ord2 + 2 - i - j};
 
-  std::array<int,3> ijk{i, j, k};
-  return ijk;
+  return {i, j, k};
 
 }
 
@@ -61,7 +61,7 @@ int Level_symmetric_quadrature::calc_k(int n) const
 
 void Level_symmetric_quadrature::populate_weight_id()
 {
-  weight_id.resize(calc_nd());
+  weight_id.resize(n_dir_per_octant);
   
   int count{0};
   for (int i{1}; i < (ord2 + 1); ++i)
@@ -75,7 +75,7 @@ void Level_symmetric_quadrature::populate_weight_id()
   }
 
   vector<int> weight_map{weight_id};
-  reverse(weight_map.begin(), weight_map.end());
+  sort(weight_map.begin(), weight_map.end(), greater<int>()); // descending sort
   const auto it{unique(weight_map.begin(), weight_map.end())};
   weight_map.resize(distance(weight_map.begin(), it));
 
@@ -90,12 +90,15 @@ void Level_symmetric_quadrature::populate_weight_id()
 
 }
 
-Vector Level_symmetric_quadrature::omega(int n) const
+Vector Level_symmetric_quadrature::omega_octant(int n) const
 {
-  array<int,3> ijk{calc_ijk(n)};
+  const array<int,3> ijk{calc_ijk(n)};
+
   Vector dir(3);
-  for (int i{0}; i < 3; ++i)
-    dir[i] = mu[ijk[i]-1];
+  dir(0) = mu[ijk[0]-1];
+  dir(1) = mu[ijk[1]-1];
+  dir(2) = mu[ijk[2]-1];
+
   return dir;
 }
 

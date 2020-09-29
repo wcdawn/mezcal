@@ -2,10 +2,14 @@
 #define LEVEL_SYMMETRIC_QUADRATURE
 
 #include "quadrature.hpp"
+#include "mfem.hpp"
+
+#include <iostream>
 
 #include <exception>
 #include <string>
 #include <sstream>
+#include <array>
 #include <vector>
 
 class Level_symmetric_quadrature final : public Quadrature
@@ -13,12 +17,14 @@ class Level_symmetric_quadrature final : public Quadrature
 
 public:
 
-  Level_symmetric_quadrature(int order)
+  Level_symmetric_quadrature(int order, int spatial_dimension=3) 
+    : Quadrature{spatial_dimension}
   {
     ord = order;
-    ord2 = ord / 2; // number of unique mu values
-    n_dir = calc_nd();
+    n_dir_per_octant = calc_n_dir_per_octant();
+    n_dir = n_dir_per_octant * std::pow(2, spatial_dimension);
 
+    ord2 = ord / 2; // number of unique mu values
 
     populate_mu();
     populate_discrete_weight();
@@ -26,13 +32,13 @@ public:
 
   }
 
-  mfem::Vector omega(int n) const override;
-  double omega_x(int n) const override { return mu[calc_i(n)-1]; }
-  double omega_y(int n) const override { return mu[calc_j(n)-1]; }
-  double omega_z(int n) const override { return mu[calc_k(n)-1]; }
-  double weight(int n)  const override { return discrete_weight[weight_id[n]]; }
-
 private:
+
+  mfem::Vector omega_octant(int n) const override;
+  double omega_x_octant(int n) const override { return mu[calc_i(n)-1]; }
+  double omega_y_octant(int n) const override { return mu[calc_j(n)-1]; }
+  double omega_z_octant(int n) const override { return mu[calc_k(n)-1]; }
+  double weight_octant(int n)  const override { return discrete_weight[weight_id[n]]; }
 
   int ord2;
 
@@ -52,16 +58,17 @@ private:
 
   // number of distinct weights
   // only valid "for low values of [order]"
-  // NOTE: integer division (floor).
+  // warning: integer division (floor).
   int calc_nw() const { return 1 + (ord*(ord+8) - 1) / 48; }
 
-  // TODO maybe multiply by 8 for total over all octants
-  int calc_nd() const { return ord * (ord + 2) / 8; } // number of directions
+  // number of directions per octant of the unit sphere
+  int calc_n_dir_per_octant() const { return ord * (ord + 2) / 8; } 
 
   static double mu_one_data(int order)
   {
     switch (order)
     {
+      // based on rattlesnake
       case (2):  return 0.57735026918962573106;
       case (4):  return 0.35002117458154063945;
       case (6):  return 0.26663540151670367395;
