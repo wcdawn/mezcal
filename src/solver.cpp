@@ -6,6 +6,7 @@
 #include "make_unique.hpp"
 #include "vector_pwconst_coefficient.hpp"
 #include "matrix_pwconst_coefficient.hpp"
+#include "boundary_abs_normal_bf_integrator.hpp"
 
 #include "slepceps.h"
 
@@ -138,11 +139,11 @@ void diffusion_hypre_lobpcg(Timer& time, const Input& inp,
 
 }
 
-void diffusion_power_iteration(Timer& time, const Input& inp,
-                               Material_library& mat_lib,
-                               Array<int>& ess_bdr,
-                               const ParMesh* const pmesh,
-                               ParFiniteElementSpace* const fespace, Result& res)
+void spn_power_iteration(Timer& time, const Input& inp,
+                         Material_library& mat_lib,
+                         Array<int>& ess_bdr,
+                         const ParMesh* const pmesh,
+                         ParFiniteElementSpace* const fespace, Result& res)
 {
 
   mat_lib.set_nmoment(inp.spn_order()+1);
@@ -192,18 +193,6 @@ void diffusion_power_iteration(Timer& time, const Input& inp,
 
   time.stop();
 
-  // create a coefficientfor the nu*fission cross section in each energy group
-  // this will be used for the flux integral at the end of each loop
-  vector<PWConstCoefficient> nusf_coeff;
-  nusf_coeff.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    Vector fission(pmesh->attributes.Max()); // length is number of materials
-    for (int i{0}; i < fission.Size(); ++i)
-      fission[i] = mat_lib.mat[i].rec.nusf[g];
-    nusf_coeff.emplace_back(fission);
-  }
-
   // set initial flux profile to be used for fission source
   // currently we use a uniform "flat" flux profile
   ParGridFunction phi_old(fespace);
@@ -213,39 +202,18 @@ void diffusion_power_iteration(Timer& time, const Input& inp,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
 
-    if (res(g).Normlinf() < numeric_limits<double>::min())
-    {
-      res(g) = 1.0;
-    }
-
     for (int n{0}; n < inp.spn_eq(); ++n)
     {
+
+      if (res(g,n).Normlinf() < numeric_limits<double>::min())
+      {
+        res(g,n) = 1.0;
+      }
 
       ConstantCoefficient zero{0.0};
       res(g,n).ProjectBdrCoefficient(zero, ess_bdr);
     }
 
-  }
-
-  // set the grid function coefficient for each energy group flux
-  // NOTE: only scalar flux
-  vector<GridFunctionCoefficient> phi_coeff;
-  phi_coeff.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g) phi_coeff.emplace_back(&res(g));
-
-  // note that this one does not have a default constructor so we have to do
-  // this a bit differently
-  vector<ProductCoefficient> fiss_product_coeff;
-  fiss_product_coeff.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    fiss_product_coeff.emplace_back(nusf_coeff[g], phi_coeff[g]);
-
-  // build "outline" of fission source integrator for each energy group
-  vector<ParLinearForm> fiss(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); g++)
-  {
-    fiss[g].Update(fespace);
-    fiss[g].AddDomainIntegrator(new DomainLFIntegrator(fiss_product_coeff[g]));
   }
 
   // setup preconditioner
@@ -318,8 +286,36 @@ void diffusion_power_iteration(Timer& time, const Input& inp,
     }
   }
 
+  // TODO this should *really* go away! It costs a lot of extra memory.
+  // build "outline" of fission source integrator for each energy group
+  vector<PWConstCoefficient> nusf_coeff;
+  vector<GridFunctionCoefficient> phi_coeff;
+  vector<ProductCoefficient> fiss_product_coeff;
+  vector<unique_ptr<ParLinearForm>> fiss(mat_lib.ngroup());
+
+  nusf_coeff.reserve(mat_lib.ngroup());
+  phi_coeff.reserve(mat_lib.ngroup());
+  fiss_product_coeff.reserve(mat_lib.ngroup());
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+
+    Vector fission(pmesh->attributes.Max());
+    for (int i{0}; i < fission.Size(); ++i)
+      fission[i] = mat_lib.mat[i].rec.nusf[g];
+    nusf_coeff.emplace_back(fission);
+
+    phi_coeff.emplace_back(&res(g));
+
+    fiss_product_coeff.emplace_back(nusf_coeff[g], phi_coeff[g]);
+
+    fiss[g] = make_unique<ParLinearForm>(fespace);
+    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{fiss_product_coeff[g]});
+
+  }
+
   time.start(time.solver);
-  for (int iter{0}; (iter <= inp.tol.max_outer)
+  for (int iter{0}; (iter < inp.tol.max_outer)
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
     // Solve this fixed source problem for each energy group and each moment.
@@ -353,7 +349,7 @@ void diffusion_power_iteration(Timer& time, const Input& inp,
         phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
 
         local_phi_conv =
-          max(local_phi_conv, phi_old.Normlinf() / res(g).Max());
+          max(local_phi_conv, phi_old.Normlinf() / res(g,n).Max());
 
       }
     }
@@ -365,8 +361,8 @@ void diffusion_power_iteration(Timer& time, const Input& inp,
     double local_fiss_sum{0.0};
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      fiss[g].Assemble();
-      local_fiss_sum += fiss[g].Sum();
+      fiss[g]->Assemble();
+      local_fiss_sum += fiss[g]->Sum();
     }
     MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
@@ -814,4 +810,221 @@ PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf)
   oh.Get(A);
   oh.SetOperatorOwner(false);
   return A;
+}
+
+void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input& inp,
+                          Material_library& mat_lib,
+                          mfem::Array<int>& ess_bdr,
+                          const mfem::ParMesh* const pmesh,
+                          mfem::ParFiniteElementSpace* const fespace, Result& res, Result& scalar_flux)
+{
+
+  time.start(time.matrix_assembly);
+
+  SPNWrapper<unique_ptr<ParBilinearForm>> a(mat_lib.ngroup(), quad->nd());
+  a.resize();
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int n{0}; n < quad->nd(); ++n)
+    {
+      a(g,n) = make_unique<ParBilinearForm>(fespace);
+
+      vector<DenseMatrix> leakage(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      {
+        leakage[i].SetSize(quad->dim());
+        MultVVt(quad->omega(n), leakage[i]);
+        leakage[i] *= 1.0 / mat_lib.mat[i].rec.sigma_t[g];
+      }
+      MatrixPWConstCoefficient leakage_func{leakage};
+
+      Vector removal(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+        removal(i) = mat_lib.mat[i].rec.sigma_r(g,0);
+      PWConstCoefficient removal_func{removal};
+
+      VectorConstantCoefficient epdo_bc{quad->omega(n)};
+
+      a(g,n)->AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+      a(g,n)->AddDomainIntegrator(new MassIntegrator{removal_func});
+      a(g,n)->AddBdrFaceIntegrator(new BoundaryAbsNormalBFIntegrator{epdo_bc});
+      a(g,n)->Assemble();
+
+    }
+  }
+
+  time.stop();
+
+  vector<FissionCoefficient> fiss_term;
+  fiss_term.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    fiss_term.emplace_back(g, res.keff, mat_lib, scalar_flux, inp.flux_free_chi);
+
+  vector<ScatteringCoefficient> scat_term;
+  scat_term.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scat_term.emplace_back(g, mat_lib, scalar_flux);
+
+  // TODO this needs to be a custom coefficient probably
+  Vector zero_vec(quad->dim());
+  zero_vec = 10.0;
+  VectorConstantCoefficient zero_term{zero_vec};
+
+  // there are no essential boundary conditions for EPDO neutron transport
+  Array<int> ess_tdof_list(pmesh->bdr_attributes.Max());
+  ess_tdof_list = 0;
+
+  // need a mask to list where reflective boundary conditions need to be applied
+  Array<int> reflective_condition(pmesh->bdr_attributes.Max());
+  reflective_condition = 0;
+  for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
+  {
+    if (inp.boundary_conditions[i] == 0) // zero represents reflective
+      reflective_condition[i] = 1;
+  }
+
+  SPNWrapper<unique_ptr<ParLinearForm>> b(mat_lib.ngroup(), quad->nd());
+  b.resize();
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int n{0}; n < quad->nd(); ++n)
+    {
+      b(g,n) = make_unique<ParLinearForm>(fespace);
+
+      b(g,n)->AddDomainIntegrator(new DomainLFIntegrator{fiss_term[g]});
+      b(g,n)->AddDomainIntegrator(new DomainLFIntegrator{scat_term[g]});
+      b(g,n)->AddBoundaryIntegrator(new BoundaryNormalLFIntegrator{zero_term}, reflective_condition);
+
+    }
+  }
+
+  vector<PWConstCoefficient> nusf_coeff;
+  vector<GridFunctionCoefficient> phi_coeff;
+  vector<ProductCoefficient> fiss_product_coeff;
+  vector<unique_ptr<ParLinearForm>> fiss(mat_lib.ngroup());
+
+  nusf_coeff.reserve(mat_lib.ngroup());
+  phi_coeff.reserve(mat_lib.ngroup());
+  fiss_product_coeff.reserve(mat_lib.ngroup());
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+
+    Vector fission(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      fission(i) = mat_lib.mat[i].rec.nusf[g];
+    nusf_coeff.emplace_back(fission);
+
+    phi_coeff.emplace_back(&scalar_flux(g));
+
+    fiss_product_coeff.emplace_back(nusf_coeff[g], phi_coeff[g]);
+
+    fiss[g] = make_unique<ParLinearForm>(fespace);
+    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{fiss_product_coeff[g]});
+
+  }
+
+  // TODO initialize better...
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int n{0}; n < quad->nd(); ++n)
+    {
+      res(g,n) = 0.0;
+    }
+    scalar_flux(g) = 1.0;
+  }
+
+  int myid;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+
+  HypreBoomerAMG amg;
+  amg.SetPrintLevel(inp.hypre_print_level());
+
+  CGSolver cg(MPI_COMM_WORLD);
+  cg.SetRelTol(inp.tol.inner_rel);
+  cg.SetAbsTol(inp.tol.inner_abs);
+  cg.SetMaxIter(inp.tol.max_inner);
+  cg.SetPrintLevel(inp.mfem_print_level());
+  cg.SetPreconditioner(amg);
+
+  double k_conv{inp.tol.k * 10 + 0.1};
+  double phi_conv{inp.tol.phi * 10 + 0.1};
+  double fiss_sum{1.0};
+  double fiss_sum_old{1.0};
+  double keff_old{1.0};
+
+  time.start(time.solver);
+
+  for (int iter{0}; (iter < inp.tol.max_outer)
+      && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)) ; ++iter)
+  {
+
+    double local_fiss_sum{0.0};
+    double local_phi_conv{0.0};
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+
+        b(g,n)->Assemble();
+
+        OperatorPtr A;
+        Vector B;
+        Vector X;
+        a(g,n)->FormLinearSystem(ess_tdof_list, res(g,n), *b(g,n), A, X, B);
+        cg.SetOperator(*A);
+        cg.Mult(B, X);
+        a(g,n)->RecoverFEMSolution(X, *b(g,n), res(g,n));
+
+      }
+
+      // only converging the scalar flux
+      ParGridFunction phi_old{scalar_flux(g)};
+
+      compute_scalar_flux(g, res, quad, scalar_flux);
+
+      phi_old -= scalar_flux(g);
+      phi_old.GetMemory().Read(MemoryClass::HOST, phi_old.Size());
+      local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf() / scalar_flux(g).Max());
+
+      // calculate fission sum
+      fiss[g]->Assemble();
+      local_fiss_sum += fiss[g]->Sum();
+
+    }
+
+    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    if (iter > 0) res.keff *= fiss_sum / fiss_sum_old;
+
+    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+    // update convergence criteria
+    k_conv = std::abs(res.keff - keff_old);
+
+    if (myid == 0)
+    {
+      cout << "iter=" << iter << " keff=" << res.keff 
+           << " dk=" << k_conv << " dphi=" << phi_conv << std::endl;
+    }
+
+    keff_old = res.keff;
+    fiss_sum_old = fiss_sum;
+
+  }
+
+  time.stop();
+
+}
+
+void compute_scalar_flux(int g, const Result& angular_flux, 
+                         const Quadrature* const quad, Result& scalar_flux)
+{
+  scalar_flux(g) = 0.0;
+  for (int n{0}; n < quad->nd(); ++n)
+  {
+    ParGridFunction tmp{angular_flux(g,n)};
+    tmp *= quad->weight(n);
+    scalar_flux(g) += tmp;
+  }
 }

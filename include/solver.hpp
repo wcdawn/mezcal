@@ -7,6 +7,7 @@
 #include "result.hpp"
 #include "timer.hpp"
 #include "xslibrary.hpp"
+#include "quadrature.hpp"
 
 #include <exception>
 #include <string>
@@ -17,11 +18,11 @@ void diffusion_hypre_lobpcg(Timer& time, const Input& inp,
                               const mfem::ParMesh* const pmesh,
                               mfem::ParFiniteElementSpace* const fespace, Result& res);
 
-void diffusion_power_iteration(Timer& time, const Input& inp,
-                               Material_library& mat_lib,
-                               mfem::Array<int>& ess_bdr,
-                               const mfem::ParMesh* const pmesh,
-                               mfem::ParFiniteElementSpace* const fespace, Result& res);
+void spn_power_iteration(Timer& time, const Input& inp,
+                         Material_library& mat_lib,
+                         mfem::Array<int>& ess_bdr,
+                         const mfem::ParMesh* const pmesh,
+                         mfem::ParFiniteElementSpace* const fespace, Result& res);
 
 void diffusion_fixed_src(Timer& time, const Input& inp,
                            const Material_library& mat_lib,
@@ -40,6 +41,14 @@ void diffusion_slepc_manual(Timer& time, const Input& inp,
                               const mfem::Array<int>& ess_bdr,
                               const mfem::ParMesh* const pmesh,
                               mfem::ParFiniteElementSpace* const fespace, Result& res);
+
+void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input& inp,
+                          Material_library& mat_lib,
+                          mfem::Array<int>& ess_bdr,
+                          const mfem::ParMesh* const pmesh,
+                          mfem::ParFiniteElementSpace* const fespace, Result& res, Result& scalar_flux);
+
+void compute_scalar_flux(int g, const Result& angular_flux, const Quadrature* const quad, Result& scalar_flux);
 
 class Failed_to_converge : std::exception
 {
