@@ -18,7 +18,8 @@ double ScatteringCoefficient::Eval(ElementTransformation& T,
   for (int i{0}; i < col_idx.Size(); ++i)
   {
     const int gprime{col_idx[i]};
-    if (gprime != g) sum += data[i] * phi(gprime).GetValue(T, ip);
+    if ((include_self) || (gprime != g))
+      sum += data(i) * phi(gprime).GetValue(T, ip);
   }
 
   return sum;

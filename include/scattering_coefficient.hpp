@@ -12,8 +12,8 @@ class ScatteringCoefficient : public mfem::Coefficient
 {
 public:
   ScatteringCoefficient(int group, const Material_library& mat_lib_lib,
-                        const Result& flux)
-    : g{group}, mat_lib{mat_lib_lib}, phi{flux}
+                        const Result& flux, bool include_self_scatter=false)
+    : g{group}, mat_lib{mat_lib_lib}, phi{flux}, include_self{include_self_scatter}
   {
   }
 
@@ -29,6 +29,8 @@ private:
   const Material_library& mat_lib;
 
   const Result& phi;
+
+  const bool include_self;
 };
 
 #endif
