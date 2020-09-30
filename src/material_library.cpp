@@ -92,7 +92,7 @@ void Material_record::calculate_macroscopic_xs()
   {
     // this is a hack because there is no multiply/scaling operator provided for
     // sparse matrices and "rec" is const-qualified
-    auto tmp{iso[i].rec.sigma_s};
+    SparseMatrix tmp{iso[i].rec.sigma_s};
     tmp *= iso[i].nden;
     scat += tmp;
     for (int g{0}; g < rec.ngroup(); ++g)
