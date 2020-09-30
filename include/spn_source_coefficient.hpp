@@ -16,8 +16,8 @@ public:
   SPNSourceCoefficient(int group, int order, int maximum_order,
                        const Material_library& mat_lib_lib,
                        const Result& flux)
-    : VectorCoefficient{flux(0).FESpace()->GetMesh()->Dimension()},
-    dim{flux(0).FESpace()->GetMesh()->Dimension()},
+    : VectorCoefficient{flux(0,0).FESpace()->GetMesh()->Dimension()},
+    dim{flux(0,0).FESpace()->GetMesh()->Dimension()},
     g{group}, 
     n{order},
     dble_n{2.0*order},
