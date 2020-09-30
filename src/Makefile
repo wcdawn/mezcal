@@ -81,6 +81,7 @@ endif
 
 CPP_FILES = main.cpp \
 			analytic.cpp \
+			boundary_abs_normal_bf_integrator.cpp \
 			fission_coefficient.cpp \
 			hdf5_access_wrapper.cpp \
 			input.cpp \
@@ -88,6 +89,7 @@ CPP_FILES = main.cpp \
 			level_symmetric_quadrature.cpp \
 			material_library.cpp \
 			matrix_pwconst_coefficient.cpp \
+			quadrature.cpp \
 			result.cpp \
 			scattering_coefficient.cpp \
 			solver.cpp \
@@ -99,6 +101,7 @@ CPP_FILES = main.cpp \
 			xslibrary.cpp
 
 HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
+			$(INCLUDE_DIR)/boundary_abs_normal_bf_integrator.hpp \
 			$(INCLUDE_DIR)/fission_coefficient.hpp \
 			$(INCLUDE_DIR)/hdf5_access_wrapper.hpp \
 			$(INCLUDE_DIR)/input.hpp \
@@ -191,7 +194,7 @@ xslibrary.o : $(MFEM_HEADER) $(INCLUDE_DIR)/xslibrary.hpp
 input.o : $(MFEM_HEADER) $(INCLUDE_DIR)/analytic.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/xslibrary.hpp
 material_library.o : $(MFEM_HEADER) $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/spn_source_coefficient.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
+solver.o : $(MFEM_HEADER) $(INCLUDE_DIR)/solver.hpp $(INCLUDE_DIR)/input.hpp $(INCLUDE_DIR)/spn_source_coefficient.hpp $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/timer.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp $(INCLUDE_DIR)/boundary_abs_normal_bf_integrator.hpp
 scattering_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/scattering_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
 fission_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/fission_coefficient.hpp $(INCLUDE_DIR)/material_library.hpp $(INCLUDE_DIR)/xslibrary.hpp $(INCLUDE_DIR)/result.hpp
 hdf5_access_wrapper.o : $(INCLUDE_DIR)/hdf5_access_wrapper.hpp
@@ -203,3 +206,5 @@ solver_choice.o : $(INCLUDE_DIR)/solver_choice.hpp
 result.o : $(MFEM_HEADER) $(INCLUDE_DIR)/result.hpp
 legendre_chebyschev_quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/legendre_chebyschev_quadrature.hpp $(INCLUDE_DIR)/quadrature.hpp
 level_symmetric_quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/level_symmetric_quadrature.hpp $(INCLUDE_DIR)/quadrature.hpp
+quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/quadrature.hpp
+boundary_abs_normal_bf_integrator.o : $(MFEM_HEADER) $(INCLUDE_DIR)/boundary_abs_normal_bf_integrator.hpp
