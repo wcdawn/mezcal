@@ -195,6 +195,30 @@ void Input::read_state()
       ifs >> spn;
       if (((spn + 1) % 2) != 0) throw Invalid_input_card{"SPN must be odd."};
     }
+    else if (card == "quadrature")
+    {
+      ifs >> quadrature_str;
+      quadrature_type = quadrature_choice_str_to_enum(quadrature_str);
+      quadrature = quadrature_str.c_str();
+    }
+    else if (card == "quad_order")
+    {
+      ifs >> quad_order;
+      if ((quad_order % 2) != 0) 
+        throw Invalid_input_card{"Quadrature order must be even."};
+    }
+    else if (card == "quad_legendre_order")
+    {
+      ifs >> quad_legendre_order;
+      if ((quad_order % 2) != 0) 
+        throw Invalid_input_card{"Legendre quadrature order must be even."};
+    }
+    else if (card == "quad_chebyschev_order")
+    {
+      ifs >> quad_chebyschev_order;
+      if ((quad_order % 2) != 0) 
+        throw Invalid_input_card{"Chebyschev quadrature order must be even."};
+    }
     else if (card == "[STATE]")
     {
       // prepare to head into another state block

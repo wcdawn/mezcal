@@ -5,6 +5,7 @@
 #include "mfem.hpp" // Array<int>
 #include "xslibrary.hpp"
 #include "solver_choice.hpp"
+#include "quadrature.hpp"
 
 #include <exception>
 #include <fstream>
@@ -96,6 +97,12 @@ public:
   bool flux_free_chi{false};
   int spn{1};
 
+  const char* quadrature{"level_symmetric"};
+  int quad_legendre_order{0};
+  int quad_chebyschev_order{0};
+  int quad_order{2};
+  Quadrature_choice quadrature_type{Quadrature_choice::level_symmetric};
+
   Solver_choice sol{Solver_choice::lobpcg};
 
   // this is public so that other blocks (e.g. MATERIAL) can be read
@@ -119,6 +126,7 @@ private:
   std::string reference_str;
   // [STATE]
   std::string solver_str;
+  std::string quadrature_str;
 
   std::string stub;
   std::string path_stub(std::string path);
