@@ -8,13 +8,10 @@ struct Result
 
 public:
 
-    //Result() {}
-
     Result(mfem::ParFiniteElementSpace* space, int ngroup, int nmoment=1);
 
     // allow indexing with single integer for the scalar flux
     mfem::ParGridFunction& operator()(int g, int n=0) { return phi[g + n*G]; }
-
     // const overload
     const mfem::ParGridFunction& operator()(int g, int n=0) const { return phi[g + n*G]; }
 
@@ -28,7 +25,8 @@ public:
 
     void resize(int ngroup, int nmoment=1);
 
-    std::vector<mfem::ParGridFunction>& phi_vec() { return phi; }
+    int ngroup() const { return G; }
+    int nmoment() const { return N; }
 
 private:
 
