@@ -7,6 +7,7 @@
 #include "vector_pwconst_coefficient.hpp"
 #include "matrix_pwconst_coefficient.hpp"
 #include "boundary_abs_normal_bf_integrator.hpp"
+#include "incoming_flux_coefficient.hpp"
 
 #include "slepceps.h"
 
@@ -813,8 +814,8 @@ PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf)
 }
 
 void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input& inp,
-                          Material_library& mat_lib,
-                          mfem::Array<int>& ess_bdr,
+                          const Material_library& mat_lib,
+                          const mfem::Array<int>& ess_bdr,
                           const mfem::ParMesh* const pmesh,
                           mfem::ParFiniteElementSpace* const fespace, Result& res, Result& scalar_flux)
 {
@@ -833,7 +834,7 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
       {
         leakage[i].SetSize(quad->dim());
-        MultVVt(quad->omega(n), leakage[i]);
+        MultVVt(quad->omega(n), leakage[i]); // no need to renormalize for 2d
         leakage[i] *= 1.0 / mat_lib.mat[i].rec.sigma_t[g];
       }
       MatrixPWConstCoefficient leakage_func{leakage};
@@ -865,10 +866,14 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     scat_term.emplace_back(g, mat_lib, scalar_flux);
 
-  // TODO this needs to be a custom coefficient probably
-  Vector zero_vec(quad->dim());
-  zero_vec = 10.0;
-  VectorConstantCoefficient zero_term{zero_vec};
+  SPNWrapper<IncomingFluxCoefficient> incoming_flux(mat_lib.ngroup(), quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
+  {
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      incoming_flux.emplace_back(quad->dim(), g, n, res, quad);
+    }
+  }
 
   // there are no essential boundary conditions for EPDO neutron transport
   Array<int> ess_tdof_list(pmesh->bdr_attributes.Max());
@@ -893,7 +898,9 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
 
       b(g,n)->AddDomainIntegrator(new DomainLFIntegrator{fiss_term[g]});
       b(g,n)->AddDomainIntegrator(new DomainLFIntegrator{scat_term[g]});
-      b(g,n)->AddBoundaryIntegrator(new BoundaryNormalLFIntegrator{zero_term}, reflective_condition);
+      b(g,n)->AddBoundaryIntegrator(
+        new BoundaryNormalLFIntegrator{incoming_flux(g,n)},
+        reflective_condition);
 
     }
   }

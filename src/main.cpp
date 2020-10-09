@@ -7,6 +7,10 @@
 #include "timer.hpp"
 #include "xslibrary.hpp"
 
+#include "quadrature.hpp"
+#include "level_symmetric_quadrature.hpp"
+#include "legendre_chebyschev_quadrature.hpp"
+
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -155,17 +159,47 @@ int main(int argc, char* argv[])
   inp.ifs.clear();
   inp.ifs.seekg(position);
 
+  unique_ptr<Quadrature> quad;
+  switch (inp.quadrature_type)
+  {
+    case (Quadrature_choice::level_symmetric):
+      quad =
+        make_unique<Level_symmetric_quadrature>(inp.quad_order,
+        pmesh.SpaceDimension());
+      break;
+    case (Quadrature_choice::legendre_chebyschev):
+      if ((inp.quad_legendre_order > 0) && (inp.quad_chebyschev_order > 0))
+        quad =
+          make_unique<Legendre_chebyschev_quadrature>(inp.quad_legendre_order,
+          inp.quad_chebyschev_order, pmesh.SpaceDimension());
+      else
+        quad = make_unique<Legendre_chebyschev_quadrature>(inp.quad_order,
+          pmesh.SpaceDimension());
+      break;
+    default:
+      if (inp.sol == Solver_choice::epdo_power_iteration)
+      {
+        std::cout << "Invalid quadrature and quadrature is required for EPDO." << std::endl;
+        return 1;
+      }
+  }
+
   // TODO this needs to allow for differing values of spn_eq with different states
   const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 1};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  const int dof{fespace.TrueVSize() * num_procs * ((inp.sol == Solver_choice::slepc_vector) ? 1 : mat_lib.ngroup())};
+  int dof{fespace.TrueVSize() * ((inp.sol == Solver_choice::slepc_vector) ? 1 : mat_lib.ngroup())};
+  if (inp.sol == Solver_choice::epdo_power_iteration)
+    dof *= quad->nd();
   if (myid == 0)
     cout << "Number of finite element unknowns: " << dof << endl;
 
   // TODO this should move outside of the [STATE] loop but we need to disallow
   // changing the solver type between states (maybe move to [CORE] block)
   const int flux_length{(inp.sol == Solver_choice::slepc_vector) ? 1 : xs.ngroup()};
-  Result res{&fespace, flux_length, inp.spn_eq()};
+  // TODO figure out the moment/angle length for the vector
+  const int moment_angle_length{(inp.sol == Solver_choice::epdo_power_iteration) ? quad->nd() : inp.spn_eq()};
+  Result res{&fespace, flux_length, moment_angle_length};
+  Result scalar_flux{&fespace, flux_length};
 
   ofstream sum{inp.input_file_stub() + ".sum"};
   sum << "=== STATEPOINT SUMMARY ===\n" << "state, spn_order, keff\n";
@@ -173,7 +207,8 @@ int main(int argc, char* argv[])
   for (int state{0}; state < inp.nstate(); ++state)
   {
     inp.read_state();
-    res.resize(mat_lib.ngroup(), inp.spn_eq());
+    // TODO probably need to abandon [STATE] vs [CORE] for now...
+    //res.resize(mat_lib.ngroup(), inp.spn_eq()); // TODO this is invalid...
 
     // do the solving
 
@@ -189,13 +224,16 @@ int main(int argc, char* argv[])
           diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
         case (Solver_choice::power_iteration):
-          diffusion_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
         case (Solver_choice::slepc_vector):
           spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
         case (Solver_choice::slepc_manual):
           diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          break;
+        case (Solver_choice::epdo_power_iteration):
+          epdo_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
           break;
         default:
           cerr << "Invalid solver choice.\n";
@@ -228,8 +266,12 @@ int main(int argc, char* argv[])
 
     ParaViewDataCollection output(inp.input_file_stub() + "_" + state_name.str(), &pmesh);
 
-    const auto group_width{std::to_string(xs.ngroup()).length()};
-    const auto moment_width{std::to_string(2*inp.spn_eq()).length()};
+    const size_t group_width{std::to_string(xs.ngroup()).length()};
+    size_t moment_width;
+    if (inp.sol == Solver_choice::epdo_power_iteration)
+      moment_width = std::to_string(res.nmoment()).length();
+    else
+      moment_width = std::to_string(2*inp.spn_eq()).length();
 
     if (inp.sol == Solver_choice::slepc_vector)
     {
@@ -240,14 +282,27 @@ int main(int argc, char* argv[])
     }
     else
     {
-      for (int n{0}; n < inp.spn_eq(); ++n)
+      for (int g{0}; g < res.ngroup(); ++g)
       {
-        for (int g{0}; g < xs.ngroup(); ++g)
+        for (int n{0}; n < res.nmoment(); ++n)
         {
           ostringstream record_name;
-          record_name << "phi_g" << setfill('0') << setw(group_width) << g
-                      << "_n" << setfill('0') << setw(moment_width) << 2*n;
+
+          if (inp.sol == Solver_choice::epdo_power_iteration)
+            record_name << "phi_g" << setfill('0') << setw(group_width) << g
+                        << "_n" << setfill('0') << setw(moment_width) << n;
+          else
+            record_name << "phi_g" << setfill('0') << setw(group_width) << g
+                        << "_n" << setfill('0') << setw(moment_width) << 2*n;
+
           output.RegisterField(record_name.str(), &res(g,n));
+        }
+        if (inp.sol == Solver_choice::epdo_power_iteration)
+        {
+          ostringstream scalar_flux_record;
+          scalar_flux_record << "scalar_flux_g" << setfill('0') 
+                             << setw(group_width) << g;
+          output.RegisterField(scalar_flux_record.str(), &scalar_flux(g));
         }
       }
     }

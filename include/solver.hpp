@@ -43,8 +43,8 @@ void diffusion_slepc_manual(Timer& time, const Input& inp,
                               mfem::ParFiniteElementSpace* const fespace, Result& res);
 
 void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input& inp,
-                          Material_library& mat_lib,
-                          mfem::Array<int>& ess_bdr,
+                          const Material_library& mat_lib,
+                          const mfem::Array<int>& ess_bdr,
                           const mfem::ParMesh* const pmesh,
                           mfem::ParFiniteElementSpace* const fespace, Result& res, Result& scalar_flux);
 

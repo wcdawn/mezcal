@@ -84,6 +84,7 @@ CPP_FILES = main.cpp \
 			boundary_abs_normal_bf_integrator.cpp \
 			fission_coefficient.cpp \
 			hdf5_access_wrapper.cpp \
+			incoming_flux_coefficient.cpp \
 			input.cpp \
 			legendre_chebyschev_quadrature.cpp \
 			level_symmetric_quadrature.cpp \
@@ -104,6 +105,7 @@ HPP_FILES = $(INCLUDE_DIR)/analytic.hpp \
 			$(INCLUDE_DIR)/boundary_abs_normal_bf_integrator.hpp \
 			$(INCLUDE_DIR)/fission_coefficient.hpp \
 			$(INCLUDE_DIR)/hdf5_access_wrapper.hpp \
+			$(INCLUDE_DIR)/incoming_flux_coefficient.hpp \
 			$(INCLUDE_DIR)/input.hpp \
 			$(INCLUDE_DIR)/legendre_chebyschev_quadrature.hpp \
 			$(INCLUDE_DIR)/level_symmetric_quadrature.hpp \
@@ -208,3 +210,4 @@ legendre_chebyschev_quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/legendre_chebys
 level_symmetric_quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/level_symmetric_quadrature.hpp $(INCLUDE_DIR)/quadrature.hpp
 quadrature.o : $(MFEM_HEADER) $(INCLUDE_DIR)/quadrature.hpp
 boundary_abs_normal_bf_integrator.o : $(MFEM_HEADER) $(INCLUDE_DIR)/boundary_abs_normal_bf_integrator.hpp
+incoming_flux_coefficient.o : $(MFEM_HEADER) $(INCLUDE_DIR)/incoming_flux_coefficient.hpp
