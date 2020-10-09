@@ -1,0 +1,77 @@
+# Makefile
+
+ifeq ($(MACH),SUMMIT)
+STD = c++11
+MPICXX = mpixlC
+H5_DIR = $(OLCF_HDF5_ROOT)/lib
+
+PROJ = /ccs/proj/csc404
+MFEM_DIR = $(PROJ)/mfem
+HYPRE_DIR = $(PROJ)/hypre-2.16.0/src/hypre
+METIS_DIR = $(OLCF_METIS_ROOT)
+METIS_LIB = -L$(METIS_DIR)/lib -l:libmetis.so
+
+# CUDA_DIR is set automatically by the module
+
+PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
+SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
+
+else ifeq ($(MACH),ARCHBUILD)
+STD = c++17
+MPICXX = /opt/mpich/bin/mpicxx
+H5_DIR = /usr/lib
+
+MICROREACTOR_DIR = /home/wcdawn/work/microreactor
+MFEM_DIR = $(MICROREACTOR_DIR)/build/mfem
+HYPRE_DIR = $(MICROREACTOR_DIR)/hypre/src/hypre
+METIS_DIR = $(MICROREACTOR_DIR)/metis
+
+METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
+
+CUDA_DIR = /opt/cuda
+PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
+SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+
+else
+
+$(error Invalid MACH)
+
+endif
+
+CXXFLAGS = -Wall -pedantic-errors -std=$(STD)
+
+ifeq ($(METHOD), dbg)
+CXXFLAGS += -O0 -g
+else
+CXXFLAGS += -O3
+endif
+
+MPICXXFLAGS = $(CXXFLAGS)
+
+H5CXXFLAGS = $(CXXFLAGS)
+# generated using "h5c++ -show"
+H5_LIB = -L$(OLCF_HDF5_ROOT) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
+
+LD = $(MPICXX) 
+LDFLAGS = -std=$(STD)
+
+MFEM_INCLUDE = -I$(MFEM_DIR)
+MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
+MFEM_LIB = $(MFEM_DIR)/libmfem.a
+
+HYPRE_INCLUDE = -I$(HYPRE_DIR)/include
+HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
+
+METIS_INCLUDE = -I$(METIS_DIR)/include
+
+CUDA_INCLUDE = -I$(CUDA_DIR)/include
+CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread -lcusparse_static
+
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
+PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
+
+SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
+SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
+
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)

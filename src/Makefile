@@ -5,6 +5,7 @@ include ../Makefile.include
 CPP_FILES = main.cpp \
 			analytic.cpp \
 			boundary_abs_normal_bf_integrator.cpp \
+			delaunay.cpp \
 			fission_coefficient.cpp \
 			hdf5_access_wrapper.cpp \
 			incoming_flux_coefficient.cpp \
@@ -26,6 +27,7 @@ CPP_FILES = main.cpp \
 
 HPP_FILES = analytic.hpp \
 			boundary_abs_normal_bf_integrator.hpp \
+			delaunay.hpp \
 			fission_coefficient.hpp \
 			hdf5_access_wrapper.hpp \
 			incoming_flux_coefficient.hpp \
@@ -114,13 +116,13 @@ format : $(CPP_FILES) $(HPP_FILES)
 
 # Listing Order:
 # <object file> : $(MFEM_HEADER) <my header> <other headers>
-main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp timer.hpp xslibrary.hpp
+main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp timer.hpp xslibrary.hpp quadrature.hpp legendre_chebyschev_quadrature.hpp level_symmetric_quadrature.hpp
 analytic.o : $(MFEM_HEADER) analytic.hpp result.hpp xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
-input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp
+input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
 material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp boundary_abs_normal_bf_integrator.hpp
+solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp boundary_abs_normal_bf_integrator.hpp quadrature.hpp
 scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 hdf5_access_wrapper.o : hdf5_access_wrapper.hpp
@@ -132,3 +134,7 @@ solver_choice.o : solver_choice.hpp
 result.o : $(MFEM_HEADER) result.hpp
 boundary_abs_normal_bf_integrator.o : $(MFEM_HEADER) boundary_abs_normal_bf_integrator.hpp
 incoming_flux_coefficient.o : $(MFEM_HEADER) incoming_flux_coefficient.hpp
+level_symmetric_quadrature.o : $(MFEM_HEADER) level_symmetric_quadrature.hpp quadrature.hpp
+legendre_chebyschev_quadrature.o : $(MFEM_HEADER) legendre_chebyschev_quadrature.hpp quadrature.hpp
+quadrature.o : $(MFEM_HEADER) quadrature.hpp delaunay.hpp
+delaunay.cpp : $(MFEM_HEADER) delaunay.hpp
