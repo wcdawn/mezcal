@@ -10,4 +10,5 @@ reference oned_oneg
 name m1 MAT1 1.0
 
 [STATE]
-solver slepc
+solver slepc_vector
+max_outer 1000

@@ -21,6 +21,7 @@ public:
     n_dir_per_octant = nl2*nc2;
     n_dir = n_dir_per_octant * std::pow(2, spatial_dimension);
     initialize_weights_and_abscissae();
+    populate_mesh();
   }
 
   Legendre_chebyschev_quadrature(int n_legendre, int n_chebyschev, int spatial_dimension)
@@ -32,6 +33,7 @@ public:
     n_dir_per_octant = nl2*nc2;
     n_dir = n_dir_per_octant * std::pow(2, spatial_dimension);
     initialize_weights_and_abscissae();
+    populate_mesh();
   }
 
 private:

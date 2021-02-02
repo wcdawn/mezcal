@@ -79,6 +79,8 @@ public:
   void set_nmoment(int m);
 
   std::vector<Material_record> mat;
+  std::vector<double> chi;
+  bool rx_wide_chi{false};
 
 private:
   const XSLibrary& xs; // associated microscopic cross section library

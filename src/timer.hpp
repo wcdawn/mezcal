@@ -24,7 +24,7 @@ public:
   void stop(const std::string& time_name);
   void stop();
 
-  void Print(std::ostream& os);
+  void Print(std::ostream& os = std::cout);
 
   const std::string matrix_assembly{"Matrix assembly"};
   const std::string solver{"Solver"};

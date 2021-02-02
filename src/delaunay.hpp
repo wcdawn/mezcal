@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <array>
+#include <unordered_map>
 
 class Point
 {
@@ -106,6 +107,7 @@ public:
   void associate_point_list(const std::vector<Point>& pts)
   {
     point_list = pts;
+    n_dir = static_cast<int>(pts.size());
   }
   void associate_element_list(const std::vector<Triangle>& el)
   { 
@@ -146,7 +148,13 @@ void cleanup_elements(TriangularMesh& msh);
 void cleanup_points(TriangularMesh& msh);
 
 void delaunay(TriangularMesh& msh);
-void add_reflected_points_half(TriangularMesh& msh, double tol=1e-6);
-void add_reflected_points_full(TriangularMesh& msh, double tol=1e-6);
+void add_reflected_points_half(TriangularMesh& msh, double tol=0.2); // tolerance set for S2
+void add_reflected_points_full(TriangularMesh& msh, double tol=0.2); // tolerance set for S2
+
+double triangle_area(const std::array<Point,3>& corn);
+Triangle point_locator(const Point& point, const TriangularMesh& msh, double rel_tol=1e-8);
+
+double psi(double xi, double eta, int idx);
+std::unordered_multimap<int,double> interpolate_weight(const Point& point, const TriangularMesh& msh);
 
 #endif

@@ -18,6 +18,7 @@ namespace Analytic_solutions
 
   // TODO these will have to be rewritten to be VectorFunctionCoefficient
   double fixed_src_fun(const mfem::Vector&);
+  double saaf_benchmark_fun(const mfem::Vector&);
   double oned_oneg_fun(const mfem::Vector&);
   double twod_oneg_fun(const mfem::Vector&);
   double threed_oneg_fun(const mfem::Vector&);
@@ -48,6 +49,7 @@ public:
   {
     invalid = -1,
     fixed_src,
+    saaf_benchmark,
     oned_oneg,
     twod_oneg,
     threed_oneg,

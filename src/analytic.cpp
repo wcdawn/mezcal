@@ -74,12 +74,18 @@ Analytic::Analytic(const Reference ref, const Solver_choice sol, Result& res,
   }
 
   // store a writable pointer
-  if (reference_solution != fixed_src) normalize_solution_flux();
+  if ((reference_solution != fixed_src) && (reference_solution != saaf_benchmark))
+    normalize_solution_flux();
 
   // set fun to appropriate solution function
   switch (ref)
   {
-    case (fixed_src): fun = &Analytic_solutions::fixed_src_fun; break;
+    case (fixed_src): 
+      fun = &Analytic_solutions::fixed_src_fun;
+      break;
+    case (saaf_benchmark):
+      fun = &Analytic_solutions::saaf_benchmark_fun;
+      break;
     case (oned_oneg):
       fun           = &Analytic_solutions::oned_oneg_fun;
       analytic_keff = &Analytic_solutions::oned_oneg_keff;
@@ -184,7 +190,7 @@ void Analytic::analyze(ostream& os) const
     os << "\n=== ANALYZE ===\n";
     os << "reference: " << reference_enum_to_str(reference_solution) << '\n';
 
-    if (reference_solution != fixed_src)
+    if ((reference_solution != fixed_src) && (reference_solution != saaf_benchmark))
     {
       const double kref{analytic_keff()};
       const auto previous_precision{os.precision()};
@@ -254,6 +260,7 @@ Analytic::Reference Analytic::reference_str_to_enum(string str)
   if (str == "threed_oneg") return threed_oneg;
   if (str == "finite_cyl") return finite_cyl;
   if (str == "fixed_src") return fixed_src;
+  if (str == "saaf_benchmark") return saaf_benchmark;
   if (str == "square") return square;
   if (str == "tworeg") return tworeg;
   if (str == "oned_twog") return oned_twog;
@@ -270,6 +277,7 @@ string Analytic::reference_enum_to_str(Analytic::Reference ref)
     case (threed_oneg): return "threed_oneg";
     case (finite_cyl): return "finite_cyl";
     case (fixed_src): return "fixed_src";
+    case (saaf_benchmark): return "saaf_benchmark";
     case (square): return "square";
     case (tworeg): return "tworeg";
     case (oned_twog): return "oned_twog";
@@ -326,6 +334,14 @@ namespace Analytic_solutions
            * (1.0 - cosh(kappa * x)
               + (cosh(kappa * Lx_small) - 1.0) / (sinh(kappa * Lx_small))
                 * sinh(kappa * x));
+  }
+
+  double saaf_benchmark_fun(const Vector& v)
+  {
+    const double x{v(0)};
+    return 1.0 
+      - (std::exp(std::sqrt(6.0)*(1.0-x)) + std::exp(std::sqrt(6.0)*x))
+      / (1.0-1.0/std::sqrt(2.0) + (1.0+1.0/std::sqrt(2.0))*std::exp(std::sqrt(6.0)));
   }
 
   double oned_oneg_fun(const Vector& v)

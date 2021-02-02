@@ -84,6 +84,11 @@ int main(int argc, char* argv[])
 
   if ((myid == 0) && (inp.verbose)) args.PrintOptions(cout);
 
+  // 2. Enable hardware devices such as GPUs, and programming models such as
+  //    CUDA, OCCA, RAJA and OpenMP based on command line options.
+  Device device(inp.device);
+  if (myid == 0) device.Print();
+
   // core block is finished, you can read cross sections from file
   // xs.read_userxs(inp.xs_file);
   XSLibrary xs;
@@ -99,11 +104,6 @@ int main(int argc, char* argv[])
   // core block is finished, you can read the material block
   Material_library mat_lib{xs};
   mat_lib.read_material(inp.ifs);
-
-  // 2. Enable hardware devices such as GPUs, and programming models such as
-  //    CUDA, OCCA, RAJA and OpenMP based on command line options.
-  Device device(inp.device);
-  if (myid == 0) device.Print();
 
   time.start("Mesh processing");
 
@@ -128,7 +128,7 @@ int main(int argc, char* argv[])
   FiniteElementCollection* fec{nullptr};
   if (inp.order > 0)
   { 
-    fec = new H1_FECollection(inp.order, dim); 
+    fec = new H1_FECollection(inp.order, dim);
   }
   else if (pmesh.GetNodes())
   {
@@ -159,6 +159,11 @@ int main(int argc, char* argv[])
   inp.ifs.clear();
   inp.ifs.seekg(position);
 
+  const bool is_transport{((inp.sol == Solver_choice::epdo_power_iteration) |
+    (inp.sol == Solver_choice::sfent_power_iteration) ||
+    (inp.sol == Solver_choice::saaf_eigen)) ||
+    (inp.sol == Solver_choice::saaf_power_iteration)};
+
   unique_ptr<Quadrature> quad;
   switch (inp.quadrature_type)
   {
@@ -177,9 +182,9 @@ int main(int argc, char* argv[])
           pmesh.SpaceDimension());
       break;
     default:
-      if (inp.sol == Solver_choice::epdo_power_iteration)
+      if (is_transport)
       {
-        std::cout << "Invalid quadrature and quadrature is required for EPDO." << std::endl;
+        std::cout << "Invalid quadrature and quadrature is required for both EPDO and SFENT." << std::endl;
         return 1;
       }
   }
@@ -188,7 +193,7 @@ int main(int argc, char* argv[])
   const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 1};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   int dof{fespace.TrueVSize() * ((inp.sol == Solver_choice::slepc_vector) ? 1 : mat_lib.ngroup())};
-  if (inp.sol == Solver_choice::epdo_power_iteration)
+  if (is_transport)
     dof *= quad->nd();
   if (myid == 0)
     cout << "Number of finite element unknowns: " << dof << endl;
@@ -197,7 +202,7 @@ int main(int argc, char* argv[])
   // changing the solver type between states (maybe move to [CORE] block)
   const int flux_length{(inp.sol == Solver_choice::slepc_vector) ? 1 : xs.ngroup()};
   // TODO figure out the moment/angle length for the vector
-  const int moment_angle_length{(inp.sol == Solver_choice::epdo_power_iteration) ? quad->nd() : inp.spn_eq()};
+  const int moment_angle_length{(is_transport) ? quad->nd() : inp.spn_eq()};
   Result res{&fespace, flux_length, moment_angle_length};
   Result scalar_flux{&fespace, flux_length};
 
@@ -235,6 +240,12 @@ int main(int argc, char* argv[])
         case (Solver_choice::epdo_power_iteration):
           epdo_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
           break;
+        case (Solver_choice::sfent_power_iteration):
+          sfent_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
+          break;
+        case (Solver_choice::saaf_power_iteration):
+          saaf_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
+          break;
         default:
           cerr << "Invalid solver choice.\n";
           MPI_Finalize();
@@ -253,7 +264,12 @@ int main(int argc, char* argv[])
 
     if (inp.ref != Analytic::invalid)
     {
-      Analytic anal(inp.ref, inp.sol, res, xs, &pmesh);
+      Result* gf{nullptr};
+      if (is_transport)
+        gf = &scalar_flux;
+      else
+        gf = &res;
+      Analytic anal(inp.ref, inp.sol, *gf, xs, &pmesh);
       anal.analyze(cout);
       ostringstream analysis_fname;
       analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
@@ -268,7 +284,7 @@ int main(int argc, char* argv[])
 
     const size_t group_width{std::to_string(xs.ngroup()).length()};
     size_t moment_width;
-    if (inp.sol == Solver_choice::epdo_power_iteration)
+    if (is_transport)
       moment_width = std::to_string(res.nmoment()).length();
     else
       moment_width = std::to_string(2*inp.spn_eq()).length();
@@ -288,7 +304,7 @@ int main(int argc, char* argv[])
         {
           ostringstream record_name;
 
-          if (inp.sol == Solver_choice::epdo_power_iteration)
+          if (is_transport)
             record_name << "phi_g" << setfill('0') << setw(group_width) << g
                         << "_n" << setfill('0') << setw(moment_width) << n;
           else
@@ -297,7 +313,7 @@ int main(int argc, char* argv[])
 
           output.RegisterField(record_name.str(), &res(g,n));
         }
-        if (inp.sol == Solver_choice::epdo_power_iteration)
+        if (is_transport)
         {
           ostringstream scalar_flux_record;
           scalar_flux_record << "scalar_flux_g" << setfill('0') 

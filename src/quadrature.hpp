@@ -1,7 +1,9 @@
 #ifndef QUADRATURE
 #define QUADRATURE
 
-# include "mfem.hpp"
+#include "mfem.hpp"
+
+#include "timer.hpp"
 
 #include <exception>
 #include <string>
@@ -41,7 +43,58 @@ public:
     : dir{omega_x, omega_y, omega_z} {}
   Direction (double phi, double theta)
     : dir{std::sin(theta)*std::cos(phi), std::sin(theta)*std::sin(phi), std::cos(theta)} {}
-  Direction(const mfem::Vector& vec) : dir{vec(0), vec(1), vec(2)} {}
+  Direction(const mfem::Vector& vec) : dir{vec(0), vec(1), (vec.Size() == 2) ? 0.0 : vec(2)} {}
+
+  double& operator[](int i){ return dir[i]; }
+  const double operator[](int i) const { return dir[i]; }
+
+  Direction operator+(const Direction& d) const
+  { 
+    return {dir[0]+d[0], dir[1]+d[1], dir[2]+d[2]};
+  }
+  Direction operator-(const Direction& d) const
+  { 
+    return {dir[0]-d[0], dir[1]-d[1], dir[2]-d[2]};
+  }
+  void operator +=(const Direction& d)
+  {
+    for (int i{0}; i < 3; ++i)
+      dir[i] += d[i];
+  }
+  void operator -=(const Direction& d)
+  {
+    for (int i{0}; i < 3; ++i)
+      dir[i] -= d[i];
+  }
+
+  Direction operator*(double x) const { return {dir[0]*x, dir[1]*x, dir[2]*x}; }
+  Direction operator/(double x) const { return {dir[0]/x, dir[1]/x, dir[2]/x}; }
+
+  double operator*(const Direction& x) const { return dir[0]*x[0] + dir[1]*x[1] + dir[2]*x[2]; }
+
+  void operator*=(double x)
+  {
+    for (int i{0}; i < 3; ++i)
+      dir[i] *= x;
+  }
+  void operator/=(double x)
+  {
+    for (int i{0}; i < 3; ++i)
+      dir[i] /= x;
+  }
+
+  double dot(const Direction& d)
+  {
+    double sum{0.0};
+    for (int i{0}; i < 3; ++i)
+      sum += dir[i]*d[i];
+    return sum;
+  }
+
+  Direction reflection(const Direction& nhat)
+  {
+    return (*this) - nhat*2.0*this->dot(nhat);
+  }
 
   std::array<double,2> angle() const
   {
@@ -65,7 +118,7 @@ public:
 
 private:
 
-  const std::array<double,3> dir;
+  std::array<double,3> dir{0.0,0.0,0.0};
 
 };
 
@@ -128,6 +181,20 @@ public:
     }
   }
 
+  TriangularMesh& get_mesh() { return msh; }
+
+  Direction reflection(int n, const Direction& nhat, int dim=-1) const
+  {
+    return dir(n,dim).reflection(nhat);
+  }
+
+  std::unordered_multimap<int,double> interpolate_reflection(int n, const Direction& nhat) const
+  {
+    const Direction omega_prime{reflection(n, nhat, 3)};
+    const Point reflected_angle{omega_prime.angle()};
+    return interpolate_weight(reflected_angle, msh);
+  }
+
 protected:
 
   virtual mfem::Vector omega_octant(int n) const
@@ -182,19 +249,17 @@ protected:
 
   }
 
-  // std::unordered_map<int,double> interpolate(const Direction& dir);
-
 private:
 
   void populate_point_list()
   {
-    std::vector<Point>& pts{msh.get_point_list()};
-    pts.resize(n_dir);
+    std::vector<Point> pts(n_dir);
     for (int i{0}; i < n_dir; ++i)
     {
       const Direction dir{omega(i,3)};
       pts[i] = dir.angle();
     }
+    msh.associate_point_list(pts);
   }
 
   void populate_element_list()

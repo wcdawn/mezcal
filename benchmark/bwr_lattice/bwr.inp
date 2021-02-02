@@ -1,5 +1,5 @@
 [CORE]
-mesh_file bwr4.vtk
+mesh_file bwr.mesh
 boundary_conditions 0 0 0 0
 
 userxs bwr.xs

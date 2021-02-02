@@ -74,6 +74,7 @@ void delaunay(TriangularMesh& msh)
   append_super_triangle(points);
 
   std::vector<Triangle>& element{msh.get_element_list()};
+  element.clear();
 
   element.emplace_back(N+0, N+1, N+2);
 
@@ -199,6 +200,13 @@ void add_reflected_points_half(TriangularMesh& msh, double tol)
     boundary_pts.insert(edg[1]);
   }
 
+  // this catch is necessary for S2
+  if (boundary_pts.empty())
+  {
+    for (std::size_t i{0}; i < pts.size(); ++i)
+      boundary_pts.insert(i);
+  }
+
   constexpr double max_lft{2.0*M_PI};
   constexpr double max_rgt{0.0};
   constexpr double max_up{0.5*M_PI};
@@ -316,6 +324,7 @@ void cleanup_points(TriangularMesh& msh)
   std::vector<Triangle>& element{msh.get_element_list()};
   std::vector<int>& lookup{msh.get_lookup_list()};
 
+
   int idx{msh.nd()};
   while (idx < static_cast<int>(pts.size()))
   {
@@ -342,4 +351,82 @@ void cleanup_points(TriangularMesh& msh)
       ++idx;
     }
   }
+}
+
+double triangle_area(const std::array<Point,3>& corn)
+{
+  mfem::DenseMatrix mat(3);
+  for (int i{0}; i < 3; ++i)
+  {
+    mat(i,0) = corn[i].x;
+    mat(i,1) = corn[i].y;
+    mat(i,2) = 1.0;
+  }
+  return 0.5*std::abs(mat.Det());
+}
+
+Triangle point_locator(const Point& point, const TriangularMesh& msh, double rel_tol)
+{
+  const std::vector<Point>& pts{msh.get_point_list()};
+  for (const Triangle& tri : msh.get_element_list())
+  {
+
+    std::array<Point,3> corn;
+    for (int i{0}; i < 3; ++i)
+      corn[i] = pts[tri[i]];
+
+    const double big_area{triangle_area(corn)};
+    double sum_area{0.0};
+    for (int i{0}; i < 3; ++i)
+    {
+      std::array<Point,3> this_corn{corn};
+      this_corn[i] = point;
+      sum_area += triangle_area(this_corn);
+    }
+
+    if ((std::abs(sum_area-big_area)/big_area) < rel_tol)
+      return tri;
+
+  }
+  std::cout << "NOT FOUND!!!" << std::endl;
+  return {0,0,0};
+}
+
+double psi(double xi, double eta, int idx)
+{
+  switch (idx)
+  {
+    case (0):
+      return 1.0 - xi - eta;
+    case (1):
+      return xi;
+    case (2):
+      return eta;
+    default:
+      return 0.0;
+  }
+}
+
+std::unordered_multimap<int,double> interpolate_weight(const Point& point, const TriangularMesh& msh)
+{
+  const std::vector<Point> pts{msh.get_point_list()};
+  std::unordered_multimap<int,double> weight;
+  const Triangle tri{point_locator(point, msh)};
+
+  std::array<Point,3> corn;
+  for (int i{0}; i < 3; ++i)
+    corn[i] = pts[tri[i]];
+  const double area{triangle_area(corn)};
+
+  const double xi = 0.5/area * 
+    ((pts[tri[2]].y-pts[tri[0]].y)*(point.x-pts[tri[0]].x) -
+    (pts[tri[2]].x-pts[tri[0]].x)*(point.y-pts[tri[0]].y));
+  const double eta = 0.5/area *
+    (-(pts[tri[1]].y-pts[tri[0]].y)*(point.x-pts[tri[0]].x) +
+    (pts[tri[1]].x-pts[tri[0]].x)*(point.y-pts[tri[0]].y));
+
+  for (int i{0}; i < 3; ++i)
+    weight.insert(std::pair<int,double>(msh.lookup_idx(tri[i]), psi(xi, eta, i)));
+
+  return weight;
 }

@@ -60,6 +60,17 @@ void Material_library::read_material(ifstream& ifs)
       mat[mat_count].iso.push_back(
       Material_isotope{card, nden, iso_idx, xs.rec[iso_idx]});
     }
+    else if (card == "chi")
+    {
+      rx_wide_chi = true;
+      chi.reserve(xs.ngroup());
+      for (int g{0}; g < xs.ngroup(); ++g)
+      {
+        double tmp;
+        ifs >> tmp;
+        chi.emplace_back(tmp);
+      }
+    }
     else if (card == "[STATE]")
     {
       // expecting to lead directly into the first [STATE] block

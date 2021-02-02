@@ -30,6 +30,8 @@ public:
     populate_discrete_weight();
     populate_weight_id();
 
+    populate_mesh();
+
   }
 
 private:

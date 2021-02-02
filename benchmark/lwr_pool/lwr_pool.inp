@@ -1,5 +1,5 @@
 [CORE]
-mesh_file lwr_pool.vtk
+mesh_file lwr_pool.mesh
 boundary_conditions 0 0 0 0
 
 userxs lwr_pool.xs
