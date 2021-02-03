@@ -67,7 +67,7 @@ all : $(EXEC)
 
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
-	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) -L /opt/mpich/lib -lmpifort
+	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) 
 
 %.o : %.cpp
 	@$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<

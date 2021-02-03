@@ -159,10 +159,9 @@ int main(int argc, char* argv[])
   inp.ifs.clear();
   inp.ifs.seekg(position);
 
-  const bool is_transport{((inp.sol == Solver_choice::epdo_power_iteration) |
+  const bool is_transport{((inp.sol == Solver_choice::epdo_power_iteration) ||
     (inp.sol == Solver_choice::sfent_power_iteration) ||
-    (inp.sol == Solver_choice::saaf_eigen)) ||
-    (inp.sol == Solver_choice::saaf_power_iteration)};
+    (inp.sol == Solver_choice::saaf_power_iteration))};
 
   unique_ptr<Quadrature> quad;
   switch (inp.quadrature_type)
