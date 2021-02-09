@@ -821,13 +821,18 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   res.keff = 1.0 / res.keff;
   Vector tmp(fespace->GetTrueVSize());
   slepc.GetEigenvector(0, tmp);
-  
 
   // each group/moment is currently stored as a vector quantity
   // parsing this is then handled by ParaView
   // for dimensions <= 3, the vector is listed {x,y,z}
   // for higher dimensions, the vector is listed {0,1,2,3,4,...}
   res(0).Distribute(tmp);
+
+  // flip the sign of the solution such that the scalar flux in group=0 is positive
+  tmp.Destroy();
+  res(0).GetNodalValues(tmp);
+  if (std::abs(tmp.Max()) < std::abs(tmp.Min()))
+    res(0).Neg();
 
   return;
 }
