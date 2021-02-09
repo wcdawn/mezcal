@@ -232,9 +232,11 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::slepc_vector):
           spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          MFEMFinalizeSlepc();
           break;
         case (Solver_choice::slepc_manual):
-          diffusion_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          MFEMFinalizeSlepc();
           break;
         case (Solver_choice::epdo_power_iteration):
           epdo_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);

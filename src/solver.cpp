@@ -274,8 +274,7 @@ void spn_power_iteration(Timer& time, const Input& inp,
   cg.SetPreconditioner(amg);
 
   // get the process id so that only the root process writes to terminal
-  int myid;
-  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  const int myid{fespace->GetMyRank()};
 
   // initialize "old" data
   double keff_old{res.keff};
@@ -635,13 +634,38 @@ void spn_slepc_vector(Timer& time, const Input& inp,
                         ParFiniteElementSpace* const fespace, Result& res)
 {
 
+  // get the process id so that only the root process writes to terminal
+  const int myid{fespace->GetMyRank()};
+
   mat_lib.set_nmoment(inp.spn_order()+1);
 
   const std::string slepcrc_fname{inp.concatenate_path("slepcrc")};
+
+  std::vector<std::string> arguments{" ",
+    "-eps_monitor", "-eps_converged_reason", "-eps_type", "gd", 
+    "-st_type", "precond", "-st_ksp_type", "preonly",
+    "-st_pc_type", "hypre", "-st_pc_hypre_type", "boomeramg"};
+
+  arguments.emplace_back("-st_pc_hypre_boomeramg_numfunctions");
+  arguments.emplace_back(std::to_string(mat_lib.ngroup()*inp.spn_eq()));
+
+  if (inp.verbose)
+  {
+    arguments.emplace_back("-eps_view");
+    arguments.emplace_back("-st_pc_hypre_boomeramg_print_statistics");
+  }
+
+  int argc_val{static_cast<int>(arguments.size())};
+  std::vector<char*> argv_val(argc_val);
+  for (int i{0}; i < argc_val; ++i)
+    argv_val[i] = const_cast<char*>(arguments[i].c_str());
+
+  char** argv{argv_val.data()};
+
   if (exists(slepcrc_fname))
-    MFEMInitializeSlepc(NULL, NULL, slepcrc_fname.c_str(), NULL);
+    MFEMInitializeSlepc(&argc_val, &argv, slepcrc_fname.c_str(), NULL);
   else
-    MFEMInitializeSlepc(NULL, NULL, NULL, NULL);
+    MFEMInitializeSlepc(&argc_val, &argv, NULL, NULL);
 
   time.start(time.matrix_assembly);
 
@@ -683,6 +707,7 @@ void spn_slepc_vector(Timer& time, const Input& inp,
     }
   }
   MatrixPWConstCoefficient leakage_func{leakage};
+  if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::leakage_func" << std::endl;
 
   std::vector<DenseMatrix> removal(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -701,6 +726,13 @@ void spn_slepc_vector(Timer& time, const Input& inp,
     }
   }
   MatrixPWConstCoefficient removal_func{removal};
+  if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::removal_func" << std::endl;
+
+  diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
+  diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+  diffusion_bilinear.Assemble();
+  diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+  diffusion_bilinear.Finalize();
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -722,12 +754,7 @@ void spn_slepc_vector(Timer& time, const Input& inp,
     }
   }
   MatrixPWConstCoefficient fission_func{fission};
-
-  diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
-  diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
-  diffusion_bilinear.Assemble();
-  diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
-  diffusion_bilinear.Finalize();
+  if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::fission_func" << std::endl;
 
   fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
   fission_bilinear.Assemble();
@@ -763,11 +790,14 @@ void spn_slepc_vector(Timer& time, const Input& inp,
 
   }
 
+  /*
   A->Print("petsca_vector");
   M->Print("petscm_vector");
+  */
 
   slepc.SetOperators(*A, *M);
 
+  /*
   // set based on the previous state
   Vector true_dof;
   res(0).GetTrueDofs(true_dof);
@@ -775,6 +805,7 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   const std::unique_ptr<Vec[]> array{std::make_unique<Vec[]>(1)};
   array[0] = tv;
   EPSSetInitialSpace(slepc, 1, array.get());
+  */
 
   time.start(time.solver);
   slepc.Solve();
@@ -797,16 +828,17 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   // for dimensions <= 3, the vector is listed {x,y,z}
   // for higher dimensions, the vector is listed {0,1,2,3,4,...}
   res(0).Distribute(tmp);
+
+  return;
 }
 
-// TODO delete this solver
-void diffusion_slepc_manual(Timer& time, const Input& inp,
-                       const Material_library& mat_lib,
+void spn_slepc_manual(Timer& time, const Input& inp,
+                       Material_library& mat_lib,
                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
                        ParFiniteElementSpace* const fespace, Result& res)
 {
 
-  static constexpr int ell{0}; // for P0 xs
+  mat_lib.set_nmoment(inp.spn_order()+1);
 
   // NOTE: this call to MFEMInitializeSlepc() leaks.
   // It leaks 112 bytes in 2 blocks. (definitely lost)
@@ -820,96 +852,180 @@ void diffusion_slepc_manual(Timer& time, const Input& inp,
 
   time.start(time.matrix_assembly);
 
+  const int block_rank{mat_lib.ngroup() * inp.spn_eq()};
   const int offset{fespace->TrueVSize()}; // needed for parallel
-  Array<int> offset_list(mat_lib.ngroup() + 1);
+  Array<int> offset_list(block_rank + 1);
   offset_list[0] = 0;
-  for (int g{1}; g < mat_lib.ngroup() + 1; ++g)
-    offset_list[g] = offset_list[g-1] + offset;
+  for (int i{1}; i < block_rank+1; ++i)
+    offset_list[i] = offset_list[i-1] + offset;
 
   BlockOperator diffusion_block{offset_list};
   BlockOperator fission_block{offset_list};
 
   std::vector<std::unique_ptr<PetscParMatrix>> matrix_list;
-  matrix_list.reserve(mat_lib.ngroup() * mat_lib.ngroup());
+  matrix_list.reserve(block_rank*block_rank);
 
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  for (int n{0}; n < inp.spn_eq(); ++n)
   {
 
-    Vector leakage(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
-    PWConstCoefficient leakage_func{leakage};
+    const double dble_n{2.0*n};
+    const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+    const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
+    const double ymult{(dble_n*dble_n - dble_n) / (4.0*dble_n*dble_n - 1.0)};
+    const double zmult{(dble_n+1.0)*(dble_n+2.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
 
-    Vector removal(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      removal[i] = mat_lib.mat[i].rec.sigma_r(g,ell);
-    PWConstCoefficient removal_func{removal};
-
-    ParBilinearForm diffusion_bilinear{fespace};
-    diffusion_bilinear.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
-    diffusion_bilinear.AddDomainIntegrator(new MassIntegrator{removal_func});
-    diffusion_bilinear.Assemble();
-    diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
-    diffusion_bilinear.Finalize();
-
-    matrix_list.emplace_back(bilinear_to_petscparmatrix(diffusion_bilinear));
-    diffusion_block.SetDiagonalBlock(g, matrix_list.back().get());
-
-    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
 
-      Vector fission(pmesh->attributes.Max());
-      fission = 0.0;
+      const int idx_dia{g + mat_lib.ngroup() * n};
+      const int idx_sub{idx_dia - mat_lib.ngroup()};
+      const int idx_sup{idx_dia + mat_lib.ngroup()};
+
+      Vector leakage(pmesh->attributes.Max());
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
       {
-        const auto& mat{mat_lib.mat[i]};
-        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
-        {
-          const auto& isotope{mat.iso[iso_idx]};
-          const auto& record{isotope.rec};
-          const double nden{isotope.nden};
-          fission[i] += record.chi[g] * nden * record.nusf[gprime];
-        }
+        leakage(i) = xmult_next / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        if (n > 0)
+          leakage(i) += xmult_prev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
       }
-      PWConstCoefficient fission_func{fission};
+      PWConstCoefficient leakage_func{leakage};
 
-      ParBilinearForm fission_bilinear{fespace};
-      fission_bilinear.AddDomainIntegrator(new MassIntegrator{fission_func});
-      fission_bilinear.Assemble();
-      fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
-      fission_bilinear.Finalize();
+      Vector removal(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+        removal[i] = mat_lib.mat[i].rec.sigma_r(g,2*n);
+      PWConstCoefficient removal_func{removal};
 
-      matrix_list.emplace_back(bilinear_to_petscparmatrix(fission_bilinear));
-      fission_block.SetBlock(g, gprime, matrix_list.back().get());
+      ParBilinearForm self_bilinear{fespace};
+      self_bilinear.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+      self_bilinear.AddDomainIntegrator(new MassIntegrator{removal_func});
+      self_bilinear.Assemble();
+      self_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+      self_bilinear.Finalize();
 
-      if (gprime != g)
+      matrix_list.emplace_back(bilinear_to_petscparmatrix(self_bilinear));
+      diffusion_block.SetDiagonalBlock(idx_dia, matrix_list.back().get());
+
+      if ((n+1) < inp.spn_eq())
       {
-        Vector scatter(pmesh->attributes.Max());
-        scatter = 0.0; // not zero initialized by default
+
+        Vector next_leakage(pmesh->attributes.Max());
         for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        {
-          Array<int> col_idx;
-          Vector data;
-          mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
-          const auto gprime_idx{col_idx.FindSorted(gprime)};
-          if (gprime_idx >= 0)
-            scatter[i] -= data[gprime_idx];
-        }
-        PWConstCoefficient scatter_func{scatter};
+          next_leakage(i) = zmult / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        PWConstCoefficient next_leakage_func{next_leakage};
 
-        ParBilinearForm scatter_bilinear{fespace};
-        scatter_bilinear.AddDomainIntegrator(new MassIntegrator{scatter_func});
-        scatter_bilinear.Assemble();
-        scatter_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
-        scatter_bilinear.Finalize();
-
-        matrix_list.emplace_back(bilinear_to_petscparmatrix(scatter_bilinear));
-        diffusion_block.SetBlock(g, gprime, matrix_list.back().get());
-
+        ParBilinearForm next_bilinear{fespace};
+        next_bilinear.AddDomainIntegrator(new DiffusionIntegrator{next_leakage_func});
+        next_bilinear.Assemble();
+        next_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+        next_bilinear.Finalize();
+        matrix_list.emplace_back(bilinear_to_petscparmatrix(next_bilinear));
+        diffusion_block.SetBlock(idx_dia, idx_sup, matrix_list.back().get());
       }
 
-    }
+      if (n > 0)
+      {
 
+        Vector prev_leakage(pmesh->attributes.Max());
+        for (int i{0}; i < pmesh->attributes.Max(); ++i)
+          prev_leakage(i) = ymult / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+        PWConstCoefficient prev_leakage_func{prev_leakage};
+
+        ParBilinearForm prev_bilinear{fespace};
+        prev_bilinear.AddDomainIntegrator(new DiffusionIntegrator{prev_leakage_func});
+        prev_bilinear.Assemble();
+        prev_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+        prev_bilinear.Finalize();
+        matrix_list.emplace_back(bilinear_to_petscparmatrix(prev_bilinear));
+        diffusion_block.SetBlock(idx_dia, idx_sub, matrix_list.back().get());
+      }
+
+      if (n == 0)
+      {
+
+        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        {
+
+          Vector fission(pmesh->attributes.Max());
+          fission = 0.0;
+          for (int i{0}; i < pmesh->attributes.Max(); ++i)
+          {
+            const auto& mat{mat_lib.mat[i]};
+            for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+            {
+              const auto& isotope{mat.iso[iso_idx]};
+              const auto& record{isotope.rec};
+              const double nden{isotope.nden};
+              fission[i] += record.chi[g] * nden * record.nusf[gprime];
+            }
+          }
+          PWConstCoefficient fission_func{fission};
+
+          ParBilinearForm fission_bilinear{fespace};
+          fission_bilinear.AddDomainIntegrator(new MassIntegrator{fission_func});
+          fission_bilinear.Assemble();
+          fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
+          fission_bilinear.Finalize();
+
+          matrix_list.emplace_back(bilinear_to_petscparmatrix(fission_bilinear));
+          // block index formula valid for zeroth moment only
+          fission_block.SetBlock(idx_dia, gprime, matrix_list.back().get());
+
+          if (gprime != g)
+          {
+            Vector scatter(pmesh->attributes.Max());
+            scatter = 0.0; // not zero initialized by default
+            for (int i{0}; i < pmesh->attributes.Max(); ++i)
+            {
+              Array<int> col_idx;
+              Vector data;
+              mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
+              const auto gprime_idx{col_idx.FindSorted(gprime)};
+              if (gprime_idx >= 0)
+                scatter[i] -= data[gprime_idx];
+            }
+            PWConstCoefficient scatter_func{scatter};
+
+            ParBilinearForm scatter_bilinear{fespace};
+            scatter_bilinear.AddDomainIntegrator(new MassIntegrator{scatter_func});
+            scatter_bilinear.Assemble();
+            scatter_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+            scatter_bilinear.Finalize();
+
+            matrix_list.emplace_back(bilinear_to_petscparmatrix(scatter_bilinear));
+            // block index formula valid for zeroth moment only
+            diffusion_block.SetBlock(idx_dia, gprime, matrix_list.back().get());
+
+          }
+
+        } // gprime
+
+      } // zeroth-moment (scatter & fiss)
+
+    } // ngroup
+
+  } // spn_eq
+
+  // TODO check if the length of matrix_list is correct...
+
+  if (inp.spn_eq() > 1)
+  {
+    // tricking petsc
+    ConstantCoefficient zero{0.0};
+    ParBilinearForm zero_bilinear{fespace};
+    zero_bilinear.AddDomainIntegrator(new MassIntegrator{zero});
+    zero_bilinear.Assemble();
+    zero_bilinear.Finalize();
+    matrix_list.emplace_back(bilinear_to_petscparmatrix(zero_bilinear));
+    const int idx_fixed{mat_lib.ngroup()+1};
+    for (int n{0}; n < inp.spn_eq(); ++n)
+    {
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const int idx_moving{g + n*mat_lib.ngroup()};
+        fission_block.SetBlock(idx_fixed, idx_moving, matrix_list.back().get());
+        fission_block.SetBlock(idx_moving, idx_fixed, matrix_list.back().get());
+      }
+    }
   }
 
   time.stop();
@@ -928,20 +1044,24 @@ void diffusion_slepc_manual(Timer& time, const Input& inp,
   PetscParMatrix A{&Atmp, Operator::PETSC_MATAIJ};
 
   PetscParMatrix Mtmp{MPI_COMM_WORLD, &fission_block, Operator::PETSC_MATAIJ};
-  PetscParMatrix M{&Mtmp, Operator::PETSC_MATAIJ};
+  PetscParMatrix M{&Mtmp, Operator::PETSC_MATAIJ}; // TODO why?
 
   slepc.SetOperators(A, M);
 
+  /*
   A.Print("petsca_manual");
   M.Print("petscm_manual");
+  */
 
   // NOTE: this call to SlepcEigenSolver::Solve() leaks.
   // It leaks 124 bytes in 6 blocks. (definitely lost)
   // It leaks 1,408 bytes in 4 blocks. (indirecly lost)
   // It seems to probably be a SLEPc issue.
+  std::cout << "START" << std::endl;
   time.start(time.solver);
   slepc.Solve();
   time.stop();
+  std::cout << "STOP" << std::endl;
 
   // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
   // cannot be accessed, even if they are *nearly* converged. Therefore, to
@@ -951,15 +1071,19 @@ void diffusion_slepc_manual(Timer& time, const Input& inp,
 
   slepc.GetEigenvalue(0, res.keff);
   res.keff = 1.0 / res.keff;
-  Vector tmp(fespace->GetTrueVSize()*mat_lib.ngroup());
+  Vector tmp(fespace->GetTrueVSize()*block_rank);
   slepc.GetEigenvector(0, tmp);
 
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  for (int n{0}; n < inp.spn_eq(); ++n)
   {
-    Vector group(fespace->GetTrueVSize());
-    for (int idx{0}; idx < fespace->GetTrueVSize(); ++idx)
-      group[idx] = tmp[idx + g * fespace->GetTrueVSize()];
-    res(g).Distribute(group);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      const int base_offset{(g + mat_lib.ngroup()*n) * fespace->GetTrueVSize()};
+      Vector this_sol(fespace->GetTrueVSize());
+      for (int idx{0}; idx < fespace->GetTrueVSize(); ++idx)
+        this_sol(idx) = tmp(idx + base_offset);
+      res(g,n).Distribute(this_sol);
+    }
   }
 
 }
@@ -1102,8 +1226,7 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
   }
 ////////////////////////////////////////////////////////////////////////////////
 
-  int myid;
-  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  const int myid{fespace->GetMyRank()};
 
   double k_conv{inp.tol.k * 10 + 0.1};
   double phi_conv{inp.tol.phi * 10 + 0.1};
@@ -1370,8 +1493,7 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
   gmres.SetKDim(10000); // number of iterations to perform between restarts, default=50
   
   // get the process id so that only the zero-process writes to the terminal
-  int myid;
-  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  const int myid{fespace->GetMyRank()};
 
   // initialize "old" data
   double keff_old{angular_flux.keff};
@@ -1527,6 +1649,26 @@ void saaf_power_iteration(const Quadrature* const quad, Timer& time, const Input
 
   time.start(time.matrix_assembly);
 
+  const int offset{fespace->TrueVSize()};
+  Array<int> offset_list(quad->nd()+1);
+  offset_list[0] = 0;
+  for (int n{1}; n < quad->nd()+1; ++n)
+    offset_list[n] = offset_list[n-1] + offset;
+
+  const std::string petscrc_fname{inp.concatenate_path("petscrc")};
+  if (exists(petscrc_fname))
+    MFEMInitializePetsc(NULL, NULL, petscrc_fname.c_str(), NULL);
+  else
+    MFEMInitializePetsc(NULL, NULL, NULL, NULL);
+
+  std::vector<BlockOperator> lhs_operator;
+  lhs_operator.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    lhs_operator.emplace_back(offset_list);
+
+  std::vector<std::unique_ptr<PetscParMatrix>> matrix_list;
+  matrix_list.reserve(mat_lib.ngroup() * quad->nd());
+
   SPNWrapper<std::unique_ptr<ParBilinearForm>> a{mat_lib.ngroup(), quad->nd()};
   a.resize();
 
@@ -1553,6 +1695,11 @@ void saaf_power_iteration(const Quadrature* const quad, Timer& time, const Input
 
       a(g,n)->Assemble();
       a(g,n)->Finalize();
+
+
+      matrix_list.emplace_back(bilinear_to_petscparmatrix(*a(g,n)));
+      for (int nprime{0}; nprime < quad->nd(); ++nprime)
+        lhs_operator[g].SetBlock(n, nprime, matrix_list.back().get(), quad->weight(nprime));
 
     }
   }
@@ -1699,8 +1846,7 @@ void saaf_power_iteration(const Quadrature* const quad, Timer& time, const Input
   }
 ////////////////////////////////////////////////////////////////////////////////
 
-  int myid;
-  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  const int myid{fespace->GetMyRank()};
 
   // these variables need to be carried between iterations
   double k_conv{inp.tol.k * 1e1 + 1e-6};
@@ -1754,11 +1900,16 @@ void saaf_power_iteration(const Quadrature* const quad, Timer& time, const Input
         phi_old.HostRead();
         const double local_scattering_conv{
           phi_old.Normlinf() / scalar_flux(g).Normlinf()};
-        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, 
+          MPI_MAX, MPI_COMM_WORLD);
 
         if (myid == 0) 
         {
-          std::cout << "iter=" << iter << " g=" << g << " scattering_iter=" << scattering_iter << " scattering_conv=" << scattering_conv << std::endl;
+          std::cout << "iter=" << iter 
+                    << " g=" << g 
+                    << " scattering_iter=" << scattering_iter 
+                    << " scattering_conv=" << scattering_conv 
+                    << std::endl;
         }
 
       } // scattering iterations

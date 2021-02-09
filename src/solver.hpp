@@ -70,8 +70,8 @@ void spn_slepc_vector(Timer& time, const Input& inp,
                         const mfem::ParMesh* const pmesh,
                         mfem::ParFiniteElementSpace* const fespace, Result& res);
 
-void diffusion_slepc_manual(Timer& time, const Input& inp,
-                              const Material_library& mat_lib,
+void spn_slepc_manual(Timer& time, const Input& inp,
+                              Material_library& mat_lib,
                               const mfem::Array<int>& ess_bdr,
                               const mfem::ParMesh* const pmesh,
                               mfem::ParFiniteElementSpace* const fespace, Result& res);

@@ -14,4 +14,17 @@ name C19 C19 1.0
 name C20 C20 1.0
 
 [STATE]
-solver power_iteration # necessary for multigroup
+
+solver slepc_vector
+spn 15
+
+#### solver saaf_power_iteration
+#### quadrature level_symmetric
+#### quad_order 8
+
+inner_abs_tol 0.0
+#inner_rel_tol 1e-6
+k_tol 1
+phi_tol 1e-6
+
+max_outer 10000
