@@ -1,5 +1,8 @@
 # Makefile
 
+CXXFLAGS = -Wall -pedantic-errors -std=$(STD)
+LDFLAGS = -std=$(STD)
+
 ifeq ($(MACH),SUMMIT)
 STD = c++11
 MPICXX = mpixlC
@@ -15,6 +18,9 @@ METIS_LIB = -L$(METIS_DIR)/lib -l:libmetis.so
 
 PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
 SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
+
+CXXFLAGS += -fopenmp
+LDFLAGS += -fopenmp
 
 else ifeq ($(MACH),ARCHBUILD)
 STD = c++17
@@ -38,8 +44,6 @@ $(error Invalid MACH)
 
 endif
 
-CXXFLAGS = -Wall -pedantic-errors -std=$(STD)
-
 ifeq ($(METHOD), dbg)
 CXXFLAGS += -O0 -g
 else
@@ -53,7 +57,6 @@ H5CXXFLAGS = $(CXXFLAGS)
 H5_LIB = -L$(OLCF_HDF5_ROOT) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
 
 LD = $(MPICXX) 
-LDFLAGS = -std=$(STD)
 
 MFEM_INCLUDE = -I$(MFEM_DIR)
 MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
