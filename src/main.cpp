@@ -28,12 +28,6 @@ void version(std::ostream& os); // forward declaration
 
 int main(int argc, char* argv[])
 {
-  /*
-   * Features to add:
-   * - SPN.
-   * - SLEPc & Trilinos solvers.
-   * - Loop over states.
-   */
 
   Timer time;
 
@@ -161,7 +155,8 @@ int main(int argc, char* argv[])
 
   const bool is_transport{((inp.sol == Solver_choice::epdo_power_iteration) ||
     (inp.sol == Solver_choice::sfent_power_iteration) ||
-    (inp.sol == Solver_choice::saaf_power_iteration))};
+    (inp.sol == Solver_choice::saaf_power_iteration) ||
+    (inp.sol == Solver_choice::saaf_slepc_vector))};
 
   unique_ptr<Quadrature> quad;
   switch (inp.quadrature_type)
@@ -189,7 +184,8 @@ int main(int argc, char* argv[])
   }
 
   // TODO this needs to allow for differing values of spn_eq with different states
-  const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 1};
+  const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 
+    ((inp.sol == Solver_choice::saaf_slepc_vector) ? mat_lib.ngroup()*quad->nd() : 1)};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   int dof{fespace.TrueVSize() * ((inp.sol == Solver_choice::slepc_vector) ? 1 : mat_lib.ngroup())};
   if (is_transport)
@@ -199,9 +195,11 @@ int main(int argc, char* argv[])
 
   // TODO this should move outside of the [STATE] loop but we need to disallow
   // changing the solver type between states (maybe move to [CORE] block)
-  const int flux_length{(inp.sol == Solver_choice::slepc_vector) ? 1 : xs.ngroup()};
-  // TODO figure out the moment/angle length for the vector
-  const int moment_angle_length{(is_transport) ? quad->nd() : inp.spn_eq()};
+  const int flux_length{((inp.sol == Solver_choice::slepc_vector) || 
+    (inp.sol == Solver_choice::saaf_slepc_vector)) ? 1 : xs.ngroup()};
+  const int moment_angle_length{(is_transport) ? 
+    ((inp.sol == Solver_choice::saaf_slepc_vector) ? 1 : quad->nd()) : 
+    ((inp.sol == Solver_choice::slepc_vector) ? 1 : inp.spn_eq())};
   Result res{&fespace, flux_length, moment_angle_length};
   Result scalar_flux{&fespace, flux_length};
 
@@ -245,7 +243,11 @@ int main(int argc, char* argv[])
           sfent_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_power_iteration):
-          saaf_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
+          saaf_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          break;
+        case (Solver_choice::saaf_slepc_vector):
+          saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          MFEMFinalizeSlepc();
           break;
         default:
           cerr << "Invalid solver choice.\n";
@@ -290,7 +292,7 @@ int main(int argc, char* argv[])
     else
       moment_width = std::to_string(2*inp.spn_eq()).length();
 
-    if (inp.sol == Solver_choice::slepc_vector)
+    if ((inp.sol == Solver_choice::slepc_vector) || (inp.sol == Solver_choice::saaf_slepc_vector))
     {
       // TODO fix this so that this can be more descriptive
       // Will probably require constructing a new FiniteElementSpace, a new

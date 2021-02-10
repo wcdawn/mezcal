@@ -12,7 +12,8 @@ enum class Solver_choice
   slepc_manual,
   epdo_power_iteration,
   sfent_power_iteration,
-  saaf_power_iteration
+  saaf_power_iteration,
+  saaf_slepc_vector
 };
 
 std::string solver_choice_enum_to_str(const Solver_choice& solver);

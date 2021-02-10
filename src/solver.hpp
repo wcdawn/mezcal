@@ -90,19 +90,25 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
                            mfem::ParFiniteElementSpace* const fespace,
                            Result& angular_flux, Result& scalar_flux);
 
-void saaf_eigen(const Quadrature* const quad, Timer& time, const Input& inp,
-                const Material_library& mat_lib,
-                const mfem::Array<int>& ess_bdr,
-                mfem::ParMesh* const pmesh,
-                mfem::ParFiniteElementSpace* const fespace,
-                Result& angular_flux, Result& scalar_flux);
-
-void saaf_power_iteration(const Quadrature* const quad, Timer& time, const Input& inp,
+void saaf_power_iteration(const Quadrature* const quad,
+                          Timer& time,
+                          const Input& inp,
                           const Material_library& mat_lib,
-                          const mfem::Array<int>& ess_bdr,
                           mfem::ParMesh* const pmesh,
                           mfem::ParFiniteElementSpace* const fespace,
-                          Result& angular_flux, Result& scalar_flux);
+                          Result& angular_flux,
+                          Result& scalar_flux);
+
+void saaf_slepc_vector(const Quadrature* const quad,
+                       Timer& time,
+                       const Input& inp,
+                       const Material_library& mat_lib,
+                       mfem::ParMesh* const pmesh,
+                       mfem::ParFiniteElementSpace* const fespace,
+                       Result& angular_flux,
+                       Result& scalar_flux);
+
+void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations);
 
 void calc_scalar_flux(int g, const Result& angular_flux, const Quadrature* const quad, Result& scalar_flux);
 
