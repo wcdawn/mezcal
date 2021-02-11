@@ -2011,16 +2011,16 @@ void saaf_slepc_vector(const Quadrature* const quad,
     inv_tot.emplace_back(tot[g], -1.0);
   }
 
-  SPNWrapper<ScalarVectorProductCoefficient> inv_tot_omega{mat_lib.ngroup(), quad->nd()};
-  inv_tot_omega.reserve();
-  for (int n{0}; n < quad->nd(); ++n)
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
+  std::vector<ScalarVectorProductCoefficient> inv_tot_omega;
+  inv_tot_omega.reserve(quad->nd()*mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
       inv_tot_omega.emplace_back(inv_tot[g], omega[n]);
 
-  SPNWrapper<ScalarMatrixProductCoefficient> inv_tot_omega_matrix{mat_lib.ngroup(), quad->nd()};
-  inv_tot_omega_matrix.reserve();
-  for (int n{0}; n < quad->nd(); ++n)
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
+  std::vector<ScalarMatrixProductCoefficient> inv_tot_omega_matrix;
+  inv_tot_omega_matrix.reserve(quad->nd()*mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
       inv_tot_omega_matrix.emplace_back(inv_tot[g], omega_matrix[n]);
 
   time.start(time.matrix_assembly);
@@ -2035,6 +2035,22 @@ void saaf_slepc_vector(const Quadrature* const quad,
   sink_bdr_integrator.reserve(block_rank);
   Array<int> sink_bdr_row, sink_bdr_col;
 
+  std::vector<MassIntegrator> tot_integrator;
+  tot_integrator.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    tot_integrator.emplace_back(tot[g]);
+
+  std::vector<DGTraceIntegrator> omega_bdr_integrator;
+  omega_bdr_integrator.reserve(quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
+    omega_bdr_integrator.emplace_back(omega[n], 1.0, 0.5);
+
+  std::vector<DiffusionIntegrator> leakage_integrator;
+  leakage_integrator.reserve(quad->nd()*mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      leakage_integrator.emplace_back(inv_tot_omega_matrix[n+g*quad->nd()]);
+
   // This ordering is advantageous for problems with more angles than energy
   // groups. This is the case for the vast majority of transport problems.
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2043,18 +2059,15 @@ void saaf_slepc_vector(const Quadrature* const quad,
     {
       const int idx_dia{n + g*quad->nd()};
 
-      sink_integrator.emplace_back(new DiffusionIntegrator{inv_tot_omega_matrix(g,n)}); // TODO flip indices
+      sink_integrator.emplace_back(&leakage_integrator[idx_dia]);
       sink_row.Append(idx_dia);
       sink_col.Append(idx_dia);
 
-      // TODO maybe don't need to create as many objects...
-      // maybe only create ngroup objects and point to them
-      sink_integrator.emplace_back(new MassIntegrator{tot[g]});
+      sink_integrator.emplace_back(&tot_integrator[g]);
       sink_row.Append(idx_dia);
       sink_col.Append(idx_dia);
 
-      // TODO maybe only need ndir objects
-      sink_bdr_integrator.emplace_back(new DGTraceIntegrator{omega[n], 1.0, 0.5});
+      sink_bdr_integrator.emplace_back(&omega_bdr_integrator[n]);
       sink_bdr_row.Append(idx_dia);
       sink_bdr_col.Append(idx_dia);
 
@@ -2082,7 +2095,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
       for (int gidx{0}; gidx < scat_col.Size(); ++gidx)
       {
         const int gprime{scat_col[gidx]};
-        sigma_s_vec[g + gprime*mat_lib.ngroup()](i) = -scat_dat(gidx);
+        sigma_s_vec[gprime + g*mat_lib.ngroup()](i) = -scat_dat(gidx);
       }
     }
   }
@@ -2093,8 +2106,22 @@ void saaf_slepc_vector(const Quadrature* const quad,
     sigma_s.emplace_back(vec);
 
   std::vector<ProductCoefficient> scat;
+  std::vector<MassIntegrator> scat_integrator;
+  scat.reserve(mat_lib.ngroup()*mat_lib.ngroup()*quad->nd());
+  scat_integrator.reserve(mat_lib.ngroup()*mat_lib.ngroup()*quad->nd());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    {
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        scat.emplace_back(weight[n], sigma_s[g + gprime*mat_lib.ngroup()]);
+        scat_integrator.emplace_back(scat.back());
+      }
+    }
+  }
+
   std::vector<ScalarVectorProductCoefficient> scat_saaf;
-  scat.reserve(block_rank*block_rank);
   scat_saaf.reserve(block_rank*block_rank);
   Array<int> scat_row, scat_col;
   scat_row.Reserve(block_rank*block_rank);
@@ -2110,8 +2137,9 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
         {
           const int this_col{nprime + gprime*quad->nd()};
-          scat.emplace_back(weight[nprime], sigma_s[gprime + g*mat_lib.ngroup()]);
-          scat_saaf.emplace_back(scat.back(), inv_tot_omega(g,n));
+          ProductCoefficient& this_scat{
+            scat[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]};
+          scat_saaf.emplace_back(this_scat, inv_tot_omega[n+g*quad->nd()]);
           scat_row.Append(this_col); // TODO fix indices
           scat_col.Append(this_row);
         }
@@ -2121,8 +2149,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   std::vector<BilinearFormIntegrator*> scat_bfi;
   scat_bfi.reserve(block_rank*block_rank);
-  for (ProductCoefficient& coeff : scat)
-    scat_bfi.emplace_back(new MassIntegrator{coeff});
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          scat_bfi.emplace_back(&scat_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]);
 
   std::vector<BilinearFormIntegrator*> scat_saaf_bfi;
   scat_saaf_bfi.reserve(block_rank*block_rank);
@@ -2138,8 +2169,10 @@ void saaf_slepc_vector(const Quadrature* const quad,
   sink_bilinear.AddBdrFaceIntegrator(
     new VectorIntegratorWrapper{sink_bdr_integrator, block_rank, sink_bdr_row, sink_bdr_col});
 
+  if (myid == 0) std::cout << "SINK_ASSENBLE_BEGIN" << std::endl;
   sink_bilinear.Assemble();
   sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
+  if (myid == 0) std::cout << "SINK_ASSEMBLE_END" << std::endl;
 
   sigma_s_vec.clear(); // TODO offload
   sigma_s.clear();
@@ -2151,15 +2184,6 @@ void saaf_slepc_vector(const Quadrature* const quad,
   sink_col.DeleteAll();
   sink_bdr_row.DeleteAll();
   sink_bdr_row.DeleteAll();
-
-  for (BilinearFormIntegrator* bfi : sink_integrator)
-    delete bfi;
-
-  for (BilinearFormIntegrator* bfi : sink_bdr_integrator)
-    delete bfi;
-
-  for (BilinearFormIntegrator* bfi : scat_bfi)
-    delete bfi;
 
   for (BilinearFormIntegrator* bfi : scat_saaf_bfi)
     delete bfi;
@@ -2205,8 +2229,22 @@ void saaf_slepc_vector(const Quadrature* const quad,
     chi_nusf.emplace_back(vec);
 
   std::vector<ProductCoefficient> fiss;
+  std::vector<MassIntegrator> fiss_integrator;
+  fiss.reserve(mat_lib.ngroup()*mat_lib.ngroup()*quad->nd());
+  fiss_integrator.reserve(mat_lib.ngroup()*mat_lib.ngroup()*quad->nd());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+    {
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        fiss.emplace_back(weight[n], chi_nusf[gprime + g*mat_lib.ngroup()]);
+        fiss_integrator.emplace_back(fiss.back());
+      }
+    }
+  }
+
   std::vector<ScalarVectorProductCoefficient> fiss_saaf;
-  fiss.reserve(block_rank*block_rank);
   fiss_saaf.reserve(block_rank*block_rank);
   Array<int> fiss_row, fiss_col;
   fiss_row.Reserve(block_rank*block_rank);
@@ -2222,10 +2260,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
         {
           const int this_col{nprime + gprime*quad->nd()};
-          fiss.emplace_back(weight[nprime], chi_nusf[g + gprime*mat_lib.ngroup()]);
-          fiss_saaf.emplace_back(fiss.back(), inv_tot_omega(g,n));
-          fiss_row.Append(this_col); // TODO fix indices
-          fiss_col.Append(this_row);
+          ProductCoefficient& this_fiss{
+            fiss[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]};
+          fiss_saaf.emplace_back(this_fiss, inv_tot_omega[n+g*mat_lib.ngroup()]);
+          fiss_row.Append(this_row);
+          fiss_col.Append(this_col);
         }
       }
     }
@@ -2233,8 +2272,12 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   std::vector<BilinearFormIntegrator*> fiss_bfi;
   fiss_bfi.reserve(block_rank*block_rank);
-  for (ProductCoefficient& coeff : fiss)
-    fiss_bfi.emplace_back(new MassIntegrator{coeff});
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          fiss_bfi.emplace_back(&fiss_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]);
 
   std::vector<BilinearFormIntegrator*> fiss_saaf_bfi;
   fiss_saaf_bfi.reserve(block_rank*block_rank);
@@ -2246,8 +2289,10 @@ void saaf_slepc_vector(const Quadrature* const quad,
   fission_bilinear.AddDomainIntegrator(
     new VectorIntegratorWrapper{fiss_saaf_bfi, block_rank, fiss_row, fiss_col});
 
+  if (myid == 0) std::cout << "FISSION_ASSEMBLY_BEGIN" << std::endl;
   fission_bilinear.Assemble();
   fission_bilinear.Finalize();
+  if (myid == 0) std::cout << "FISSION_ASSEMBLY_END" << std::endl;
 
   chi_nusf_vec.clear(); // TODO offload
   chi_nusf.clear();
@@ -2255,9 +2300,6 @@ void saaf_slepc_vector(const Quadrature* const quad,
   fiss_saaf.clear();
   fiss_row.DeleteAll();
   fiss_col.DeleteAll();
-
-  for (BilinearFormIntegrator* bfi : fiss_bfi)
-    delete bfi;
 
   for (BilinearFormIntegrator* bfi : fiss_saaf_bfi)
     delete bfi;
@@ -2267,15 +2309,9 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   time.stop();
 
-  SlepcEigenSolver slepc{MPI_COMM_WORLD};
-  slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
-  slepc.SetMaxIter(inp.tol.max_outer);
-
-  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
-
+  if (myid == 0) std::cout << "PETSC_TRANSLATION_BEGIN" << std::endl;
+  time.start("petsc translation");
   PetscParMatrix *A{nullptr}, *M{nullptr};
-
   {
     OperatorHandle Ah{Operator::PETSC_MATAIJ};
     sink_bilinear.ParallelAssemble(Ah);
@@ -2287,17 +2323,25 @@ void saaf_slepc_vector(const Quadrature* const quad,
     Mh.Get(M);
     Mh.SetOperatorOwner(false);
   }
+  time.stop();
+  if (myid == 0) std::cout << "PETSC_TRANSLATION_END" << std::endl;
 
+  time.start("slepc setup");
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetMaxIter(inp.tol.max_outer);
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(*A, *M);
-
-  A->Print("petsca_saaf");
-  M->Print("petscm_saaf");
+  time.stop();
 
   // TODO consider restarting
 
+  if (myid == 0) std::cout << "SOLVE_BEGIN" << std::endl;
   time.start(time.solver);
   slepc.Solve();
   time.stop();
+  if (myid == 0) std::cout << "SOLVE_END" << std::endl;
 
   delete A;
   delete M;

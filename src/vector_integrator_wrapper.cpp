@@ -21,9 +21,6 @@ void VectorIntegratorWrapper::AssembleElementMatrix(const FiniteElement& el,
     elmat.AddMatrix(pelmat, row_idx[i]*dof, col_idx[i]*dof);
   }
 
-  if (print)
-    elmat.Print();
-
   return;
 
 }
