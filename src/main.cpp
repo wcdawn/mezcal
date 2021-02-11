@@ -187,8 +187,9 @@ int main(int argc, char* argv[])
   const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 
     ((inp.sol == Solver_choice::saaf_slepc_vector) ? mat_lib.ngroup()*quad->nd() : 1)};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  int dof{fespace.TrueVSize() * ((inp.sol == Solver_choice::slepc_vector) ? 1 : mat_lib.ngroup())};
-  if (is_transport)
+  int dof{fespace.TrueVSize() * (((inp.sol == Solver_choice::slepc_vector) || 
+    (inp.sol == Solver_choice::saaf_slepc_vector)) ? 1 : mat_lib.ngroup())};
+  if ((is_transport) && (inp.sol != Solver_choice::saaf_slepc_vector))
     dof *= quad->nd();
   if (myid == 0)
     cout << "Number of finite element unknowns: " << dof << endl;
