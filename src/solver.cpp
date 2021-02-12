@@ -2262,7 +2262,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
           const int this_col{nprime + gprime*quad->nd()};
           ProductCoefficient& this_fiss{
             fiss[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]};
-          fiss_saaf.emplace_back(this_fiss, inv_tot_omega[n+g*mat_lib.ngroup()]);
+          fiss_saaf.emplace_back(this_fiss, inv_tot_omega[n+g*quad->nd()]);
           fiss_row.Append(this_row);
           fiss_col.Append(this_col);
         }
@@ -2272,7 +2272,6 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   std::vector<BilinearFormIntegrator*> fiss_bfi;
   fiss_bfi.reserve(block_rank*block_rank);
-
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     for (int n{0}; n < quad->nd(); ++n)
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
