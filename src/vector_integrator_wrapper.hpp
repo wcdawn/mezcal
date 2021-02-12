@@ -45,6 +45,8 @@ private:
 
   const bool print;
 
+  mfem::DenseMatrix pelmat;
+
 };
 
 #endif

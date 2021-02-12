@@ -7,7 +7,6 @@ void VectorIntegratorWrapper::AssembleElementMatrix(const FiniteElement& el,
                                                     DenseMatrix& elmat)
 {
 
-  DenseMatrix pelmat;
   bfi[0]->AssembleElementMatrix(el, Trans, pelmat);
   const int dof{pelmat.Width()};
 
@@ -31,7 +30,6 @@ void VectorIntegratorWrapper::AssembleElementMatrix2(const FiniteElement& trial_
                                                      DenseMatrix& elmat)
 {
 
-  DenseMatrix pelmat;
   bfi[0]->AssembleElementMatrix2(trial_fe, test_fe, Trans, pelmat);
   const int dof{pelmat.Width()};
 
@@ -55,7 +53,6 @@ void VectorIntegratorWrapper::AssembleFaceMatrix(const FiniteElement& el1,
                                                  DenseMatrix& elmat)
 {
 
-  DenseMatrix pelmat;
   bfi[0]->AssembleFaceMatrix(el1, el2, Trans, pelmat);
   const int dof{pelmat.Width()};
 
