@@ -38,6 +38,9 @@ CUDA_DIR = /opt/cuda
 PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 
+CXXFLAGS += -fopenmp
+LDFLAGS += -fopenmp
+
 else
 
 $(error Invalid MACH)
