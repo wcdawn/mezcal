@@ -686,88 +686,34 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
   if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::leakage_func" << std::endl;
 
-  const int block_rank{mat_lib.ngroup()*inp.spn_eq()};
-
-  std::vector<PWConstCoefficient> removal_coeff;
-  removal_coeff.reserve(block_rank + (mat_lib.ngroup()*mat_lib.ngroup()));
-
-  Array<int> row_idx, col_idx;
-
-  for (int n{0}; n < inp.spn_eq(); ++n)
+  std::vector<DenseMatrix> removal(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    removal[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
+    const XSRecord& record{mat_lib.mat[i].rec};
+
+    DenseMatrix scat_mat;
+    record.sigma_s.ToDenseMatrix(scat_mat);
+    scat_mat.Neg();
+    removal[i].AddMatrix(scat_mat, 0, 0);
+
+    for (int n{0}; n < inp.spn_eq(); ++n)
     {
-
-      const int idx_dia{g+n*mat_lib.ngroup()};
-
-      Vector removal_vec(pmesh->attributes.Max());
-      for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        removal_vec(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
-      removal_coeff.emplace_back(removal_vec);
-      row_idx.Append(idx_dia);
-      col_idx.Append(idx_dia);
-
-      if (n == 0)
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-
-        std::vector<Vector> scat_vec(mat_lib.ngroup());
-        std::vector<bool> scat_present(mat_lib.ngroup());
-
-        for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        {
-          Vector scat_dat;
-          Array<int> scat_col;
-          mat_lib.mat[i].rec.sigma_s.GetRow(g, scat_col, scat_dat);
-
-          for (int gidx{0}; gidx < scat_col.Size(); ++gidx)
-          {
-            const int gprime{scat_col[gidx]};
-            if (gprime != g)
-            {
-
-              if (!scat_present[gprime])
-              {
-                scat_vec[gprime].SetSize(pmesh->attributes.Max()); // later, check if size > 0
-                scat_vec[gprime] = 0.0;
-                scat_present[gprime] = true;
-              }
-
-              scat_vec[gprime](i) = -scat_dat(gidx);
-            } // (gprime != g)
-          } // gidx
-        } // i
-        
-        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-        {
-          if (scat_present[gprime])
-          {
-            removal_coeff.emplace_back(scat_vec[gprime]);
-            row_idx.Append(g);      // note: n==0
-            col_idx.Append(gprime); // note: n==0
-          }
-        } // gprime
-
-      } // (n == 0)
-
+        const int idx_dia{g + n*mat_lib.ngroup()};
+        removal[i](idx_dia,idx_dia) = record.sigma_r(g,n);
+      }
     }
   }
-
-  std::vector<BilinearFormIntegrator*> removal;
-  removal.reserve(removal_coeff.size());
-  for (auto& coeff : removal_coeff)
-    removal.emplace_back(new MassIntegrator{coeff});
-
-  diffusion_bilinear.AddDomainIntegrator(
-    new VectorIntegratorWrapper{removal, block_rank, row_idx, col_idx});
-
+  MatrixPWConstCoefficient removal_func{removal};
+  diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
   if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::removal_func" << std::endl;
+
 
   diffusion_bilinear.Assemble();
   diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
   diffusion_bilinear.Finalize();
-
-  for (BilinearFormIntegrator* bfi : removal)
-    delete bfi;
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -2027,14 +1973,6 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   ParBilinearForm sink_bilinear{fespace}, fission_bilinear{fespace};
 
-  std::vector<BilinearFormIntegrator*> sink_integrator;
-  sink_integrator.reserve(2*block_rank);
-  Array<int> sink_row, sink_col;
-
-  std::vector<BilinearFormIntegrator*> sink_bdr_integrator;
-  sink_bdr_integrator.reserve(block_rank);
-  Array<int> sink_bdr_row, sink_bdr_col;
-
   std::vector<MassIntegrator> tot_integrator;
   tot_integrator.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2051,6 +1989,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
     for (int n{0}; n < quad->nd(); ++n)
       leakage_integrator.emplace_back(inv_tot_omega_matrix[n+g*quad->nd()]);
 
+  std::unique_ptr<VectorIntegratorWrapper> sink_integrator{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, 2*block_rank)};
+  std::unique_ptr<VectorIntegratorWrapper> sink_bdr_integrator{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank)};
+
   // This ordering is advantageous for problems with more angles than energy
   // groups. This is the case for the vast majority of transport problems.
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2058,19 +2001,9 @@ void saaf_slepc_vector(const Quadrature* const quad,
     for (int n{0}; n < quad->nd(); ++n)
     {
       const int idx_dia{n + g*quad->nd()};
-
-      sink_integrator.emplace_back(&leakage_integrator[idx_dia]);
-      sink_row.Append(idx_dia);
-      sink_col.Append(idx_dia);
-
-      sink_integrator.emplace_back(&tot_integrator[g]);
-      sink_row.Append(idx_dia);
-      sink_col.Append(idx_dia);
-
-      sink_bdr_integrator.emplace_back(&omega_bdr_integrator[n]);
-      sink_bdr_row.Append(idx_dia);
-      sink_bdr_col.Append(idx_dia);
-
+      sink_integrator->AddIntegrator(&leakage_integrator[idx_dia], idx_dia, false);
+      sink_integrator->AddIntegrator(&tot_integrator[g], idx_dia, false);
+      sink_bdr_integrator->AddIntegrator(&omega_bdr_integrator[n], idx_dia, false);
     }
   }
 
@@ -2123,10 +2056,16 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   std::vector<ScalarVectorProductCoefficient> scat_saaf;
   scat_saaf.reserve(block_rank*block_rank);
-  Array<int> scat_row, scat_col;
-  scat_row.Reserve(block_rank*block_rank);
-  scat_col.Reserve(block_rank*block_rank);
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          scat_saaf.emplace_back(
+            scat[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
+            inv_tot_omega[n+g*quad->nd()]);
 
+  std::unique_ptr<VectorIntegratorWrapper> scat_bfi{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     for (int n{0}; n < quad->nd(); ++n)
@@ -2137,64 +2076,52 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
         {
           const int this_col{nprime + gprime*quad->nd()};
-          ProductCoefficient& this_scat{
-            scat[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]};
-          scat_saaf.emplace_back(this_scat, inv_tot_omega[n+g*quad->nd()]);
-          scat_row.Append(this_col); // TODO fix indices
-          scat_col.Append(this_row);
+          scat_bfi->AddIntegrator(
+            &scat_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
+            this_col, this_row, false);
         }
       }
     }
   }
 
-  std::vector<BilinearFormIntegrator*> scat_bfi;
-  scat_bfi.reserve(block_rank*block_rank);
+  std::unique_ptr<VectorIntegratorWrapper> scat_saaf_bfi{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
   for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
     for (int n{0}; n < quad->nd(); ++n)
+    {
+      const int this_row{n + g*quad->nd()};
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+      {
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
-          scat_bfi.emplace_back(&scat_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]);
+        {
+          const int this_col{nprime + gprime*quad->nd()};
+          const int idx{nprime + gprime*quad->nd() + 
+            n*quad->nd()*mat_lib.ngroup() + 
+            g*quad->nd()*mat_lib.ngroup()*quad->nd()};
+          scat_saaf_bfi->AddIntegrator(new ConvectionIntegrator{scat_saaf[idx]}, this_col, this_row);
+        }
+      }
+    }
+  }
 
-  std::vector<BilinearFormIntegrator*> scat_saaf_bfi;
-  scat_saaf_bfi.reserve(block_rank*block_rank);
-  for (ScalarVectorProductCoefficient& coeff : scat_saaf)
-    scat_saaf_bfi.emplace_back(new ConvectionIntegrator{coeff});
+  sink_bilinear.AddDomainIntegrator(sink_integrator.release());
+  sink_bilinear.AddBdrFaceIntegrator(sink_bdr_integrator.release());
 
-  sink_bilinear.AddDomainIntegrator(
-    new VectorIntegratorWrapper{sink_integrator, block_rank, sink_row, sink_col});
-  sink_bilinear.AddDomainIntegrator(
-    new VectorIntegratorWrapper{scat_bfi, block_rank, scat_row, scat_col});
-  sink_bilinear.AddDomainIntegrator(
-    new VectorIntegratorWrapper{scat_saaf_bfi, block_rank, scat_row, scat_col});
-  sink_bilinear.AddBdrFaceIntegrator(
-    new VectorIntegratorWrapper{sink_bdr_integrator, block_rank, sink_bdr_row, sink_bdr_col});
+  sink_bilinear.AddDomainIntegrator(scat_bfi.release());
+  sink_bilinear.AddDomainIntegrator(scat_saaf_bfi.release());
 
-  if (myid == 0) std::cout << "SINK_ASSENBLE_BEGIN" << std::endl;
+  std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
   sink_bilinear.Assemble();
   sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
-  if (myid == 0) std::cout << "SINK_ASSEMBLE_END" << std::endl;
+  std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
   sigma_s_vec.clear(); // TODO offload
   sigma_s.clear();
   scat.clear();
   scat_saaf.clear();
-  scat_row.DeleteAll();
-  scat_col.DeleteAll();
-  sink_row.DeleteAll();
-  sink_col.DeleteAll();
-  sink_bdr_row.DeleteAll();
-  sink_bdr_row.DeleteAll();
-
-  for (BilinearFormIntegrator* bfi : scat_saaf_bfi)
-    delete bfi;
-
-  sink_integrator.clear();
-  sink_bdr_integrator.clear();
-  scat_bfi.clear();
-  scat_saaf_bfi.clear();
 
   std::vector<Vector> chi_nusf_vec(mat_lib.ngroup()*mat_lib.ngroup());
-
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
@@ -2246,10 +2173,18 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   std::vector<ScalarVectorProductCoefficient> fiss_saaf;
   fiss_saaf.reserve(block_rank*block_rank);
-  Array<int> fiss_row, fiss_col;
-  fiss_row.Reserve(block_rank*block_rank);
-  fiss_col.Reserve(block_rank*block_rank);
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          fiss_saaf.emplace_back(
+            fiss[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
+            inv_tot_omega[n+g*quad->nd()]);
 
+  std::unique_ptr<VectorIntegratorWrapper> fiss_saaf_bfi{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
+  std::unique_ptr<VectorIntegratorWrapper> fiss_bfi{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     for (int n{0}; n < quad->nd(); ++n)
@@ -2260,51 +2195,31 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
         {
           const int this_col{nprime + gprime*quad->nd()};
-          ProductCoefficient& this_fiss{
-            fiss[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]};
-          fiss_saaf.emplace_back(this_fiss, inv_tot_omega[n+g*quad->nd()]);
-          fiss_row.Append(this_row);
-          fiss_col.Append(this_col);
+          const int idx{nprime + gprime*quad->nd() + 
+            n*quad->nd()*mat_lib.ngroup() + 
+            g*quad->nd()*mat_lib.ngroup()*quad->nd()};
+          fiss_saaf_bfi->AddIntegrator(new ConvectionIntegrator{fiss_saaf[idx]},
+            this_row, this_col);
+          fiss_bfi->AddIntegrator(
+            &fiss_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
+            this_row, this_col, false);
         }
       }
     }
   }
 
-  std::vector<BilinearFormIntegrator*> fiss_bfi;
-  fiss_bfi.reserve(block_rank*block_rank);
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    for (int n{0}; n < quad->nd(); ++n)
-      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-        for (int nprime{0}; nprime < quad->nd(); ++nprime)
-          fiss_bfi.emplace_back(&fiss_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()]);
+  fission_bilinear.AddDomainIntegrator(fiss_saaf_bfi.release());
+  fission_bilinear.AddDomainIntegrator(fiss_bfi.release());
 
-  std::vector<BilinearFormIntegrator*> fiss_saaf_bfi;
-  fiss_saaf_bfi.reserve(block_rank*block_rank);
-  for (ScalarVectorProductCoefficient& coeff : fiss_saaf)
-    fiss_saaf_bfi.emplace_back(new ConvectionIntegrator{coeff});
-
-  fission_bilinear.AddDomainIntegrator(
-    new VectorIntegratorWrapper{fiss_bfi, block_rank, fiss_row, fiss_col});
-  fission_bilinear.AddDomainIntegrator(
-    new VectorIntegratorWrapper{fiss_saaf_bfi, block_rank, fiss_row, fiss_col});
-
-  if (myid == 0) std::cout << "FISSION_ASSEMBLY_BEGIN" << std::endl;
+  std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
   fission_bilinear.Assemble();
   fission_bilinear.Finalize();
-  if (myid == 0) std::cout << "FISSION_ASSEMBLY_END" << std::endl;
+  std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
 
   chi_nusf_vec.clear(); // TODO offload
   chi_nusf.clear();
   fiss.clear();
   fiss_saaf.clear();
-  fiss_row.DeleteAll();
-  fiss_col.DeleteAll();
-
-  for (BilinearFormIntegrator* bfi : fiss_saaf_bfi)
-    delete bfi;
-
-  fiss_bfi.clear();
-  fiss_saaf_bfi.clear();
 
   time.stop();
 
