@@ -719,11 +719,11 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     fission[i].SetSize(mat_lib.ngroup()*inp.spn_eq()); // zero initialized
+    const Material_record& mat{mat_lib.mat[i]};
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
-        const Material_record& mat{mat_lib.mat[i]};
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
           const Material_isotope& isotope{mat.iso[iso_idx]};
@@ -2225,6 +2225,179 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
     OperatorHandle Mh{Operator::PETSC_MATAIJ};
     fission_bilinear.ParallelAssemble(Mh);
+    Mh.Get(M);
+    Mh.SetOperatorOwner(false);
+  }
+  time.stop();
+  if (myid == 0) std::cout << "PETSC_TRANSLATION_END" << std::endl;
+
+  time.start("slepc setup");
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetMaxIter(inp.tol.max_outer);
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+  slepc.SetOperators(*A, *M);
+  time.stop();
+
+  // TODO consider restarting
+
+  if (myid == 0) std::cout << "SOLVE_BEGIN" << std::endl;
+  time.start(time.solver);
+  slepc.Solve();
+  time.stop();
+  if (myid == 0) std::cout << "SOLVE_END" << std::endl;
+
+  delete A;
+  delete M;
+  
+  // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
+  // cannot be accessed, even if they are *nearly* converged. Therefore, to
+  // avoid dereferencing bad memory, we must abort.
+  if (slepc.GetNumConverged() < 1)
+    throw Failed_to_converge{"SLEPc failed to converge.\n"};
+
+  slepc.GetEigenvalue(0, angular_flux.keff);
+  angular_flux.keff = 1.0 / angular_flux.keff;
+  scalar_flux.keff = angular_flux.keff;
+  Vector tmp(fespace->GetTrueVSize());
+  slepc.GetEigenvector(0, tmp);
+
+  // each group/moment is currently stored as a vector quantity
+  // parsing this is then handled by ParaView
+  // for dimensions <= 3, the vector is listed {x,y,z}
+  // for higher dimensions, the vector is listed {0,1,2,3,4,...}
+  angular_flux(0).Distribute(tmp);
+
+  // flip the sign of the solution such that the scalar flux in group=0 is positive
+  tmp.Destroy();
+  angular_flux(0).GetNodalValues(tmp);
+  if (std::abs(tmp.Max()) < std::abs(tmp.Min()))
+    angular_flux(0).Neg();
+
+  // TODO figure out how to calculate scalar flux
+
+  return;
+}
+
+void saaf_true_slepc_vector(const Quadrature* const quad,
+                       Timer& time,
+                       const Input& inp,
+                       const Material_library& mat_lib,
+                       ParMesh* const pmesh,
+                       ParFiniteElementSpace* const fespace,
+                       Result& angular_flux,
+                       Result& scalar_flux)
+{
+
+  const int myid{fespace->GetMyRank()};
+  const int block_rank{mat_lib.ngroup()*quad->nd()}; // aka vdim
+
+  slepc_davidson_hypre_boomeramg_initialize(inp, quad->nd()*mat_lib.ngroup());
+
+  time.start(time.matrix_assembly);
+
+  std::vector<DenseMatrix> removal(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    removal[i].SetSize(block_rank);
+    const XSRecord& record{mat_lib.mat[i].rec};
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      Array<int> col_idx;
+      Vector scat_dat;
+      record.sigma_s.GetRow(g, col_idx, scat_dat);
+
+      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+      {
+        const int gprime{col_idx[gidx]};
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int row{n + g*quad->nd()};
+          for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          {
+            const int col{nprime + gprime*quad->nd()};
+            removal[i](row,col) = -scat_dat(gidx)*quad->weight(nprime);
+          } // nprime < quad->nd()
+        } // n < quad->nd()
+      } // gidx < col_idx.Size()
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const int dia{n + g*quad->nd()};
+        removal[i](dia,dia) += record.sigma_t[g];
+      } // n < quad->nd()
+
+    } // g < mat_lib.ngroup()
+  } // i < pmesh->attributes.Max()
+  MatrixPWConstCoefficient removal_func{removal};
+
+  ParBilinearForm sink_bilinear{fespace};
+  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+
+  std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
+  sink_bilinear.Assemble();
+  sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
+  std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
+
+  std::vector<DenseMatrix> fiss(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    fiss[i].SetSize(block_rank);
+    const Material_record& mat{mat_lib.mat[i]};
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+      {
+
+        double val{0.0};
+        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+        {
+          const Material_isotope& isotope{mat.iso[iso_idx]};
+          const XSRecord& record{isotope.rec};
+          const double nden{isotope.nden};
+          val += record.chi[g] * nden * record.nusf[gprime];
+        } // iso_idx < mat.niso
+
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int row{n + g*quad->nd()};
+          for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          {
+            const int col{nprime + gprime*quad->nd()};
+            fiss[i](row,col) = val*quad->weight(nprime);
+          } // nprime < quad->nd()
+        } // n < quad->nd()
+
+      } // gprime < mat_lib.ngroup()
+    } // g < mat_lib.ngroup()
+  } // i < pmesh->attributes.Max()
+  MatrixPWConstCoefficient fiss_func{fiss};
+
+  ParBilinearForm fiss_bilinear{fespace};
+  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
+
+  std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
+  fiss_bilinear.Assemble();
+  fiss_bilinear.Finalize();
+  std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
+
+  time.stop();
+
+  if (myid == 0) std::cout << "PETSC_TRANSLATION_BEGIN" << std::endl;
+  time.start("petsc translation");
+  PetscParMatrix *A{nullptr}, *M{nullptr};
+  {
+    OperatorHandle Ah{Operator::PETSC_MATAIJ};
+    sink_bilinear.ParallelAssemble(Ah);
+    Ah.Get(A);
+    Ah.SetOperatorOwner(false);
+
+    OperatorHandle Mh{Operator::PETSC_MATAIJ};
+    fiss_bilinear.ParallelAssemble(Mh);
     Mh.Get(M);
     Mh.SetOperatorOwner(false);
   }

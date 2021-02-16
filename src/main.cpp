@@ -156,7 +156,8 @@ int main(int argc, char* argv[])
   const bool is_transport{((inp.sol == Solver_choice::epdo_power_iteration) ||
     (inp.sol == Solver_choice::sfent_power_iteration) ||
     (inp.sol == Solver_choice::saaf_power_iteration) ||
-    (inp.sol == Solver_choice::saaf_slepc_vector))};
+    (inp.sol == Solver_choice::saaf_slepc_vector) ||
+    (inp.sol == Solver_choice::saaf_true_slepc_vector))};
 
   unique_ptr<Quadrature> quad;
   switch (inp.quadrature_type)
@@ -185,21 +186,27 @@ int main(int argc, char* argv[])
 
   // TODO this needs to allow for differing values of spn_eq with different states
   const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 
-    ((inp.sol == Solver_choice::saaf_slepc_vector) ? mat_lib.ngroup()*quad->nd() : 1)};
+    (((inp.sol == Solver_choice::saaf_slepc_vector) || 
+      (inp.sol == Solver_choice::saaf_true_slepc_vector)) ? mat_lib.ngroup()*quad->nd() : 1)};
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   int dof{fespace.TrueVSize() * (((inp.sol == Solver_choice::slepc_vector) || 
-    (inp.sol == Solver_choice::saaf_slepc_vector)) ? 1 : mat_lib.ngroup())};
-  if ((is_transport) && (inp.sol != Solver_choice::saaf_slepc_vector))
+    (inp.sol == Solver_choice::saaf_slepc_vector) ||
+    (inp.sol == Solver_choice::saaf_true_slepc_vector)) ? 1 : mat_lib.ngroup())};
+  if ((is_transport) && (inp.sol != Solver_choice::saaf_slepc_vector) && 
+    (inp.sol != Solver_choice::saaf_true_slepc_vector))
+  {
     dof *= quad->nd();
-  if (myid == 0)
-    cout << "Number of finite element unknowns: " << dof << endl;
+  }
+  if (myid == 0) cout << "Number of finite element unknowns: " << dof << endl;
 
   // TODO this should move outside of the [STATE] loop but we need to disallow
   // changing the solver type between states (maybe move to [CORE] block)
   const int flux_length{((inp.sol == Solver_choice::slepc_vector) || 
-    (inp.sol == Solver_choice::saaf_slepc_vector)) ? 1 : xs.ngroup()};
+    (inp.sol == Solver_choice::saaf_slepc_vector) || 
+    (inp.sol == Solver_choice::saaf_true_slepc_vector)) ? 1 : xs.ngroup()};
   const int moment_angle_length{(is_transport) ? 
-    ((inp.sol == Solver_choice::saaf_slepc_vector) ? 1 : quad->nd()) : 
+    ((inp.sol == Solver_choice::saaf_slepc_vector) || 
+     (inp.sol == Solver_choice::saaf_true_slepc_vector) ? 1 : quad->nd()) : 
     ((inp.sol == Solver_choice::slepc_vector) ? 1 : inp.spn_eq())};
   Result res{&fespace, flux_length, moment_angle_length};
   Result scalar_flux{&fespace, flux_length};
@@ -250,6 +257,10 @@ int main(int argc, char* argv[])
           saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
           MFEMFinalizeSlepc();
           break;
+        case (Solver_choice::saaf_true_slepc_vector):
+          saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          MFEMFinalizeSlepc();
+          break;
         default:
           cerr << "Invalid solver choice.\n";
           MPI_Finalize();
@@ -293,7 +304,9 @@ int main(int argc, char* argv[])
     else
       moment_width = std::to_string(2*inp.spn_eq()).length();
 
-    if ((inp.sol == Solver_choice::slepc_vector) || (inp.sol == Solver_choice::saaf_slepc_vector))
+    if ((inp.sol == Solver_choice::slepc_vector) || 
+        (inp.sol == Solver_choice::saaf_slepc_vector) || 
+        (inp.sol == Solver_choice::saaf_true_slepc_vector))
     {
       // TODO fix this so that this can be more descriptive
       // Will probably require constructing a new FiniteElementSpace, a new
