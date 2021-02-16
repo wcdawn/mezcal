@@ -14,7 +14,7 @@ void VectorIntegratorWrapper::AssembleElementMatrix(const FiniteElement& el,
   elmat = 0.0;
   elmat.AddMatrix(pelmat, row_idx[0], col_idx[0]);
 
-  for (int i{1}; i < size; ++i)
+  for (int i{1}; i < bfi.Size(); ++i)
   {
     bfi[i]->AssembleElementMatrix(el, Trans, pelmat);
     elmat.AddMatrix(pelmat, row_idx[i]*dof, col_idx[i]*dof);
@@ -37,7 +37,7 @@ void VectorIntegratorWrapper::AssembleElementMatrix2(const FiniteElement& trial_
   elmat = 0.0;
   elmat.AddMatrix(pelmat, row_idx[0], col_idx[0]);
 
-  for (int i{1}; i < size; ++i)
+  for (int i{1}; i < bfi.Size(); ++i)
   {
     bfi[i]->AssembleElementMatrix2(trial_fe, test_fe, Trans, pelmat);
     elmat.AddMatrix(pelmat, row_idx[i]*dof, col_idx[i]*dof);
@@ -60,7 +60,7 @@ void VectorIntegratorWrapper::AssembleFaceMatrix(const FiniteElement& el1,
   elmat = 0.0;
   elmat.AddMatrix(pelmat, row_idx[0], col_idx[0]);
 
-  for (int i{1}; i < size; ++i)
+  for (int i{1}; i < bfi.Size(); ++i)
   {
     bfi[i]->AssembleFaceMatrix(el1, el2, Trans, pelmat);
     elmat.AddMatrix(pelmat, row_idx[i]*dof, col_idx[i]*dof);
@@ -68,4 +68,19 @@ void VectorIntegratorWrapper::AssembleFaceMatrix(const FiniteElement& el1,
 
   return;
 
+}
+
+void VectorIntegratorWrapper::AddIntegrator(BilinearFormIntegrator* _bfi, 
+                                            int diag, bool own)
+{
+  AddIntegrator(_bfi, diag, diag, own);
+}
+
+void VectorIntegratorWrapper::AddIntegrator(BilinearFormIntegrator* _bfi, 
+                                            int row, int col, bool own)
+{
+  bfi.Append(_bfi);
+  row_idx.Append(row);
+  col_idx.Append(col);
+  own_idx.Append(own);
 }
