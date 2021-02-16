@@ -434,7 +434,7 @@ void spn_power_iteration(Timer& time, const Input& inp,
       beta = res.keff;
 
     time.start("fiss&up");
-    calc_fiss_upscatter(res, mat_lib, beta, fiss_quad_func, upscatter_quad_func, inp.flux_free_chi);
+    calc_fiss_upscatter(res, mat_lib, fiss_quad_func, upscatter_quad_func, inp.flux_free_chi);
 
     if (isWielandt)
     {
@@ -1816,7 +1816,7 @@ void saaf_power_iteration(const Quadrature* const quad,
       ((phi_conv > inp.tol.phi) || (k_conv > inp.tol.k)) ; ++iter)
   {
 
-    calc_fiss_upscatter(scalar_flux, mat_lib, angular_flux.keff, 
+    calc_fiss_upscatter(scalar_flux, mat_lib, 
       fiss_quad_func, upscatter_quad_func, inp.flux_free_chi);
     for (QuadratureFunction& qf : fiss_quad_func)
       qf /= angular_flux.keff;
@@ -2020,11 +2020,12 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
+    const SparseMatrix& scat_mat{mat_lib.mat[i].rec.sigma_s};
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       Vector scat_dat;
       Array<int> scat_col;
-      mat_lib.mat[i].rec.sigma_s.GetRow(g, scat_col, scat_dat);
+      scat_mat.GetRow(g, scat_col, scat_dat);
       for (int gidx{0}; gidx < scat_col.Size(); ++gidx)
       {
         const int gprime{scat_col[gidx]};
@@ -2048,7 +2049,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
     {
       for (int n{0}; n < quad->nd(); ++n)
       {
-        scat.emplace_back(weight[n], sigma_s[g + gprime*mat_lib.ngroup()]);
+        scat.emplace_back(weight[n], sigma_s[gprime + g*mat_lib.ngroup()]); // TODO i just swapped indices
         scat_integrator.emplace_back(scat.back());
       }
     }
@@ -2062,28 +2063,10 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
           scat_saaf.emplace_back(
             scat[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
-            inv_tot_omega[n+g*quad->nd()]);
+            inv_tot_omega[n + g*quad->nd()]);
 
   std::unique_ptr<VectorIntegratorWrapper> scat_bfi{
     std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    for (int n{0}; n < quad->nd(); ++n)
-    {
-      const int this_row{n + g*quad->nd()};
-      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-      {
-        for (int nprime{0}; nprime < quad->nd(); ++nprime)
-        {
-          const int this_col{nprime + gprime*quad->nd()};
-          scat_bfi->AddIntegrator(
-            &scat_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
-            this_col, this_row, false);
-        }
-      }
-    }
-  }
-
   std::unique_ptr<VectorIntegratorWrapper> scat_saaf_bfi{
     std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2099,7 +2082,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
           const int idx{nprime + gprime*quad->nd() + 
             n*quad->nd()*mat_lib.ngroup() + 
             g*quad->nd()*mat_lib.ngroup()*quad->nd()};
-          scat_saaf_bfi->AddIntegrator(new ConvectionIntegrator{scat_saaf[idx]}, this_col, this_row);
+          scat_bfi->AddIntegrator(
+            &scat_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
+            this_row, this_col, false);
+          scat_saaf_bfi->AddIntegrator(new ConvectionIntegrator{scat_saaf[idx]},
+            this_row, this_col);
         }
       }
     }
@@ -2116,10 +2103,12 @@ void saaf_slepc_vector(const Quadrature* const quad,
   sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
   std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
+  /*
   sigma_s_vec.clear(); // TODO offload
   sigma_s.clear();
   scat.clear();
   scat_saaf.clear();
+  */
 
   std::vector<Vector> chi_nusf_vec(mat_lib.ngroup()*mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2134,11 +2123,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
+    const Material_record& mat{mat_lib.mat[i]};
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
-        const Material_record& mat{mat_lib.mat[i]};
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
           const Material_isotope& isotope{mat.iso[iso_idx]};
@@ -2179,11 +2168,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int nprime{0}; nprime < quad->nd(); ++nprime)
           fiss_saaf.emplace_back(
             fiss[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
-            inv_tot_omega[n+g*quad->nd()]);
+            inv_tot_omega[n + g*quad->nd()]);
 
-  std::unique_ptr<VectorIntegratorWrapper> fiss_saaf_bfi{
-    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
   std::unique_ptr<VectorIntegratorWrapper> fiss_bfi{
+    std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
+  std::unique_ptr<VectorIntegratorWrapper> fiss_saaf_bfi{
     std::make_unique<VectorIntegratorWrapper>(block_rank, block_rank*block_rank)};
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
@@ -2198,11 +2187,11 @@ void saaf_slepc_vector(const Quadrature* const quad,
           const int idx{nprime + gprime*quad->nd() + 
             n*quad->nd()*mat_lib.ngroup() + 
             g*quad->nd()*mat_lib.ngroup()*quad->nd()};
-          fiss_saaf_bfi->AddIntegrator(new ConvectionIntegrator{fiss_saaf[idx]},
-            this_row, this_col);
           fiss_bfi->AddIntegrator(
             &fiss_integrator[nprime + gprime*quad->nd() + g*quad->nd()*mat_lib.ngroup()],
             this_row, this_col, false);
+          fiss_saaf_bfi->AddIntegrator(new ConvectionIntegrator{fiss_saaf[idx]},
+            this_row, this_col);
         }
       }
     }
@@ -2216,10 +2205,12 @@ void saaf_slepc_vector(const Quadrature* const quad,
   fission_bilinear.Finalize();
   std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
 
+  /*
   chi_nusf_vec.clear(); // TODO offload
   chi_nusf.clear();
   fiss.clear();
   fiss_saaf.clear();
+  */
 
   time.stop();
 
@@ -2338,7 +2329,6 @@ void calc_scalar_flux(int g, const Result& angular_flux,
 
 void calc_fiss_upscatter(const Result& scalar_flux, 
                          const Material_library& mat_lib, 
-                         const double beta,
                          std::vector<QuadratureFunction>& fiss_quad_func, 
                          std::vector<QuadratureFunction>& upscatter_quad_func,
                          const bool flux_free_chi)
@@ -2427,11 +2417,6 @@ void calc_fiss_upscatter(const Result& scalar_flux,
       ++idx;
     }
   }
-
-  /*
-  for (QuadratureFunction& qf : fiss_quad_func)
-    qf /= beta;
-  */
 
   return;
 }

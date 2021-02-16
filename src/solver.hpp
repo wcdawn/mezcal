@@ -114,7 +114,6 @@ void calc_scalar_flux(int g, const Result& angular_flux, const Quadrature* const
 
 void calc_fiss_upscatter(const Result& scalar_flux,
                          const Material_library& mat_lib,
-                         const double beta,
                          std::vector<mfem::QuadratureFunction>& fiss_quad_func,
                          std::vector<mfem::QuadratureFunction>& upscatter_quad_func,
                          const bool flux_free_chi=false);
