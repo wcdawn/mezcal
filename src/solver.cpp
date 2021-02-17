@@ -10,6 +10,7 @@
 #include "stability_tau_coefficient.hpp"
 
 #include "vector_integrator_wrapper.hpp"
+#include "tensor.hpp"
 
 #include "slepceps.h"
 
@@ -1651,7 +1652,7 @@ void saaf_power_iteration(const Quadrature* const quad,
       a(g,n)->AddDomainIntegrator(new DiffusionIntegrator{streaming});
       a(g,n)->AddDomainIntegrator(new MassIntegrator{total});
 
-      a(g,n)->AddBdrFaceIntegrator(new DGTraceIntegrator{omega[n], 1.0, 0.5});
+      a(g,n)->AddBdrFaceIntegrator(new DGTraceIntegrator{omega[n], 1.0});
 
       a(g,n)->Assemble();
       a(g,n)->Finalize();
@@ -1981,7 +1982,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
   std::vector<DGTraceIntegrator> omega_bdr_integrator;
   omega_bdr_integrator.reserve(quad->nd());
   for (int n{0}; n < quad->nd(); ++n)
-    omega_bdr_integrator.emplace_back(omega[n], 1.0, 0.5);
+    omega_bdr_integrator.emplace_back(omega[n], 1.0);
 
   std::vector<DiffusionIntegrator> leakage_integrator;
   leakage_integrator.reserve(quad->nd()*mat_lib.ngroup());
@@ -2295,12 +2296,50 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   slepc_davidson_hypre_boomeramg_initialize(inp, quad->nd()*mat_lib.ngroup());
 
+  std::vector<DenseMatrix> omega_operator(quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
+  {
+    omega_operator[n].SetSize(quad->dim());
+    MultVVt(quad->omega(n), omega_operator[n]);
+  }
+
   time.start(time.matrix_assembly);
 
+  ParBilinearForm sink_bilinear{fespace};
+
+  std::vector<Tensor<mfem::DenseMatrix>> leakage(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    const XSRecord& rec{mat_lib.mat[i].rec};
+    leakage[i].reserve(block_rank);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const int dia{n + g*quad->nd()};
+        omega_operator[n] *= 1.0/rec.sigma_t[g];
+        leakage[i].AddElement(omega_operator[n], dia);
+        omega_operator[n] *= rec.sigma_t[g];
+      }
+    }
+  }
+  MatrixTensorPWConstCoefficient leakage_func{block_rank, leakage};
+  sink_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
+
+  Tensor<mfem::Vector> boundary;
+  boundary.reserve(block_rank);
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      boundary.AddElement(quad->omega(n), n+g*quad->nd());
+  VectorTensorConstantCoefficient boundary_func{block_rank, boundary};
+  sink_bilinear.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{boundary_func, 1.0});
+
   std::vector<DenseMatrix> removal(pmesh->attributes.Max());
+  std::vector<Tensor<mfem::Vector>> removal_saaf(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     removal[i].SetSize(block_rank);
+    removal_saaf[i].reserve(block_rank*block_rank);
     const XSRecord& record{mat_lib.mat[i].rec};
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2319,7 +2358,13 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
           for (int nprime{0}; nprime < quad->nd(); ++nprime)
           {
             const int col{nprime + gprime*quad->nd()};
-            removal[i](row,col) = -scat_dat(gidx)*quad->weight(nprime);
+            const double val{-scat_dat(gidx)*quad->weight(nprime)};
+            removal[i](row,col) = val;
+
+            Vector v{quad->omega(n)};
+            v /= record.sigma_t[g];
+            v *= val;
+            removal_saaf[i].AddElement(v, row, col);
           } // nprime < quad->nd()
         } // n < quad->nd()
       } // gidx < col_idx.Size()
@@ -2333,9 +2378,10 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
     } // g < mat_lib.ngroup()
   } // i < pmesh->attributes.Max()
   MatrixPWConstCoefficient removal_func{removal};
+  VectorTensorPWConstCoefficient removal_saaf_func{block_rank, removal_saaf};
 
-  ParBilinearForm sink_bilinear{fespace};
   sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+  sink_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{removal_saaf_func});
 
   std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
   sink_bilinear.Assemble();
@@ -2343,9 +2389,11 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
   std::vector<DenseMatrix> fiss(pmesh->attributes.Max());
+  std::vector<Tensor<mfem::Vector>> fiss_saaf(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     fiss[i].SetSize(block_rank);
+    fiss_saaf[i].reserve(block_rank*block_rank);
     const Material_record& mat{mat_lib.mat[i]};
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2369,6 +2417,11 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
           {
             const int col{nprime + gprime*quad->nd()};
             fiss[i](row,col) = val*quad->weight(nprime);
+
+            Vector v{quad->omega(n)};
+            v /= mat.rec.sigma_t[g];
+            v *= val * quad->weight(nprime);
+            fiss_saaf[i].AddElement(v, row, col);
           } // nprime < quad->nd()
         } // n < quad->nd()
 
@@ -2376,9 +2429,11 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
     } // g < mat_lib.ngroup()
   } // i < pmesh->attributes.Max()
   MatrixPWConstCoefficient fiss_func{fiss};
+  VectorTensorPWConstCoefficient fiss_saaf_func{block_rank, fiss_saaf};
 
   ParBilinearForm fiss_bilinear{fespace};
-  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
+  fiss_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
+  fiss_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{fiss_saaf_func});
 
   std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
   fiss_bilinear.Assemble();

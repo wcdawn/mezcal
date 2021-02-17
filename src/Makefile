@@ -47,7 +47,8 @@ HPP_FILES = analytic.hpp \
 			timer.hpp \
 			vector_pwconst_coefficient.hpp \
 			xslibrary.hpp \
-			vector_integrator_wrapper.hpp
+			vector_integrator_wrapper.hpp \
+			tensor.hpp
 
 OBJ = $(CPP_FILES:.cpp=.o)
 
@@ -124,7 +125,7 @@ xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
 material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp
+solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp
 scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 hdf5_access_wrapper.o : hdf5_access_wrapper.hpp
