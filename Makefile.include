@@ -28,7 +28,7 @@ MPICXX = /opt/mpich/bin/mpicxx
 H5_DIR = /usr/lib
 
 MICROREACTOR_DIR = /home/wcdawn/work/microreactor
-MFEM_DIR = $(MICROREACTOR_DIR)/build/mfem
+MFEM_DIR = $(MICROREACTOR_DIR)/mfem
 HYPRE_DIR = $(MICROREACTOR_DIR)/hypre/src/hypre
 METIS_DIR = $(MICROREACTOR_DIR)/metis
 
