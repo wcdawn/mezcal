@@ -62,7 +62,6 @@ shift $((OPTIND - 1)) # shift to ignore already parsed command line arguments
   
 WD=$(pwd)
 MFEM_DIR=$WD'/mfem'
-MFEM_BUILD=$WD'/build/mfem'
 HYPRE_DIR=$WD'/hypre'
 METIS_DIR=$WD'/metis'
 
@@ -122,7 +121,7 @@ then
   fi
 
   make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX='nvcc' \
-    BUILD_DIR=${MFEM_BUILD} MFEM_USE_MPI=YES \
+    MFEM_USE_MPI=YES \
     MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' MFEM_USE_CUDA=${CUDA} \
     CUDA_FLAGS="${CUDA_FLAGS_VAR}" \
     MFEM_USE_PETSC=YES PETSC_DIR=${PETSC_DIR}/${PETSC_ARCH} PETSC_ARCH=${PETSC_ARCH} \
