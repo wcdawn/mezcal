@@ -2305,6 +2305,10 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   time.start(time.matrix_assembly);
 
+  std::unique_ptr<PetscParMatrix> A, M;
+
+  { // sink construction
+
   ParBilinearForm sink_bilinear{fespace};
 
   std::vector<Tensor<mfem::DenseMatrix>> leakage(pmesh->attributes.Max());
@@ -2388,6 +2392,19 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
   std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
+  if (myid == 0) std::cout << "SINK_TRANSLATION_BEGIN" << std::endl;
+  OperatorHandle Ah{Operator::PETSC_MATAIJ};
+  sink_bilinear.ParallelAssemble(Ah);
+  PetscParMatrix* Atmp{nullptr};
+  Ah.Get(Atmp);
+  A.reset(Atmp);
+  Ah.SetOperatorOwner(false);
+  if (myid == 0) std::cout << "SINK_TRANSLATION_END" << std::endl;
+
+  } // sink construction
+
+  { // fiss construction
+
   std::vector<DenseMatrix> fiss(pmesh->attributes.Max());
   std::vector<Tensor<mfem::Vector>> fiss_saaf(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -2440,24 +2457,18 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   fiss_bilinear.Finalize();
   std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
 
-  time.stop();
+  if (myid == 0) std::cout << "FISS_TRANSLATION_BEGIN" << std::endl;
+  OperatorHandle Mh{Operator::PETSC_MATAIJ};
+  fiss_bilinear.ParallelAssemble(Mh);
+  PetscParMatrix* Mtmp{nullptr};
+  Mh.Get(Mtmp);
+  M.reset(Mtmp);
+  Mh.SetOperatorOwner(false);
+  if (myid == 0) std::cout << "FISS_TRANSLATION_END" << std::endl;
 
-  if (myid == 0) std::cout << "PETSC_TRANSLATION_BEGIN" << std::endl;
-  time.start("petsc translation");
-  PetscParMatrix *A{nullptr}, *M{nullptr};
-  {
-    OperatorHandle Ah{Operator::PETSC_MATAIJ};
-    sink_bilinear.ParallelAssemble(Ah);
-    Ah.Get(A);
-    Ah.SetOperatorOwner(false);
+  } // fiss construction
 
-    OperatorHandle Mh{Operator::PETSC_MATAIJ};
-    fiss_bilinear.ParallelAssemble(Mh);
-    Mh.Get(M);
-    Mh.SetOperatorOwner(false);
-  }
   time.stop();
-  if (myid == 0) std::cout << "PETSC_TRANSLATION_END" << std::endl;
 
   time.start("slepc setup");
   SlepcEigenSolver slepc{MPI_COMM_WORLD};
@@ -2476,9 +2487,6 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   time.stop();
   if (myid == 0) std::cout << "SOLVE_END" << std::endl;
 
-  delete A;
-  delete M;
-  
   // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
   // cannot be accessed, even if they are *nearly* converged. Therefore, to
   // avoid dereferencing bad memory, we must abort.
