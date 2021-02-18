@@ -156,24 +156,25 @@ int main(int argc, char* argv[])
   const bool is_transport{((inp.sol == Solver_choice::epdo_power_iteration) ||
     (inp.sol == Solver_choice::sfent_power_iteration) ||
     (inp.sol == Solver_choice::saaf_power_iteration) ||
+    (inp.sol == Solver_choice::saaf_angle_power_iteration) ||
     (inp.sol == Solver_choice::saaf_slepc_vector) ||
     (inp.sol == Solver_choice::saaf_true_slepc_vector))};
 
-  unique_ptr<Quadrature> quad;
+  std::unique_ptr<Quadrature> quad;
   switch (inp.quadrature_type)
   {
     case (Quadrature_choice::level_symmetric):
       quad =
-        make_unique<Level_symmetric_quadrature>(inp.quad_order,
+        std::make_unique<Level_symmetric_quadrature>(inp.quad_order,
         pmesh.SpaceDimension());
       break;
     case (Quadrature_choice::legendre_chebyschev):
       if ((inp.quad_legendre_order > 0) && (inp.quad_chebyschev_order > 0))
         quad =
-          make_unique<Legendre_chebyschev_quadrature>(inp.quad_legendre_order,
+          std::make_unique<Legendre_chebyschev_quadrature>(inp.quad_legendre_order,
           inp.quad_chebyschev_order, pmesh.SpaceDimension());
       else
-        quad = make_unique<Legendre_chebyschev_quadrature>(inp.quad_order,
+        quad = std::make_unique<Legendre_chebyschev_quadrature>(inp.quad_order,
           pmesh.SpaceDimension());
       break;
     default:
@@ -185,29 +186,79 @@ int main(int argc, char* argv[])
   }
 
   // TODO this needs to allow for differing values of spn_eq with different states
-  const int vdim{(inp.sol == Solver_choice::slepc_vector) ? mat_lib.ngroup()*inp.spn_eq() : 
-    (((inp.sol == Solver_choice::saaf_slepc_vector) || 
-      (inp.sol == Solver_choice::saaf_true_slepc_vector)) ? mat_lib.ngroup()*quad->nd() : 1)};
-  ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  int dof{fespace.TrueVSize() * (((inp.sol == Solver_choice::slepc_vector) || 
-    (inp.sol == Solver_choice::saaf_slepc_vector) ||
-    (inp.sol == Solver_choice::saaf_true_slepc_vector)) ? 1 : mat_lib.ngroup())};
-  if ((is_transport) && (inp.sol != Solver_choice::saaf_slepc_vector) && 
-    (inp.sol != Solver_choice::saaf_true_slepc_vector))
+  int vdim{0};
+  switch (inp.sol)
   {
-    dof *= quad->nd();
+    case (Solver_choice::slepc_vector):
+      vdim = mat_lib.ngroup()*inp.spn_eq();
+      break;
+    case (Solver_choice::saaf_slepc_vector):
+    case (Solver_choice::saaf_true_slepc_vector):
+      vdim = mat_lib.ngroup()*quad->nd();
+      break;
+    case (Solver_choice::saaf_angle_power_iteration):
+      vdim = quad->nd();
+      break;
+    default:
+      vdim = 1;
+      break;
   }
+
+  ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
+
+  int dof{fespace.TrueVSize()};
+  switch (inp.sol)
+  {
+    case (Solver_choice::slepc_vector):
+    case (Solver_choice::saaf_slepc_vector):
+    case (Solver_choice::saaf_true_slepc_vector):
+      break;
+    case (Solver_choice::saaf_angle_power_iteration):
+      dof *= mat_lib.ngroup();
+      break;
+    case (Solver_choice::saaf_power_iteration):
+    case (Solver_choice::sfent_power_iteration):
+    case (Solver_choice::epdo_power_iteration):
+      dof *= mat_lib.ngroup()*quad->nd();
+    default:
+      dof *= mat_lib.ngroup()*inp.spn_eq();
+      break;
+  }
+
   if (myid == 0) cout << "Number of finite element unknowns: " << dof << endl;
 
   // TODO this should move outside of the [STATE] loop but we need to disallow
   // changing the solver type between states (maybe move to [CORE] block)
-  const int flux_length{((inp.sol == Solver_choice::slepc_vector) || 
-    (inp.sol == Solver_choice::saaf_slepc_vector) || 
-    (inp.sol == Solver_choice::saaf_true_slepc_vector)) ? 1 : xs.ngroup()};
-  const int moment_angle_length{(is_transport) ? 
-    ((inp.sol == Solver_choice::saaf_slepc_vector) || 
-     (inp.sol == Solver_choice::saaf_true_slepc_vector) ? 1 : quad->nd()) : 
-    ((inp.sol == Solver_choice::slepc_vector) ? 1 : inp.spn_eq())};
+  int flux_length{0};
+  switch (inp.sol)
+  {
+    case (Solver_choice::slepc_vector):
+    case (Solver_choice::saaf_slepc_vector):
+    case (Solver_choice::saaf_true_slepc_vector):
+      flux_length = 1;
+      break;
+    default:
+      flux_length = xs.ngroup();
+      break;
+  }
+
+  int moment_angle_length{0};
+  switch (inp.sol)
+  {
+    case (Solver_choice::slepc_vector):
+    case (Solver_choice::saaf_slepc_vector):
+    case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::saaf_angle_power_iteration):
+      moment_angle_length = 1;
+      break;
+    case (Solver_choice::saaf_power_iteration):
+    case (Solver_choice::sfent_power_iteration):
+    case (Solver_choice::epdo_power_iteration):
+      moment_angle_length = quad->nd();
+    default:
+      moment_angle_length = inp.spn_eq();
+  }
+
   Result res{&fespace, flux_length, moment_angle_length};
   Result scalar_flux{&fespace, flux_length};
 
@@ -252,6 +303,9 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::saaf_power_iteration):
           saaf_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          break;
+        case (Solver_choice::saaf_angle_power_iteration):
+          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_slepc_vector):
           saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);

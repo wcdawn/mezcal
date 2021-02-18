@@ -98,6 +98,14 @@ void saaf_power_iteration(const Quadrature* const quad,
                           mfem::ParFiniteElementSpace* const fespace,
                           Result& angular_flux,
                           Result& scalar_flux);
+void saaf_angle_power_iteration(const Quadrature* const quad,
+                                Timer& time,
+                                const Input& inp,
+                                const Material_library& mat_lib,
+                                mfem::ParMesh* const pmesh,
+                                mfem::ParFiniteElementSpace* const fespace,
+                                Result& angular_flux,
+                                Result& scalar_flux);
 
 void saaf_slepc_vector(const Quadrature* const quad,
                        Timer& time,
@@ -157,6 +165,5 @@ class Failed_to_converge : std::exception
   private:
     const std::string msg;
 };
-
 
 #endif

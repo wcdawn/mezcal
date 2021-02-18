@@ -10,7 +10,9 @@
 #include "stability_tau_coefficient.hpp"
 
 #include "vector_integrator_wrapper.hpp"
-#include "tensor.hpp"
+#include "../mfem/fem/tensor.hpp"
+
+#include "memory.hpp"
 
 #include "slepceps.h"
 
@@ -36,6 +38,8 @@ bool exists(const std::string& fname)
 #endif
 
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
+
+Memory_stats mem(Memory_stats::megabyte);
 
 double omega_x;
 double omega_y;
@@ -2481,7 +2485,12 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   // TODO consider restarting
 
-  if (myid == 0) std::cout << "SOLVE_BEGIN" << std::endl;
+  if (myid == 0)
+  {
+    std::cout << "SOLVE_BEGIN" << std::endl;
+    mem.update();
+    mem.print();
+  }
   time.start(time.solver);
   slepc.Solve();
   time.stop();
@@ -2515,6 +2524,30 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   return;
 }
+
+void saaf_angle_power_iteration(const Quadrature* const quad,
+                                Timer& time,
+                                const Input& inp,
+                                const Material_library& mat_lib,
+                                ParMesh* const pmesh,
+                                ParFiniteElementSpace* const fespace,
+                                Result& angular_flux,
+                                Result& scalar_flux)
+{
+  
+  std::vector<std::unique_ptr<ParBilinearForm>> sink_bilinear;
+  sink_bilinear.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    sink_bilinear.emplace_back(std::make_unique<ParBilinearForm>(fespace));
+
+  std::vector<std::unique_ptr<ParLinearForm>> source_linear;
+  source_linear.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    source_linear.emplace_back(std::make_unique<ParLinearForm>(fespace));
+
+  return;
+}
+
 
 void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations)
 {
