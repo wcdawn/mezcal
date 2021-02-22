@@ -11,8 +11,9 @@ class IncomingFluxCoefficient final : public mfem::Coefficient
 
 public:
 
-  IncomingFluxCoefficient(int G, int N, const Result& af,
-                          const Quadrature* const quad);
+  IncomingFluxCoefficient(int G, int N, const Result& af, const Quadrature* const quad)
+    : g{G}, n{N}, angular_flux{af}, q{quad}
+  {}
 
   virtual double Eval(mfem::ElementTransformation& T,
                       const mfem::IntegrationPoint& ip) override;

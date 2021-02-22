@@ -2,12 +2,6 @@
 
 using namespace mfem;
 
-IncomingFluxCoefficient::IncomingFluxCoefficient(int G, int N, const Result& af,
-                                                 const Quadrature* const quad)
-  : g{G}, n{N}, angular_flux{af}, q{quad}
-{
-}
-
 double IncomingFluxCoefficient::Eval(ElementTransformation& T, const IntegrationPoint& ip)
 {
 
