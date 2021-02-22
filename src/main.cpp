@@ -205,6 +205,7 @@ int main(int argc, char* argv[])
   }
 
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
+  ParFiniteElementSpace scalar_flux_fespace{&pmesh, fec};
 
   int dof{fespace.TrueVSize()};
   switch (inp.sol)
@@ -220,6 +221,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::sfent_power_iteration):
     case (Solver_choice::epdo_power_iteration):
       dof *= mat_lib.ngroup()*quad->nd();
+      break;
     default:
       dof *= mat_lib.ngroup()*inp.spn_eq();
       break;
@@ -238,7 +240,7 @@ int main(int argc, char* argv[])
       flux_length = 1;
       break;
     default:
-      flux_length = xs.ngroup();
+      flux_length = mat_lib.ngroup();
       break;
   }
 
@@ -255,12 +257,14 @@ int main(int argc, char* argv[])
     case (Solver_choice::sfent_power_iteration):
     case (Solver_choice::epdo_power_iteration):
       moment_angle_length = quad->nd();
+      break;
     default:
       moment_angle_length = inp.spn_eq();
+      break;
   }
 
   Result res{&fespace, flux_length, moment_angle_length};
-  Result scalar_flux{&fespace, flux_length};
+  Result scalar_flux{&scalar_flux_fespace, flux_length};
 
   ofstream sum{inp.input_file_stub() + ".sum"};
   sum << "=== STATEPOINT SUMMARY ===\n" << "state, spn_order, keff\n";

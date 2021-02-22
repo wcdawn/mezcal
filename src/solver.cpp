@@ -1763,8 +1763,8 @@ void saaf_power_iteration(const Quadrature* const quad,
       b(g,n)->AddDomainIntegrator(new DomainLFGradIntegrator{inv_tot_omega_fiss_operator(g,n)});
 
       b(g,n)->AddBdrFaceIntegrator(
-        new BoundaryFlowIntegrator{incoming_flux_coeff(g,n), omega[n],
-        -1.0, -0.5}, reflective_condition);
+        new BoundaryFlowIntegrator{incoming_flux_coeff(g,n), omega[n], -1.0}, 
+        reflective_condition);
 
     }
   }
@@ -2534,16 +2534,330 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Result& angular_flux,
                                 Result& scalar_flux)
 {
-  
-  std::vector<std::unique_ptr<ParBilinearForm>> sink_bilinear;
-  sink_bilinear.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    sink_bilinear.emplace_back(std::make_unique<ParBilinearForm>(fespace));
 
-  std::vector<std::unique_ptr<ParLinearForm>> source_linear;
-  source_linear.reserve(mat_lib.ngroup());
+  const int myid{fespace->GetMyRank()};
+
+  time.start(time.matrix_assembly);
+
+  std::vector<DenseMatrix> omega_mat(quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
+  {
+    omega_mat[n].SetSize(quad->dim());
+    MultVVt(quad->omega(n), omega_mat[n]);
+  }
+
+  Tensor<Vector> omega;
+  omega.reserve(quad->nd());
+  for(int n{0}; n < quad->nd(); ++n)
+    omega.AddElement(quad->omega(n), n);
+  VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
+  
+  std::vector<std::unique_ptr<ParBilinearForm>> a(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    source_linear.emplace_back(std::make_unique<ParLinearForm>(fespace));
+  {
+
+    a[g] = std::make_unique<ParBilinearForm>(fespace);
+
+    std::vector<Vector> total(pmesh->attributes.Max());
+    std::vector<Tensor<DenseMatrix>> leakage(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+    {
+      const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+
+      leakage[i].reserve(quad->nd());
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        omega_mat[n] *= 1.0/tot;
+        leakage[i].AddElement(omega_mat[n], n);
+        omega_mat[n] *= tot;
+      }
+      
+      total[i].SetSize(quad->nd());
+      total[i] = tot;
+
+    }
+    VectorPWConstCoefficient total_func{total};
+    MatrixTensorPWConstCoefficient leakage_func{quad->nd(), leakage};
+    a[g]->AddDomainIntegrator(new VectorMassIntegrator{total_func});
+    a[g]->AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
+    a[g]->AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
+
+    a[g]->Assemble(); // note: no essential bcs in saaf
+    a[g]->Finalize();
+  }
+
+  time.stop(time.matrix_assembly);
+
+  std::vector<GridFunctionCoefficient> scalar_flux_coeff;
+  scalar_flux_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scalar_flux_coeff.emplace_back(&scalar_flux(g));
+
+  std::vector<PWConstCoefficient> self_scatter_xs;
+  self_scatter_xs.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    Vector self_scatter(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      self_scatter[i] = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+    self_scatter_xs.emplace_back(self_scatter);
+  }
+
+  std::vector<ProductCoefficient> self_scatter_phi;
+  self_scatter_phi.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    self_scatter_phi.emplace_back(scalar_flux_coeff[g], self_scatter_xs[g]);
+
+  Vector ones(quad->nd());
+  ones = 1.0;
+  VectorConstantCoefficient ones_func{ones};
+
+  std::vector<ScalarVectorProductCoefficient> self_scatter_func;
+  self_scatter_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    self_scatter_func.emplace_back(self_scatter_phi[g], ones_func);
+
+  Array<int> ess_tdof_list(0); // no essential bcs
+  Array<int> reflective_condition(pmesh->bdr_attributes.Max());
+  reflective_condition = 0;
+  for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < reflective_condition.Size()); ++i)
+  {
+    if (inp.boundary_conditions[i] == 0) // zero represents reflective
+      reflective_condition[i] = 1;
+  }
+
+  std::vector<std::vector<Tensor<Vector>>> saaf;
+  saaf.resize(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    saaf[g].resize(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      saaf[g][i].reserve(quad->nd());
+  }
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+    {
+      const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        Vector tmp{quad->omega(n)};
+        tmp *= 1.0/tot;
+        saaf[g][i].AddElement(tmp, n);
+      }
+    }
+  }
+
+  std::vector<VectorTensorPWConstCoefficient> saaf_func;
+  saaf_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    saaf_func.emplace_back(quad->nd(), saaf[g]);
+
+  const int integration_order{fespace->GetOrder(0)+1};
+  QuadratureSpace qspace{const_cast<ParMesh*>(pmesh), integration_order};
+
+  std::vector<QuadratureFunction> fiss_quad_func;
+  std::vector<QuadratureFunction> upscatter_quad_func, dnscatter_quad_func;
+  fiss_quad_func.reserve(mat_lib.ngroup());
+  upscatter_quad_func.reserve(mat_lib.ngroup());
+  dnscatter_quad_func.reserve(mat_lib.ngroup());
+
+  std::vector<QuadratureFunctionCoefficient> fiss_quad_coeff;
+  std::vector<QuadratureFunctionCoefficient> upscatter_quad_coeff, dnscatter_quad_coeff;
+  fiss_quad_coeff.reserve(mat_lib.ngroup());
+  upscatter_quad_coeff.reserve(mat_lib.ngroup());
+  dnscatter_quad_coeff.reserve(mat_lib.ngroup());
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss_quad_func.emplace_back(&qspace);
+    upscatter_quad_func.emplace_back(&qspace);
+    dnscatter_quad_func.emplace_back(&qspace);
+    fiss_quad_coeff.emplace_back(fiss_quad_func.back());
+    upscatter_quad_coeff.emplace_back(upscatter_quad_func.back());
+    dnscatter_quad_coeff.emplace_back(dnscatter_quad_func.back());
+  }
+
+  std::vector<SumCoefficient> scat_quad_coeff;
+  scat_quad_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scat_quad_coeff.emplace_back(upscatter_quad_coeff[g], dnscatter_quad_coeff[g]);
+
+  std::vector<ScalarVectorProductCoefficient> scat_quad_func_func;
+  scat_quad_func_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scat_quad_func_func.emplace_back(scat_quad_coeff[g], ones_func);
+
+  std::vector<ScalarVectorProductCoefficient> fiss_quad_func_func;
+  fiss_quad_func_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    fiss_quad_func_func.emplace_back(fiss_quad_coeff[g], ones_func);
+
+  std::vector<ScalarVectorTensorProductCoefficient> scat_quad_saaf_coeff;
+  scat_quad_saaf_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scat_quad_saaf_coeff.emplace_back(scat_quad_coeff[g], saaf_func[g]);
+
+  std::vector<ScalarVectorTensorProductCoefficient> fiss_quad_saaf_coeff;
+  fiss_quad_saaf_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    fiss_quad_saaf_coeff.emplace_back(fiss_quad_coeff[g], saaf_func[g]);
+
+  // The sources will be "nd" copies of the regular sources because (for now)
+  // everything is isotropic.
+  // The saaf sources have n & g dependency so they will be different.
+  std::vector<std::unique_ptr<ParLinearForm>> b(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    b[g] = std::make_unique<ParLinearForm>(fespace);
+
+    b[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{scat_quad_func_func[g]});
+    b[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{scat_quad_saaf_coeff[g]});
+    b[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{self_scatter_func[g]});
+
+    b[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{fiss_quad_func_func[g]});
+    b[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{fiss_quad_saaf_coeff[g]});
+
+    // NOTE: when solving all angles simultaneously, reflective bcs will be
+    // essential. we will need to eliminate from lhs (or do something...) and
+    // not simply treat rhs.
+
+  }
+
+////////////////////////////////////////////////////////////////////////////////
+  std::vector<std::unique_ptr<ParLinearForm>> fiss_src_form(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss_src_form[g] = std::make_unique<ParLinearForm>(
+      static_cast<ParFiniteElementSpace*>(scalar_flux(g).FESpace())
+      );
+
+    Vector nusf(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      nusf(i) = mat_lib.mat[i].rec.nusf[g];
+    PWConstCoefficient nusf_func{nusf};
+
+    fiss_src_form[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_func});
+    fiss_src_form[g]->Assemble();
+  }
+////////////////////////////////////////////////////////////////////////////////
+
+  // setup preconditioner
+  HypreBoomerAMG amg;
+  amg.SetPrintLevel(inp.hypre_print_level());
+
+  // setup solver
+  CGSolver sol(MPI_COMM_WORLD);
+  sol.SetRelTol(inp.tol.inner_rel);
+  sol.SetAbsTol(inp.tol.inner_abs);
+  sol.SetMaxIter(inp.tol.max_inner);
+  sol.SetPrintLevel(inp.mfem_print_level());
+  sol.SetPreconditioner(amg);
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    angular_flux(g) = 1.0;
+    scalar_flux(g) = 1.0;
+  }
+
+  double k_conv{inp.tol.k * 1e1 + 1e-6};
+  double phi_conv{inp.tol.phi * 1e1 + 1e-6};
+  double keff_old{angular_flux.keff};
+  double fiss_sum_old{1.0};
+
+  QuadratureFunction fiss_src_old{&qspace};
+  fiss_src_old = 1.0;
+
+  time.start(time.solver);
+  for (int iter{0}; (iter < inp.tol.max_outer)
+                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
+  {
+
+    time.start("fiss+upscatter");
+    calc_fiss_upscatter(scalar_flux, mat_lib, fiss_quad_func, upscatter_quad_func, inp.flux_free_chi);
+    for (QuadratureFunction& qf : fiss_quad_func)
+      qf /= angular_flux.keff;
+    time.stop("fiss+upscatter");
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      double scattering_conv{inp.tol.inner_rel * 1e1 + 1e-6};
+
+      time.start("downscatter");
+      calc_downscatter(g, scalar_flux, mat_lib, dnscatter_quad_func[g]);
+      time.stop("downscatter");
+
+      for (int scattering_iter{0}; (scattering_iter < inp.tol.max_inner) &&
+        (scattering_conv > inp.tol.inner_rel); ++scattering_iter)
+      {
+        time.start("bassemble");
+        b[g]->Assemble();
+        time.stop("bassemble");
+
+        OperatorPtr A;
+        Vector B, X;
+        a[g]->FormLinearSystem(ess_tdof_list, angular_flux(g), *b[g], A, X, B);
+        sol.SetOperator(*A);
+        time.start("mult");
+        sol.Mult(B, X);
+        time.stop("mult");
+        a[g]->RecoverFEMSolution(X, *b[g], angular_flux(g));
+
+        ParGridFunction phi_old{scalar_flux(g)};
+        time.start("scalarflux");
+        calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux);
+        time.stop("scalarflux");
+        phi_old -= scalar_flux(g);
+
+
+        phi_old.HostRead();
+        const double local_scattering_conv{
+          phi_old.Normlinf() / scalar_flux(g).Normlinf()};
+        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, 
+          MPI_MAX, MPI_COMM_WORLD);
+        if (myid == 0)
+          std::cout << "..."
+                    << scattering_iter
+                    << " g=" << g
+                    << " conv=" << scattering_conv
+                    << std::endl;
+      } // scattering_iter
+    } // ngroup
+
+    time.start("fisssum");
+    double fiss_sum{0.0}, local_fiss_sum{0.0};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      local_fiss_sum += (*fiss_src_form[g])(scalar_flux(g)); // LinearForm::operator()
+    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    time.stop("fisssum");
+
+    time.start("phiconv");
+    QuadratureFunction fiss_src{&qspace};
+    calc_fiss_src(scalar_flux, mat_lib, fiss_src);
+    fiss_src_old -= fiss_src;
+    double local_phi_conv{fiss_src_old.Normlinf() / fiss_src.Normlinf()};
+    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    time.stop("phiconv");
+
+    if (iter > 0) angular_flux.keff *= fiss_sum / fiss_sum_old;
+    k_conv = std::abs(angular_flux.keff - keff_old);
+
+    if (myid == 0)
+      std::cout << iter 
+        << " keff=" << angular_flux.keff
+        << " dk=" << k_conv 
+        << " dphi=" << phi_conv 
+        << std::endl;
+
+    scalar_flux.keff = angular_flux.keff;
+    // store old values
+    keff_old = angular_flux.keff;
+    fiss_sum_old = fiss_sum;
+    fiss_src_old = fiss_src;
+  }
+  time.stop(time.solver);
 
   return;
 }
@@ -2583,13 +2897,36 @@ void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equatio
   return;
 }
 
-void calc_scalar_flux(int g, const Result& angular_flux, 
-                         const Quadrature* const quad, Result& scalar_flux)
+void calc_scalar_flux(int g,
+                      const Result& angular_flux, 
+                      const Quadrature* const quad,
+                      Result& scalar_flux)
 {
   scalar_flux(g) = 0.0;
   for (int n{0}; n < quad->nd(); ++n)
   {
     ParGridFunction tmp{angular_flux(g,n)};
+    tmp *= quad->weight(n);
+    scalar_flux(g) += tmp;
+  }
+  return;
+}
+
+void calc_scalar_flux_vector(int g,
+                             const Result& angular_flux,
+                             const Quadrature* const quad, 
+                             Result& scalar_flux)
+{
+  if (scalar_flux.FESpace()->GetOrder(0) != 1)
+  {
+    std::cout << "requires linear finite elements" << std::endl;;
+    throw "error";
+  }
+  scalar_flux(g) = 0.0;
+  for (int n{0}; n < quad->nd(); ++n)
+  {
+    Vector tmp;
+    angular_flux(g).GetNodalValues(tmp, n+1);
     tmp *= quad->weight(n);
     scalar_flux(g) += tmp;
   }

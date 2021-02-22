@@ -126,7 +126,14 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
 void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations);
 
-void calc_scalar_flux(int g, const Result& angular_flux, const Quadrature* const quad, Result& scalar_flux);
+void calc_scalar_flux(int g,
+                      const Result& angular_flux, 
+                      const Quadrature* const quad,
+                      Result& scalar_flux);
+void calc_scalar_flux_vector(int g,
+                             const Result& angular_flux, 
+                             const Quadrature* const quad,
+                             Result& scalar_flux);
 
 void calc_fiss_upscatter(const Result& scalar_flux,
                          const Material_library& mat_lib,
@@ -137,6 +144,9 @@ void calc_downscatter(const int g,
                       const Result& scalar_flux,
                       const Material_library& mat_lib,
                       mfem::QuadratureFunction& dnscatter_quad_func);
+void calc_fiss_src(const Result& scalar_flux, 
+                   const Material_library& mat_lib,
+                   mfem::QuadratureFunction& fiss_src);
 
 void calc_spn_next(const Result& flux,
                    const Material_library& mat_lib,
@@ -145,10 +155,6 @@ void calc_spn_prev(const int g, const int n,
                    const Result& flux,
                    const Material_library& mat_lib,
                    mfem::QuadratureFunction& spn_prev_quad_func);
-
-void calc_fiss_src(const Result& scalar_flux, 
-                      const Material_library& mat_lib,
-                      mfem::QuadratureFunction& fiss_src);
 
 class Failed_to_converge : std::exception
 {
