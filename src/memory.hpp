@@ -78,7 +78,10 @@ private:
     used_physical_memory  = used_physical_memory >> shift;
   }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
   struct sysinfo memInfo;
+#pragma GCC diagnostic pop
 
   unsigned long long total_physical_memory{0};
   unsigned long long free_physical_memory{0};
