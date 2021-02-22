@@ -21,13 +21,17 @@ public:
   // anywhere
   MatrixPWConstCoefficient(const std::vector<mfem::DenseMatrix>& coeff, 
                            bool sym=false) 
-    : MatrixCoefficient(coeff[0].Height(), coeff[0].Width(), sym), coefficients{coeff} 
+    : MatrixCoefficient(coeff[0].Height(), coeff[0].Width(), sym), coefficients{coeff}  // copy construction
   {
   }
 
-  void UpdateMatrices(const std::vector<mfem::DenseMatrix>& coeff) {coefficients = coeff;}
+  void UpdateMatrices(const std::vector<mfem::DenseMatrix>& coeff) 
+  {
+    coefficients = coeff; // copy construction
+  }
 
   mfem::DenseMatrix& operator()(int i){return coefficients[i];}
+  const mfem::DenseMatrix& operator()(int i) const {return coefficients[i];}
 
   void operator=(const mfem::DenseMatrix& coeff)
   {

@@ -14,11 +14,16 @@ public:
     coefficients.resize(num_of_subdivisions);
   }
 
-  VectorPWConstCoefficient(const std::vector<mfem::Vector>& coeff) : VectorCoefficient(coeff[0].Size()), coefficients{coeff} {}
+  VectorPWConstCoefficient(const std::vector<mfem::Vector>& coeff) 
+    : VectorCoefficient(coeff[0].Size()), coefficients{coeff} {} // copy construction
 
-  void UpdateVectors(const std::vector<mfem::Vector>& coeff) {coefficients = coeff;}
+  void UpdateVectors(const std::vector<mfem::Vector>& coeff) 
+  {
+    coefficients = coeff; // copy construction
+  }
 
   mfem::Vector& operator()(int i){return coefficients[i];}
+  const mfem::Vector& operator()(int i) const {return coefficients[i];}
 
   void operator=(const mfem::Vector& coeff)
   {
