@@ -27,6 +27,8 @@ public:
 
     int ngroup() const { return G; }
     int nmoment() const { return N; }
+    const mfem::ParFiniteElementSpace* FESpace() const { return fespace; }
+    mfem::ParFiniteElementSpace* FESpace() { return fespace; }
 
 private:
 
