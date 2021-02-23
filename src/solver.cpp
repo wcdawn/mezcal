@@ -2822,7 +2822,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                     << scattering_iter
                     << " g=" << g
                     << " conv=" << scattering_conv
-                    << std::endl;
+                    << '\n';
       } // scattering_iter
     } // ngroup
 
