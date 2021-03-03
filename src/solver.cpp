@@ -2870,7 +2870,13 @@ void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equatio
   std::vector<std::string> arguments{" ",
     "-eps_monitor", "-eps_converged_reason", "-eps_type", "gd", 
     "-st_type", "precond", "-st_ksp_type", "preonly",
-    "-st_pc_type", "hypre", "-st_pc_hypre_type", "boomeramg"};
+    "-st_pc_type", "hypre", "-st_pc_hypre_type", "boomeramg",
+    // the following are required for gpu
+    "-st_pc_hypre_boomeramg_coarsen_type", "PMIS",
+    "-st_pc_hypre_boomeramg_interp_type", "ext+i",
+    "-st_pc_hypre_boomeramg_relax_type_all", "l1scaled-Jacobi",
+    // try to reduce the memory burden (size of search space after restarting)
+    "-eps_gd_minv", "2"};
 
   arguments.emplace_back("-st_pc_hypre_boomeramg_numfunctions");
   arguments.emplace_back(std::to_string(num_equations));
