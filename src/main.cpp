@@ -207,7 +207,7 @@ int main(int argc, char* argv[])
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   ParFiniteElementSpace scalar_flux_fespace{&pmesh, fec};
 
-  int dof{fespace.TrueVSize()};
+  long long dof{fespace.GlobalVSize()};
   switch (inp.sol)
   {
     case (Solver_choice::slepc_vector):
