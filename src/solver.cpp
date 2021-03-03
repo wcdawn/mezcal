@@ -2484,11 +2484,16 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   {
     std::cout << "SOLVE_BEGIN" << std::endl;
     mem.update_and_print();
+    mem.init_background(1000);
   }
   time.start(time.solver);
   slepc.Solve();
   time.stop();
-  if (myid == 0) std::cout << "SOLVE_END" << std::endl;
+  if (myid == 0) 
+  {
+    std::cout << "SOLVE_END" << std::endl;
+    mem.stop_background();
+  }
 
   // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
   // cannot be accessed, even if they are *nearly* converged. Therefore, to
