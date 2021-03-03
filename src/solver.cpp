@@ -22,6 +22,8 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include "../mfem/general/forall.hpp"
+
 
 using namespace mfem;
 
@@ -2297,6 +2299,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   const int myid{fespace->GetMyRank()};
   const int block_rank{mat_lib.ngroup()*quad->nd()}; // aka vdim
+  constexpr int skip_zeros{2};
 
   slepc_davidson_hypre_boomeramg_initialize(inp, quad->nd()*mat_lib.ngroup());
 
@@ -2309,7 +2312,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   time.start(time.matrix_assembly);
 
-  std::unique_ptr<PetscParMatrix> A, M;
+  std::unique_ptr<HypreParMatrix> Ahypre, Mhypre;
 
   { // sink construction
 
@@ -2392,17 +2395,12 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   sink_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{removal_saaf_func});
 
   std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
-  sink_bilinear.Assemble();
-  sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
+  sink_bilinear.Assemble(skip_zeros);
+  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
   std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
   if (myid == 0) std::cout << "SINK_TRANSLATION_BEGIN" << std::endl;
-  OperatorHandle Ah{Operator::PETSC_MATAIJ};
-  sink_bilinear.ParallelAssemble(Ah);
-  PetscParMatrix* Atmp{nullptr};
-  Ah.Get(Atmp);
-  A.reset(Atmp);
-  Ah.SetOperatorOwner(false);
+  Ahypre.reset(sink_bilinear.ParallelAssemble());
   if (myid == 0) std::cout << "SINK_TRANSLATION_END" << std::endl;
 
   } // sink construction
@@ -2457,20 +2455,18 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   fiss_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{fiss_saaf_func});
 
   std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
-  fiss_bilinear.Assemble();
-  fiss_bilinear.Finalize();
+  fiss_bilinear.Assemble(skip_zeros);
+  fiss_bilinear.Finalize(skip_zeros);
   std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
 
   if (myid == 0) std::cout << "FISS_TRANSLATION_BEGIN" << std::endl;
-  OperatorHandle Mh{Operator::PETSC_MATAIJ};
-  fiss_bilinear.ParallelAssemble(Mh);
-  PetscParMatrix* Mtmp{nullptr};
-  Mh.Get(Mtmp);
-  M.reset(Mtmp);
-  Mh.SetOperatorOwner(false);
+  Mhypre.reset(fiss_bilinear.ParallelAssemble());
   if (myid == 0) std::cout << "FISS_TRANSLATION_END" << std::endl;
 
   } // fiss construction
+
+  PetscParMatrix A{Ahypre.get(), Operator::PETSC_MATHYPRE};
+  PetscParMatrix M{Mhypre.get(), Operator::PETSC_MATHYPRE};
 
   time.stop();
 
@@ -2480,7 +2476,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   slepc.SetTol(inp.tol.phi * inp.tol.k);
   slepc.SetMaxIter(inp.tol.max_outer);
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
-  slepc.SetOperators(*A, *M);
+  slepc.SetOperators(A, M);
   time.stop();
 
   // TODO consider restarting
@@ -2488,8 +2484,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   if (myid == 0)
   {
     std::cout << "SOLVE_BEGIN" << std::endl;
-    mem.update();
-    mem.print();
+    mem.update_and_print();
   }
   time.start(time.solver);
   slepc.Solve();
@@ -2515,7 +2510,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   angular_flux(0).Distribute(tmp);
 
   // flip the sign of the solution such that the scalar flux in group=0 is positive
-  tmp.Destroy();
+  //tmp.Destroy();
   angular_flux(0).GetNodalValues(tmp);
   if (std::abs(tmp.Max()) < std::abs(tmp.Min()))
     angular_flux(0).Neg();
@@ -2536,6 +2531,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 {
 
   const int myid{fespace->GetMyRank()};
+  Array<int> ess_tdof_list(0); // no essential bcs
 
   time.start(time.matrix_assembly);
 
@@ -2556,6 +2552,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
 
+    //ParBilinearForm a{fespace};
     a[g] = std::make_unique<ParBilinearForm>(fespace);
 
     std::vector<Vector> total(pmesh->attributes.Max());
@@ -2617,7 +2614,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     self_scatter_func.emplace_back(self_scatter_phi[g], ones_func);
 
-  Array<int> ess_tdof_list(0); // no essential bcs
   Array<int> reflective_condition(pmesh->bdr_attributes.Max());
   reflective_condition = 0;
   for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < reflective_condition.Size()); ++i)
@@ -2674,6 +2670,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     fiss_quad_func.emplace_back(&qspace);
     upscatter_quad_func.emplace_back(&qspace);
     dnscatter_quad_func.emplace_back(&qspace);
+    /* // TODO HERE
+    fiss_quad_func.back().UseDevice(true);
+    upscatter_quad_func.back().UseDevice(true);
+    dnscatter_quad_func.back().UseDevice(true);
+    */
     fiss_quad_coeff.emplace_back(fiss_quad_func.back());
     upscatter_quad_coeff.emplace_back(upscatter_quad_func.back());
     dnscatter_quad_coeff.emplace_back(dnscatter_quad_func.back());
@@ -2743,22 +2744,26 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   }
 ////////////////////////////////////////////////////////////////////////////////
 
-  // setup preconditioner
-  HypreBoomerAMG amg;
-  amg.SetPrintLevel(inp.hypre_print_level());
+  // TODO not hard wired
+  const std::string amgx_json_file{"amg_pcg.json"};
+  constexpr int ndevices{1}; // gpu per mpi team
 
-  // setup solver
-  CGSolver sol(MPI_COMM_WORLD);
-  sol.SetRelTol(inp.tol.inner_rel);
-  sol.SetAbsTol(inp.tol.inner_abs);
-  sol.SetMaxIter(inp.tol.max_inner);
-  sol.SetPrintLevel(inp.mfem_print_level());
-  sol.SetPreconditioner(amg);
+  AmgXSolver amgx;
+  amgx.ReadParameters(amgx_json_file, AmgXSolver::EXTERNAL);
+  amgx.InitMPITeams(MPI_COMM_WORLD, ndevices); // Forms MPI teams to load balance between MPI ranks and GPUs
+  amgx.SetConvergenceCheck(true);
 
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     angular_flux(g) = 1.0;
     scalar_flux(g) = 1.0;
+  }
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    angular_flux(g).UseDevice(true);
+    scalar_flux(g).UseDevice(true);
+    b[g]->UseDevice(true);
   }
 
   double k_conv{inp.tol.k * 1e1 + 1e-6};
@@ -2768,6 +2773,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   QuadratureFunction fiss_src_old{&qspace};
   fiss_src_old = 1.0;
+  //fiss_src_old.UseDevice(true); // TODO HERE
 
   time.start(time.solver);
   for (int iter{0}; (iter < inp.tol.max_outer)
@@ -2798,10 +2804,13 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         OperatorPtr A;
         Vector B, X;
+        B.UseDevice(true);
+        X.UseDevice(true);
+
         a[g]->FormLinearSystem(ess_tdof_list, angular_flux(g), *b[g], A, X, B);
-        sol.SetOperator(*A);
+        amgx.SetOperator(*A.As<HypreParMatrix>());
         time.start("mult");
-        sol.Mult(B, X);
+        amgx.Mult(B, X);
         time.stop("mult");
         a[g]->RecoverFEMSolution(X, *b[g], angular_flux(g));
 
@@ -2809,10 +2818,13 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         time.start("scalarflux");
         calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux);
         time.stop("scalarflux");
+        phi_old.UseDevice(true);
         phi_old -= scalar_flux(g);
 
+        time.start("hostread");
+        phi_old.HostRead(); // TODO this should (hopefully) be eliminated
+        time.stop("hostread");
 
-        phi_old.HostRead();
         const double local_scattering_conv{
           phi_old.Normlinf() / scalar_flux(g).Normlinf()};
         MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, 
@@ -2858,6 +2870,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     fiss_src_old = fiss_src;
   }
   time.stop(time.solver);
+  amgx.Finalize(); // release mpi communicators and resources held by AmgX
 
   return;
 }
@@ -2927,6 +2940,7 @@ void calc_scalar_flux_vector(int g,
   {
     Vector tmp;
     angular_flux(g).GetNodalValues(tmp, n+1);
+    tmp.UseDevice(true);
     tmp *= quad->weight(n);
     scalar_flux(g) += tmp;
   }

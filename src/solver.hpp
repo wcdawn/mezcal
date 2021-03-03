@@ -1,5 +1,5 @@
-#ifndef SOLVER
-#define SOLVER
+#ifndef SOLVER_HPP
+#define SOLVER_HPP
 
 #include "input.hpp"
 #include "material_library.hpp"
