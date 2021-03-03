@@ -59,6 +59,9 @@ GIT_SHA     = $(shell git log -n1 --format=format:"%H")
 DATE        = $(shell date +"%a %d %b %Y %T %Z") # TODO replace T with R
 HOST        = $(shell hostname)
 
+INCLUDE += -I/home/wcdawn/projects/amgx/base/include
+LIBS += -L/home/wcdawn/projects/amgx/build/ -lamgx -L/opt/cuda/lib64 -lcusparse -lcusolver -lcublas -lnvToolsExt
+
 .SUFFIXES :
 .SUFFIXES : .cpp .o .hpp
 
@@ -70,10 +73,10 @@ all : $(EXEC)
 
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
-	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) 
+	$(LD) $(LDFLAGS) -DTHRUST_IGNORE_DEPRECATED_CPP_DIALECT $^ -o $@ $(LIBS) 
 
 %.o : %.cpp
-	@$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<
+	@$(NVCC) $(NVCCFLAGS) -DTHRUST_IGNORE_DEPRECATED_CPP_DIALECT $(INCLUDE) -c $<
 	@echo $<
 
 version:

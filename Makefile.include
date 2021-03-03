@@ -35,6 +35,9 @@ METIS_DIR = $(MICROREACTOR_DIR)/metis
 METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 CUDA_DIR = /opt/cuda
+NVCC = nvcc
+NVCCFLAGS = -O3 -std=c++11 -x=cu -arch=sm_60 --expt-extended-lambda -ccbin $(MPICXX)
+
 PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 
