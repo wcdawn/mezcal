@@ -120,6 +120,7 @@ then
     MFEM_MPICXX="${MPICXX}"
   fi
 
+  # with AmgX
   make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX='nvcc' \
     MFEM_USE_MPI=YES MFEM_USE_OPENMP=YES \
     MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' \
@@ -128,6 +129,15 @@ then
     CUDA_LIB='-L/opt/cuda/lib64 -lcusparse -lcusolver -lcublas -lnvToolsExt' \
     MFEM_USE_AMGX=YES AMGX_OPT='-I/home/wcdawn/projects/amgx/base/include' \
     AMGX_LIB='-L/home/wcdawn/projects/amgx/build -lamgx' \
+    MFEM_USE_PETSC=YES PETSC_DIR=${PETSC_DIR}/${PETSC_ARCH} PETSC_ARCH=${PETSC_ARCH} \
+    MFEM_USE_SLEPC=YES SLEPC_DIR=/home/wcdawn/projects/slepc
+
+  # without AmgX
+  make config CXX=${CXX} MPICXX=${MFEM_MPICXX} CUDA_CXX='nvcc' \
+    MFEM_USE_MPI=YES MFEM_USE_OPENMP=YES \
+    MFEM_USE_METIS_5=YES METIS_DIR='@MFEM_DIR@/../metis' \
+    HYPRE_DIR='@MFEM_DIR@/../hypre/src/hypre' \
+    MFEM_USE_CUDA=YES CUDA_FLAGS='-x=cu -arch=sm_60 --expt-extended-lambda' \
     MFEM_USE_PETSC=YES PETSC_DIR=${PETSC_DIR}/${PETSC_ARCH} PETSC_ARCH=${PETSC_ARCH} \
     MFEM_USE_SLEPC=YES SLEPC_DIR=/home/wcdawn/projects/slepc
 
