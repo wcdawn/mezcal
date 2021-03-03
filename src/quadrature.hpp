@@ -46,7 +46,7 @@ public:
   Direction(const mfem::Vector& vec) : dir{vec(0), vec(1), (vec.Size() == 2) ? 0.0 : vec(2)} {}
 
   double& operator[](int i){ return dir[i]; }
-  const double operator[](int i) const { return dir[i]; }
+  const double& operator[](int i) const { return dir[i]; }
 
   Direction operator+(const Direction& d) const
   { 
