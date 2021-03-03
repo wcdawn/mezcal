@@ -532,7 +532,7 @@ namespace Analytic_solutions
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
-    constexpr double bsq{pow(M_PI / Lx, 2)};
+    const double bsq{pow(M_PI / Lx, 2)};
     const double k2k1{oned_twog_ratio()};
     return (rec.nusf[0] + rec.nusf[1] * k2k1)
            / (diffusion[0] * bsq + rec.sigma_r(0,ell));
@@ -542,7 +542,7 @@ namespace Analytic_solutions
   {
     const double c22_c20{oned_oneg_spn_ratio()};
     static constexpr double Lx{100.0};
-    constexpr double bsq{pow(M_PI/Lx,2)};
+    const double bsq{pow(M_PI/Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
 
     return rec.nusf[0] / 
@@ -567,7 +567,7 @@ namespace Analytic_solutions
   double oned_oneg_spn_ratio()
   {
     static constexpr double Lx{100.0};
-    constexpr double bsq{pow(M_PI / Lx,2)};
+    const double bsq{pow(M_PI / Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
     return ((-2.0/15.0) * (1.0/rec.sigma_t[0]) * bsq) / 
       ((11.0/21.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_t[0]);
