@@ -2297,8 +2297,15 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   const int myid{fespace->GetMyRank()};
   const int block_rank{mat_lib.ngroup()*quad->nd()}; // aka vdim
+  constexpr int skip_zeros{2};
 
   slepc_davidson_hypre_boomeramg_initialize(inp, quad->nd()*mat_lib.ngroup());
+
+  time.start(time.matrix_assembly);
+
+  std::unique_ptr<HypreParMatrix> Ahypre, Mhypre;
+
+  { // sink construction
 
   std::vector<DenseMatrix> omega_operator(quad->nd());
   for (int n{0}; n < quad->nd(); ++n)
@@ -2306,12 +2313,6 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
     omega_operator[n].SetSize(quad->dim());
     MultVVt(quad->omega(n), omega_operator[n]);
   }
-
-  time.start(time.matrix_assembly);
-
-  std::unique_ptr<PetscParMatrix> A, M;
-
-  { // sink construction
 
   ParBilinearForm sink_bilinear{fespace};
 
@@ -2392,17 +2393,12 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   sink_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{removal_saaf_func});
 
   std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
-  sink_bilinear.Assemble();
-  sink_bilinear.Finalize(); // no essential boundary conditions (maybe)
+  sink_bilinear.Assemble(skip_zeros);
+  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
   std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
   if (myid == 0) std::cout << "SINK_TRANSLATION_BEGIN" << std::endl;
-  OperatorHandle Ah{Operator::PETSC_MATAIJ};
-  sink_bilinear.ParallelAssemble(Ah);
-  PetscParMatrix* Atmp{nullptr};
-  Ah.Get(Atmp);
-  A.reset(Atmp);
-  Ah.SetOperatorOwner(false);
+  Ahypre.reset(sink_bilinear.ParallelAssemble());
   if (myid == 0) std::cout << "SINK_TRANSLATION_END" << std::endl;
 
   } // sink construction
@@ -2457,20 +2453,19 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   fiss_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{fiss_saaf_func});
 
   std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
-  fiss_bilinear.Assemble();
-  fiss_bilinear.Finalize();
+  fiss_bilinear.Assemble(skip_zeros);
+  fiss_bilinear.Finalize(skip_zeros);
   std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
 
   if (myid == 0) std::cout << "FISS_TRANSLATION_BEGIN" << std::endl;
-  OperatorHandle Mh{Operator::PETSC_MATAIJ};
-  fiss_bilinear.ParallelAssemble(Mh);
-  PetscParMatrix* Mtmp{nullptr};
-  Mh.Get(Mtmp);
-  M.reset(Mtmp);
-  Mh.SetOperatorOwner(false);
+  Mhypre.reset(fiss_bilinear.ParallelAssemble());
   if (myid == 0) std::cout << "FISS_TRANSLATION_END" << std::endl;
 
   } // fiss construction
+
+  // TODO const?
+  PetscParMatrix A{Ahypre.get(), Operator::PETSC_MATHYPRE};
+  PetscParMatrix M{Mhypre.get(), Operator::PETSC_MATHYPRE};
 
   time.stop();
 
@@ -2480,7 +2475,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   slepc.SetTol(inp.tol.phi * inp.tol.k);
   slepc.SetMaxIter(inp.tol.max_outer);
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
-  slepc.SetOperators(*A, *M);
+  slepc.SetOperators(A, M);
   time.stop();
 
   // TODO consider restarting
@@ -2488,8 +2483,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   if (myid == 0)
   {
     std::cout << "SOLVE_BEGIN" << std::endl;
-    mem.update();
-    mem.print();
+    mem.update_and_print();
   }
   time.start(time.solver);
   slepc.Solve();
