@@ -2303,7 +2303,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   time.start(time.matrix_assembly);
 
-  std::unique_ptr<HypreParMatrix> Ahypre, Mhypre;
+  HypreParMatrix *Ahypre{nullptr}, *Mhypre{nullptr};
 
   { // sink construction
 
@@ -2398,7 +2398,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
 
   if (myid == 0) std::cout << "SINK_TRANSLATION_BEGIN" << std::endl;
-  Ahypre.reset(sink_bilinear.ParallelAssemble());
+  Ahypre = sink_bilinear.ParallelAssemble();
   if (myid == 0) std::cout << "SINK_TRANSLATION_END" << std::endl;
 
   } // sink construction
@@ -2458,14 +2458,22 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
 
   if (myid == 0) std::cout << "FISS_TRANSLATION_BEGIN" << std::endl;
-  Mhypre.reset(fiss_bilinear.ParallelAssemble());
+  Mhypre = fiss_bilinear.ParallelAssemble();
   if (myid == 0) std::cout << "FISS_TRANSLATION_END" << std::endl;
 
   } // fiss construction
 
-  // TODO const?
-  PetscParMatrix A{Ahypre.get(), Operator::PETSC_MATHYPRE};
-  PetscParMatrix M{Mhypre.get(), Operator::PETSC_MATHYPRE};
+  constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
+
+  const PetscParMatrix A{Ahypre, petsc_format};
+  const PetscParMatrix M{Mhypre, petsc_format};
+
+  if ((petsc_format != Operator::PETSC_MATHYPRE) && 
+      (petsc_format != Operator::PETSC_MATSHELL))
+  {
+    delete Ahypre;
+    delete Mhypre;
+  }
 
   time.stop();
 
@@ -2493,6 +2501,13 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   {
     std::cout << "SOLVE_END" << std::endl;
     mem.stop_background();
+  }
+
+  if ((petsc_format == Operator::PETSC_MATHYPRE) || 
+      (petsc_format == Operator::PETSC_MATSHELL))
+  {
+    delete Ahypre;
+    delete Mhypre;
   }
 
   // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
@@ -2894,10 +2909,17 @@ void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equatio
 
   char** argv{argv_val.data()};
 
+  /*
   if (exists(slepcrc_fname))
     MFEMInitializeSlepc(&argc_val, &argv, slepcrc_fname.c_str(), nullptr);
   else
     MFEMInitializeSlepc(&argc_val, &argv, nullptr, nullptr);
+  */
+
+  if (exists(slepcrc_fname))
+    MFEMInitializeSlepc(nullptr, nullptr, slepcrc_fname.c_str(), nullptr);
+  else
+    MFEMInitializeSlepc(nullptr, nullptr, nullptr, nullptr);
 
   return;
 }
