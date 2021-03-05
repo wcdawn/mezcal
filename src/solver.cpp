@@ -23,6 +23,8 @@
 #include <string>
 #include <algorithm>
 
+#include "../mfem/linalg/petscinternals.hpp"
+
 using namespace mfem;
 
 #if __cplusplus >= 201703L
@@ -2465,8 +2467,12 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
 
-  const PetscParMatrix A{Ahypre, petsc_format};
-  const PetscParMatrix M{Mhypre, petsc_format};
+  PetscParMatrix A{Ahypre, petsc_format};
+  PetscParMatrix M{Mhypre, petsc_format};
+
+  PetscInt ierr;
+  ierr = MatSetBlockSize(A, block_rank); PCHKERRQ(A, ierr);
+  ierr = MatSetBlockSize(M, block_rank); PCHKERRQ(M, ierr);
 
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
