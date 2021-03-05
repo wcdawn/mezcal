@@ -10,7 +10,7 @@
 #include "stability_tau_coefficient.hpp"
 
 #include "vector_integrator_wrapper.hpp"
-#include "../mfem/fem/tensor.hpp"
+#include "../addon/tensor.hpp"
 
 #include "memory.hpp"
 
@@ -2335,7 +2335,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
     }
   }
   MatrixTensorPWConstCoefficient leakage_func{block_rank, leakage};
-  sink_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
+  sink_bilinear.AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
 
   Tensor<mfem::Vector> boundary;
   boundary.reserve(block_rank);
@@ -2599,7 +2599,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     VectorPWConstCoefficient total_func{total};
     MatrixTensorPWConstCoefficient leakage_func{quad->nd(), leakage};
     a[g]->AddDomainIntegrator(new VectorMassIntegrator{total_func});
-    a[g]->AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
+    a[g]->AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
     a[g]->AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
 
     a[g]->Assemble(); // note: no essential bcs in saaf

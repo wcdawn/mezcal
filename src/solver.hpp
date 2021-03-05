@@ -3,7 +3,10 @@
 
 #include "input.hpp"
 #include "material_library.hpp"
+
 #include "mfem.hpp"
+#include "../addon/mfem_addon.hpp"
+
 #include "result.hpp"
 #include "timer.hpp"
 #include "xslibrary.hpp"
