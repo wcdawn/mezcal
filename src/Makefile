@@ -23,6 +23,7 @@ CPP_FILES = main.cpp \
 			solver_choice.cpp \
 			spn_source_coefficient.cpp \
 			stability_tau_coefficient.cpp \
+			thermal_conductivity_coefficient.cpp \
 			timer.cpp \
 			vector_integrator_wrapper.cpp \
 			vector_pwconst_coefficient.cpp \
@@ -51,6 +52,7 @@ HPP_FILES = analytic.hpp \
 			solver_choice.hpp \
 			spn_source_coefficient.hpp \
 			stability_tau_coefficient.hpp \
+			thermal_conductivity_coefficient.hpp \
 			timer.hpp \
 			vector_integrator_wrapper.hpp \
 			vector_pwconst_coefficient.hpp \
@@ -156,4 +158,5 @@ quadrature.o : $(MFEM_HEADER) quadrature.hpp delaunay.hpp
 delaunay.o : $(MFEM_HEADER) delaunay.hpp
 stability_tau_coefficient.o : $(MFEM_HEADER) stability_tau_coefficient.hpp
 vector_integrator_wrapper.o : $(MFEM_HEADER) vector_integrator_wrapper.hpp
-conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp
+conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp thermal_conductivity_coefficient.hpp
+thermal_conductivity_coefficient.o : $(MFEM_HEADER) thermal_conductivity_coefficient.hpp material_library.hpp

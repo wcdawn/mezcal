@@ -1,5 +1,7 @@
 #include "conduction.hpp"
 
+#include "thermal_conductivity_coefficient.hpp"
+
 #include <iostream>
 
 using namespace mfem;
@@ -14,14 +16,9 @@ void temperature_heat_conduction(const Input& inp,
   ParFiniteElementSpace* parfespace{power.ParFESpace()};
   const ParMesh* const pmesh{parfespace->GetParMesh()};
 
-  Vector thermal_conductivity(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-    thermal_conductivity(i) = 69.0; // TODO use some data from mat_lib
-  PWConstCoefficient thermal_conductivity_coeff{thermal_conductivity};
-
+  ThermalConductivityCoefficient thermal_conductivity_coeff{mat_lib, &temperature};
   ParBilinearForm a{parfespace};
   a.AddDomainIntegrator(new DiffusionIntegrator{thermal_conductivity_coeff});
-  a.Assemble();
 
   GridFunctionCoefficient power_coeff{&power};
 
@@ -51,6 +48,8 @@ void temperature_heat_conduction(const Input& inp,
   for (int iter{0}; (iter < inp.tol.temp_max_outer) && 
       (inp.tol.temp > temp_conv); ++iter)
   {
+
+    a.Assemble();
 
     a.FormLinearSystem(ess_tdof_list, temperature, b, A, X, B);
     cg.SetOperator(*A);
