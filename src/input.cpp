@@ -180,6 +180,26 @@ void Input::read_state()
     {
       ifs >> tol.inner_abs;
     }
+    else if (card == "temp_max_outer")
+    {
+      ifs >> tol.temp_max_outer;
+    }
+    else if (card == "temp_tol")
+    {
+      ifs >> tol.temp;
+    }
+    else if (card == "temp_max_inner")
+    {
+      ifs >> tol.temp_max_inner;
+    }
+    else if (card == "temp_inner_rel")
+    {
+      ifs >> tol.temp_inner_rel;
+    }
+    else if (card == "temp_inner_abs")
+    {
+      ifs >> tol.temp_inner_abs;
+    }
     else if (card == "solver")
     {
       ifs >> solver_str;

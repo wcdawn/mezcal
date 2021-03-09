@@ -6,6 +6,7 @@ ADDON_DIR = ../addon
 
 CPP_FILES = main.cpp \
 			analytic.cpp \
+			conduction.cpp \
 			delaunay.cpp \
 			fission_coefficient.cpp \
 			hdf5_access_wrapper.cpp \
@@ -23,14 +24,15 @@ CPP_FILES = main.cpp \
 			spn_source_coefficient.cpp \
 			stability_tau_coefficient.cpp \
 			timer.cpp \
+			vector_integrator_wrapper.cpp \
 			vector_pwconst_coefficient.cpp \
 			version.cpp \
 			xslibrary.cpp \
-			vector_integrator_wrapper.cpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp
 
 HPP_FILES = analytic.hpp \
+			conduction.hpp \
 			delaunay.hpp \
 			fission_coefficient.hpp \
 			hdf5_access_wrapper.hpp \
@@ -41,6 +43,7 @@ HPP_FILES = analytic.hpp \
 			make_unique.hpp \
 			material_library.hpp \
 			matrix_pwconst_coefficient.hpp \
+			memory.hpp \
 			quadrature.hpp \
 			result.hpp \
 			scattering_coefficient.hpp \
@@ -49,10 +52,9 @@ HPP_FILES = analytic.hpp \
 			spn_source_coefficient.hpp \
 			stability_tau_coefficient.hpp \
 			timer.hpp \
+			vector_integrator_wrapper.hpp \
 			vector_pwconst_coefficient.hpp \
 			xslibrary.hpp \
-			vector_integrator_wrapper.hpp \
-			memory.hpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp \
 			$(ADDON_DIR)/tensor.hpp \
@@ -78,6 +80,7 @@ all : $(EXEC)
 
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
+	@$(MAKE) -C $(ADDON_DIR)
 	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) 
 
 %.o : %.cpp
@@ -136,7 +139,7 @@ xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
 material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp memory.hpp addon
+solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp memory.hpp
 scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 hdf5_access_wrapper.o : hdf5_access_wrapper.hpp
@@ -153,3 +156,4 @@ quadrature.o : $(MFEM_HEADER) quadrature.hpp delaunay.hpp
 delaunay.o : $(MFEM_HEADER) delaunay.hpp
 stability_tau_coefficient.o : $(MFEM_HEADER) stability_tau_coefficient.hpp
 vector_integrator_wrapper.o : $(MFEM_HEADER) vector_integrator_wrapper.hpp
+conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp
