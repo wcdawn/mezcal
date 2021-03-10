@@ -10,7 +10,7 @@ H5_DIR = $(OLCF_HDF5_ROOT)/lib
 
 PROJ = /ccs/proj/csc404/wcdawn
 MFEM_DIR = $(PROJ)/mfem
-HYPRE_DIR = $(PROJ)/hypre-2.16.0/src/hypre
+HYPRE_DIR = $(PROJ)/hypre/src/hypre
 METIS_DIR = $(PROJ)/metis-5.1.0
 METIS_LIB = -L$(METIS_DIR)/lib -l:libmetis.so
 
