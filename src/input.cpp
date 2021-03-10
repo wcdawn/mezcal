@@ -239,6 +239,10 @@ void Input::read_state()
       if ((quad_order % 2) != 0) 
         throw Invalid_input_card{"Chebyschev quadrature order must be even."};
     }
+    else if (card == "rxpwr")
+    {
+      ifs >> rxpwr;
+    }
     else if (card == "[STATE]")
     {
       // prepare to head into another state block

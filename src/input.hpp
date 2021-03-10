@@ -109,6 +109,8 @@ public:
   int quad_order{2};
   Quadrature_choice quadrature_type{Quadrature_choice::level_symmetric};
 
+  double rxpwr{1.0};
+
   Solver_choice sol{Solver_choice::lobpcg};
 
   // this is public so that other blocks (e.g. MATERIAL) can be read

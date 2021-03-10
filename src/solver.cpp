@@ -2291,10 +2291,11 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
                        Timer& time,
                        const Input& inp,
                        const Material_library& mat_lib,
-                       ParMesh* const pmesh,
-                       ParFiniteElementSpace* const fespace,
                        Result& angular_flux)
 {
+
+  ParFiniteElementSpace* const fespace{angular_flux(0).ParFESpace()};
+  ParMesh* const pmesh{fespace->GetParMesh()};
 
   const int myid{fespace->GetMyRank()};
   const int block_rank{mat_lib.ngroup()*quad->nd()}; // aka vdim
@@ -3324,7 +3325,7 @@ void calc_power(const Material_library& mat_lib,
   const double factor{rxpwr / b(power)}; // use the inner product in the space
 
   // renormalize power
-  power *= factor;
+  power *= factor; // power has units [W/cc]
 
   return;
 }

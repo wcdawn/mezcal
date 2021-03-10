@@ -8,6 +8,7 @@
 
 void temperature_heat_conduction(const Input& inp,
                                  const Material_library& mat_lib, 
+                                 const mfem::Array<int>& ess_bdr,
                                  const mfem::ParGridFunction& power,
                                  mfem::ParGridFunction& temperature);
 

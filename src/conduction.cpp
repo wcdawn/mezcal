@@ -14,7 +14,8 @@ void temperature_heat_conduction(const Input& inp,
 {
 
   ParFiniteElementSpace* parfespace{power.ParFESpace()};
-  const ParMesh* const pmesh{parfespace->GetParMesh()};
+
+  temperature = 273.15; // TODO figure out boundary temperature & use it for initial guess everywhere
 
   ThermalConductivityCoefficient thermal_conductivity_coeff{mat_lib, &temperature};
   ParBilinearForm a{parfespace};
@@ -47,10 +48,11 @@ void temperature_heat_conduction(const Input& inp,
   ParGridFunction temperature_old{temperature};
 
   double temp_conv{inp.tol.temp*1e2+1.0};
-  for (int iter{0}; (iter < inp.tol.temp_max_outer) && 
-      (inp.tol.temp > temp_conv); ++iter)
+  for (int iter{0}; (iter < inp.tol.temp_max_outer) &&
+      (temp_conv > inp.tol.temp); ++iter)
   {
 
+    a.Update();
     a.Assemble();
 
     a.FormLinearSystem(ess_tdof_list, temperature, b, A, X, B);
@@ -63,7 +65,8 @@ void temperature_heat_conduction(const Input& inp,
     const double local_temp_conv{temperature_old.Normlinf()};
     MPI_Allreduce(&local_temp_conv, &temp_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    std::cout << "iter=" << iter << "temp_conv=" << temp_conv << std::endl;
+    if ((inp.verbose) && (parfespace->GetMyRank() == 0))
+      std::cout << "iter=" << iter << " temp_conv=" << temp_conv << std::endl;
 
     temperature_old = temperature;
   }
