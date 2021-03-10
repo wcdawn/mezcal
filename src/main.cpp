@@ -264,7 +264,7 @@ int main(int argc, char* argv[])
   }
 
   Result res{&fespace, flux_length, moment_angle_length};
-  Result scalar_flux{&scalar_flux_fespace, flux_length};
+  Result scalar_flux{&scalar_flux_fespace, mat_lib.ngroup()};
 
   ofstream sum{inp.input_file_stub() + ".sum"};
   sum << "=== STATEPOINT SUMMARY ===\n" << "state, spn_order, keff\n";

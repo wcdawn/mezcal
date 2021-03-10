@@ -137,6 +137,14 @@ void calc_scalar_flux_vector(int g,
                              const Result& angular_flux, 
                              const Quadrature* const quad,
                              Result& scalar_flux);
+void calc_scalar_flux_slepc_vector(const Result& angular_flux, 
+                                   const Quadrature* const quad,
+                                   Result& scalar_flux);
+
+void calc_power(const Material_library& mat_lib,
+                const Result& scalar_flux,
+                double rxpwr,
+                mfem::ParGridFunction& power);
 
 void calc_fiss_upscatter(const Result& scalar_flux,
                          const Material_library& mat_lib,

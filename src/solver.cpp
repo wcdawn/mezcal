@@ -2540,7 +2540,11 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   if (std::abs(tmp.Max()) < std::abs(tmp.Min()))
     angular_flux(0).Neg();
 
-  // TODO figure out how to calculate scalar flux
+  calc_scalar_flux_slepc_vector(angular_flux, quad, scalar_flux);
+  /*
+  ParGridFunction power{scalar_flux(0).ParFESpace()};
+  calc_power(mat_lib, scalar_flux, 1.0, power);
+  */
 
   return;
 }
@@ -3266,6 +3270,67 @@ void calc_fiss_src(const Result& scalar_flux,
       ++idx;
     }
   }
+
+  return;
+}
+
+void calc_scalar_flux_slepc_vector(const Result& angular_flux, 
+                                   const Quadrature* const quad,
+                                   Result& scalar_flux)
+{
+
+  const int ngroup{angular_flux(0).ParFESpace()->GetVDim() / quad->nd()};
+  ParGridFunction tmp{scalar_flux(0)};
+  for (int g{0}; g < ngroup; ++g)
+  {
+    scalar_flux(g) = 0.0;
+    for (int n{0}; n < quad->nd(); ++n)
+    {
+      const int idx{n + g*quad->nd()};
+      GridFunctionCoefficient gfc{&angular_flux(0), idx};
+      tmp.ProjectCoefficient(gfc);
+      tmp *= quad->weight(n);
+      scalar_flux(g) += tmp;
+    }
+  }
+
+  return;
+}
+
+void calc_power(const Material_library& mat_lib,
+                const Result& scalar_flux,
+                double rxpwr,
+                ParGridFunction& power)
+{
+
+  const int max_att{scalar_flux(0).ParFESpace()->GetParMesh()->attributes.Max()};
+
+  // accumulate power from each energy group
+  ParGridFunction tmp{scalar_flux(0)};
+  power = 0.0;
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+
+    Vector kappasf(max_att);
+    for (int i{0}; i < max_att; ++i)
+      kappasf(i) = mat_lib.mat[i].rec.nusf[g]; // TODO replace with proper value
+    PWConstCoefficient kappasf_coeff{kappasf};
+
+    GridFunctionCoefficient gfc{&scalar_flux(g)};
+    ProductCoefficient pc{gfc, kappasf_coeff};
+    tmp.ProjectCoefficient(pc);
+    power += tmp;
+  }
+
+  // calculate power normalization factor
+  ConstantCoefficient one{1.0};
+  ParLinearForm b{scalar_flux(0).ParFESpace()};
+  b.AddDomainIntegrator(new DomainLFIntegrator{one});
+  b.Assemble();
+  const double factor{rxpwr / b(power)};
+
+  // renormalize power
+  power *= factor;
 
   return;
 }

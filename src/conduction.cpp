@@ -19,11 +19,13 @@ void temperature_heat_conduction(const Input& inp,
   ThermalConductivityCoefficient thermal_conductivity_coeff{mat_lib, &temperature};
   ParBilinearForm a{parfespace};
   a.AddDomainIntegrator(new DiffusionIntegrator{thermal_conductivity_coeff});
+  // For Robin bc, add BoundaryMassIntegrator
 
   GridFunctionCoefficient power_coeff{&power};
 
   ParLinearForm b{parfespace};
   b.AddDomainIntegrator(new DomainLFIntegrator{power_coeff});
+  // For Robin bc, add BoundaryLFIntegrator
   b.Assemble();
 
   Array<int> ess_tdof_list;
