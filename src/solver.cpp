@@ -2293,8 +2293,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
                        const Material_library& mat_lib,
                        ParMesh* const pmesh,
                        ParFiniteElementSpace* const fespace,
-                       Result& angular_flux,
-                       Result& scalar_flux)
+                       Result& angular_flux)
 {
 
   const int myid{fespace->GetMyRank()};
@@ -2490,7 +2489,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   slepc.SetMaxIter(inp.tol.max_outer);
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(A, M);
-  time.stop();
+  time.stop("slepc setup");
 
   // TODO consider restarting
 
@@ -2502,7 +2501,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   }
   time.start(time.solver);
   slepc.Solve();
-  time.stop();
+  time.stop(time.solver);
   if (myid == 0) 
   {
     std::cout << "SOLVE_END" << std::endl;
@@ -2524,7 +2523,6 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   slepc.GetEigenvalue(0, angular_flux.keff);
   angular_flux.keff = 1.0 / angular_flux.keff;
-  scalar_flux.keff = angular_flux.keff;
   Vector tmp(fespace->GetTrueVSize());
   slepc.GetEigenvector(0, tmp);
 
@@ -2539,12 +2537,6 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   angular_flux(0).GetNodalValues(tmp);
   if (std::abs(tmp.Max()) < std::abs(tmp.Min()))
     angular_flux(0).Neg();
-
-  calc_scalar_flux_slepc_vector(angular_flux, quad, scalar_flux);
-  /*
-  ParGridFunction power{scalar_flux(0).ParFESpace()};
-  calc_power(mat_lib, scalar_flux, 1.0, power);
-  */
 
   return;
 }
@@ -3279,6 +3271,8 @@ void calc_scalar_flux_slepc_vector(const Result& angular_flux,
                                    Result& scalar_flux)
 {
 
+  scalar_flux.keff = angular_flux.keff;
+
   const int ngroup{angular_flux(0).ParFESpace()->GetVDim() / quad->nd()};
   ParGridFunction tmp{scalar_flux(0)};
   for (int g{0}; g < ngroup; ++g)
@@ -3287,7 +3281,7 @@ void calc_scalar_flux_slepc_vector(const Result& angular_flux,
     for (int n{0}; n < quad->nd(); ++n)
     {
       const int idx{n + g*quad->nd()};
-      GridFunctionCoefficient gfc{&angular_flux(0), idx};
+      GridFunctionCoefficient gfc{&angular_flux(0), idx+1};
       tmp.ProjectCoefficient(gfc);
       tmp *= quad->weight(n);
       scalar_flux(g) += tmp;
@@ -3327,7 +3321,7 @@ void calc_power(const Material_library& mat_lib,
   ParLinearForm b{scalar_flux(0).ParFESpace()};
   b.AddDomainIntegrator(new DomainLFIntegrator{one});
   b.Assemble();
-  const double factor{rxpwr / b(power)};
+  const double factor{rxpwr / b(power)}; // use the inner product in the space
 
   // renormalize power
   power *= factor;
