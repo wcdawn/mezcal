@@ -122,10 +122,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
                             Timer& time,
                             const Input& inp,
                             const Material_library& mat_lib,
-                            mfem::ParMesh* const pmesh,
-                            mfem::ParFiniteElementSpace* const fespace,
-                            Result& angular_flux,
-                            Result& scalar_flux);
+                            Result& angular_flux);
 
 void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations);
 
@@ -137,6 +134,14 @@ void calc_scalar_flux_vector(int g,
                              const Result& angular_flux, 
                              const Quadrature* const quad,
                              Result& scalar_flux);
+void calc_scalar_flux_slepc_vector(const Result& angular_flux, 
+                                   const Quadrature* const quad,
+                                   Result& scalar_flux);
+
+void calc_power(const Material_library& mat_lib,
+                const Result& scalar_flux,
+                double rxpwr,
+                mfem::ParGridFunction& power);
 
 void calc_fiss_upscatter(const Result& scalar_flux,
                          const Material_library& mat_lib,

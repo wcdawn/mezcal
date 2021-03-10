@@ -52,6 +52,22 @@ struct Material_record
   // calculate macroscopic xs based on user-input number densities and
   // microscopic xs from XSLibrary
   void calculate_macroscopic_xs();
+
+  enum Thermal_material
+  {
+    Na,
+    Pb,
+    PbBi,
+    HT9,
+    U10Zr,
+    UN,
+    UO2, // includes 5% porosity
+  };
+
+  Thermal_material k_mat{Thermal_material::HT9};
+
+  double thermal_conductivity(double temperature) const;
+
 };
 
 class Material_library

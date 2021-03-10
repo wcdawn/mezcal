@@ -21,6 +21,12 @@ struct Tolerance_control
   int max_inner{1000};
   double inner_rel{1e-12};
   double inner_abs{1e-24};
+
+  int temp_max_outer{100};
+  double temp{1.0};
+  int temp_max_inner{1000};
+  double temp_inner_rel{1e-6};
+  double temp_inner_abs{1e-6};
 };
 
 struct Input
@@ -102,6 +108,8 @@ public:
   int quad_chebyschev_order{0};
   int quad_order{2};
   Quadrature_choice quadrature_type{Quadrature_choice::level_symmetric};
+
+  double rxpwr{1.0};
 
   Solver_choice sol{Solver_choice::lobpcg};
 

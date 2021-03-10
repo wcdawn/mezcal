@@ -3,7 +3,10 @@
 #include "material_library.hpp"
 #include "mfem.hpp"
 #include "result.hpp"
+
 #include "solver.hpp"
+#include "conduction.hpp"
+
 #include "timer.hpp"
 #include "xslibrary.hpp"
 
@@ -264,7 +267,9 @@ int main(int argc, char* argv[])
   }
 
   Result res{&fespace, flux_length, moment_angle_length};
-  Result scalar_flux{&scalar_flux_fespace, flux_length};
+  Result scalar_flux{&scalar_flux_fespace, mat_lib.ngroup()};
+  ParGridFunction power{&scalar_flux_fespace};
+  ParGridFunction temperature{&scalar_flux_fespace};
 
   ofstream sum{inp.input_file_stub() + ".sum"};
   sum << "=== STATEPOINT SUMMARY ===\n" << "state, spn_order, keff\n";
@@ -316,8 +321,11 @@ int main(int argc, char* argv[])
           MFEMFinalizeSlepc();
           break;
         case (Solver_choice::saaf_true_slepc_vector):
-          saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
           MFEMFinalizeSlepc();
+          calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
+          calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+          temperature_heat_conduction(inp, mat_lib, ess_bdr, power, temperature);
           break;
         default:
           cerr << "Invalid solver choice.\n";
@@ -366,10 +374,21 @@ int main(int argc, char* argv[])
         (inp.sol == Solver_choice::saaf_slepc_vector) || 
         (inp.sol == Solver_choice::saaf_true_slepc_vector))
     {
-      // TODO fix this so that this can be more descriptive
-      // Will probably require constructing a new FiniteElementSpace, a new
-      // Vector, and a new GridFunction
       output.RegisterField("phi", &res(0));
+      if (inp.sol == Solver_choice::saaf_true_slepc_vector)
+      {
+        for (int g{0}; g < scalar_flux.ngroup(); ++g)
+        {
+          std::ostringstream scalar_flux_record;
+          scalar_flux_record << "scalar_flux_g" 
+                             << std::setfill('0')
+                             << std::setw(group_width)
+                             << g;
+          output.RegisterField(scalar_flux_record.str(), &scalar_flux(g));
+        }
+        output.RegisterField("power", &power);
+        output.RegisterField("temperature", &temperature);
+      }
     }
     else
     {
