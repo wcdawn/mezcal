@@ -1,5 +1,7 @@
 #include "material_library.hpp"
 
+#include <cmath>
+
 using namespace mfem;
 
 using std::cerr;
@@ -234,6 +236,10 @@ double Material_record::thermal_conductivity(double T) const
   {
     case (Na):
       return 124.67 - 0.11381*T + 5.5226e-5*std::pow(T,2) - 1.1842e-8*std::pow(T,3);
+    case (Pb):
+      return 15.8 + 0.011*(T-600.6);
+    case (PbBi):
+      return 9.350 + 0.014340*(T-398.0) + 3.305e-6*std::pow(T-398.0,2);
     case (HT9):
       return (T <= 1030.0) ? 17.622 + 2.428e-2*T - 1.696e-5*std::pow(T,2) : 12.027 + 1.281e-2*T;
     case (U10Zr):
@@ -245,10 +251,14 @@ double Material_record::thermal_conductivity(double T) const
         const double k_U_Zr{(1.0-std::sqrt(1.0-x))*k_Zr + std::sqrt(1.0-x)*((1.0-x)*k_U + x*k_Zr_c)};
         return k_U_Zr;
       }
-    case (Pb):
-      return 15.8 + 0.011*(T-600.6);
-    case (PbBi):
-      return 9.350 + 0.014340*(T-398.0) + 3.305e-6*std::pow(T-398.0,2);
+    case (UN):
+      {
+        constexpr double porosity{0.15};
+        return 1.864 * std::exp(-2.14*porosity) * std::pow(T,0.361);
+      }
+    case (UO2):
+      return 100./(7.5408 + 17.692*(T*1e-3) + 3.6142*std::pow(T*1e-3,2)) + 
+        6400./std::pow(T*1e-3,2.5) * std::exp(-16.35/(T*1e-3));
   }
   return -1e-3;
 }

@@ -60,6 +60,8 @@ struct Material_record
     PbBi,
     HT9,
     U10Zr,
+    UN,
+    UO2, // includes 5% porosity
   };
 
   Thermal_material k_mat{Thermal_material::HT9};
