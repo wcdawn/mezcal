@@ -140,11 +140,23 @@ public:
     run_background = true;
   }
 
+  void init_background(int myid, int milliseconds)
+  {
+    if (myid == 0)
+      init_background(milliseconds);
+  }
+
   void stop_background()
   {
     std::cout << "BACKGROUND_STOPPED" << std::endl;
     run_background = false;
     t.join();
+  }
+
+  void stop_background(int myid)
+  {
+    if (myid == 0)
+      stop_background();
   }
 
   void background(int milliseconds=1)
