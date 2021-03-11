@@ -109,7 +109,9 @@ public:
   int quad_order{2};
   Quadrature_choice quadrature_type{Quadrature_choice::level_symmetric};
 
-  double rxpwr{1.0};
+  double rxpwr{1.0}; // reactor power [W]
+  double temp_boundary{273.15}; // boundary temperature [K]
+  double temp_heat_pipe{300.}; // heat pipe constant temperature [K]
 
   Solver_choice sol{Solver_choice::lobpcg};
 

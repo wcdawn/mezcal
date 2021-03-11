@@ -325,7 +325,7 @@ int main(int argc, char* argv[])
           MFEMFinalizeSlepc();
           calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
-          temperature_heat_conduction(inp, mat_lib, ess_bdr, power, temperature);
+          temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         default:
           cerr << "Invalid solver choice.\n";

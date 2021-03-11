@@ -243,6 +243,14 @@ void Input::read_state()
     {
       ifs >> rxpwr;
     }
+    else if (card == "temp_boundary")
+    {
+      ifs >> temp_boundary;
+    }
+    else if (card == "temp_heat_pipe")
+    {
+      ifs >> temp_heat_pipe;
+    }
     else if (card == "[STATE]")
     {
       // prepare to head into another state block
