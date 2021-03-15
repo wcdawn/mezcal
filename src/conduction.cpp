@@ -18,7 +18,10 @@ void temperature_heat_conduction(const Input& inp,
 
   Array<int> ess_bdr, ess_tdof_list;
   ess_bdr.SetSize(pmesh->bdr_attributes.Max());
-  ess_bdr = 1; // all boundaries are essential (all external boundaries for now)
+  // all boundaries are essential (all external boundaries for now)
+  // if we want to solve a problem with reflective symmetry and impose
+  // reflective bcs, would need to do something about this
+  ess_bdr = 1;
   parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
   constexpr int heat_pipe_id{5}; // TODO need some other method for this...
