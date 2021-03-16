@@ -639,9 +639,14 @@ void diffusion_fixed_src(Timer& time, const Input& inp,
 
 void spn_slepc_vector(Timer& time, const Input& inp,
                         Material_library& mat_lib,
-                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
-                        ParFiniteElementSpace* const fespace, Result& res)
+                        const Array<int>& ess_bdr,
+                        const ParMesh* const pmesh,
+                        ParFiniteElementSpace* const fespace,
+                        Result& res,
+                        Result& scalar_flux)
 {
+
+  constexpr int skip_zeros{2}; // skip all zeros regardless of symmetry
 
   // get the process id so that only the root process writes to terminal
   const int myid{fespace->GetMyRank()};
@@ -650,10 +655,13 @@ void spn_slepc_vector(Timer& time, const Input& inp,
 
   slepc_davidson_hypre_boomeramg_initialize(inp, mat_lib.ngroup()*inp.spn_eq());
 
+  HypreParMatrix *Ahypre{nullptr}, *Mhypre{nullptr};
+
   time.start(time.matrix_assembly);
 
+  { // sink construction
+
   ParBilinearForm diffusion_bilinear{fespace};
-  ParBilinearForm fission_bilinear{fespace};
 
   std::vector<DenseMatrix> leakage(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -717,10 +725,17 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
   if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::removal_func" << std::endl;
 
-
-  diffusion_bilinear.Assemble();
+  diffusion_bilinear.Assemble(skip_zeros);
   diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
-  diffusion_bilinear.Finalize();
+  diffusion_bilinear.Finalize(skip_zeros);
+
+  Ahypre = diffusion_bilinear.ParallelAssemble();
+
+  } // sink construction
+
+  { // fiss construction
+
+  ParBilinearForm fission_bilinear{fespace};
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -745,9 +760,13 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::fission_func" << std::endl;
 
   fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
-  fission_bilinear.Assemble();
+  fission_bilinear.Assemble(skip_zeros);
   fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
-  fission_bilinear.Finalize();
+  fission_bilinear.Finalize(skip_zeros);
+
+  Mhypre = fission_bilinear.ParallelAssemble();
+
+  } // fiss construction
 
   time.stop();
 
@@ -760,32 +779,26 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   // as it uses a preconditioner instead of a spectral transformation
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
 
-  // set PETSc operators appropriately
-  PetscParMatrix* A{nullptr};
-  PetscParMatrix* M{nullptr};
+  constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
 
+  PetscParMatrix A{Ahypre, petsc_format};
+  PetscParMatrix M{Mhypre, petsc_format};
+
+  const int vdim{mat_lib.ngroup()*inp.spn_eq()};
+  PetscErrorCode ierr;
+  ierr = MatSetBlockSize(A, vdim); PCHKERRQ(A, ierr);
+  ierr = MatSetBlockSize(M, vdim); PCHKERRQ(M, ierr);
+
+  if ((petsc_format != Operator::PETSC_MATHYPRE) && 
+      (petsc_format != Operator::PETSC_MATSHELL))
   {
-
-    OperatorHandle Ah{Operator::PETSC_MATAIJ};
-    diffusion_bilinear.ParallelAssemble(Ah);
-    Ah.Get(A);
-    Ah.SetOperatorOwner(false);
-
-    OperatorHandle Mh{Operator::PETSC_MATAIJ};
-    fission_bilinear.ParallelAssemble(Mh);
-    Mh.Get(M);
-    Mh.SetOperatorOwner(false);
-
+    delete Ahypre;
+    delete Mhypre;
   }
 
-  /*
-  A->Print("petsca_vector");
-  M->Print("petscm_vector");
-  */
+  slepc.SetOperators(A, M);
 
-  slepc.SetOperators(*A, *M);
-
-  /*
+  /* RESTART
   // set based on the previous state
   Vector true_dof;
   res(0).GetTrueDofs(true_dof);
@@ -798,6 +811,13 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   time.start(time.solver);
   slepc.Solve();
   time.stop();
+
+  if ((petsc_format == Operator::PETSC_MATHYPRE) ||
+      (petsc_format == Operator::PETSC_MATSHELL))
+  {
+    delete Ahypre;
+    delete Mhypre;
+  }
 
   // Note: if SLEPc fails to *fully* converge, the eigenvalues or eigenvectors
   // cannot be accessed, even if they are *nearly* converged. Therefore, to
@@ -821,6 +841,13 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   res(0).GetNodalValues(tmp);
   if (std::abs(tmp.Max()) < std::abs(tmp.Min()))
     res(0).Neg();
+
+  scalar_flux.keff = res.keff;
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    GridFunctionCoefficient gfc{&res(0), g+1};
+    scalar_flux(g).ProjectCoefficient(gfc);
+  }
 
   return;
 }
@@ -2470,7 +2497,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   PetscParMatrix A{Ahypre, petsc_format};
   PetscParMatrix M{Mhypre, petsc_format};
 
-  PetscInt ierr;
+  PetscErrorCode ierr;
   ierr = MatSetBlockSize(A, block_rank); PCHKERRQ(A, ierr);
   ierr = MatSetBlockSize(M, block_rank); PCHKERRQ(M, ierr);
 

@@ -18,13 +18,27 @@ void temperature_heat_conduction(const Input& inp,
 
   Array<int> ess_bdr, ess_tdof_list;
   ess_bdr.SetSize(pmesh->bdr_attributes.Max());
+
+  /*
   // all boundaries are essential (all external boundaries for now)
   // if we want to solve a problem with reflective symmetry and impose
   // reflective bcs, would need to do something about this
   ess_bdr = 1;
+  */
+
+  // For now I'm allowing reflective (insulating) boundaries. This is nice for
+  // running the vvercan model. There is a potential problem that this system
+  // would have no solution if there is no essential boundary and also no heat
+  // pipes but... just don't let that happen...
+  for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
+    ess_bdr[i] = inp.boundary_conditions[i];
+
   parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  constexpr int heat_pipe_id{5}; // TODO need some other method for this...
+  // TODO need some other method for this...
+  // bwr 5 is poison rods
+  // vvercan 4 is poison rods
+  constexpr int heat_pipe_id{4};
 
   std::unordered_set<int> heat_pipe_set;
   for (int e{0}; e < parfespace->GetNE(); ++e)

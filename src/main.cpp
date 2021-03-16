@@ -23,10 +23,6 @@
 using namespace std;
 using namespace mfem;
 
-#include <cmath>
-using std::abs;
-using std::sin;
-
 void version(std::ostream& os); // forward declaration
 
 int main(int argc, char* argv[])
@@ -297,8 +293,10 @@ int main(int argc, char* argv[])
           spn_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
         case (Solver_choice::slepc_vector):
-          spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
           MFEMFinalizeSlepc();
+          calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+          temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         case (Solver_choice::slepc_manual):
           spn_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
@@ -375,7 +373,8 @@ int main(int argc, char* argv[])
         (inp.sol == Solver_choice::saaf_true_slepc_vector))
     {
       output.RegisterField("phi", &res(0));
-      if (inp.sol == Solver_choice::saaf_true_slepc_vector)
+      if ((inp.sol == Solver_choice::saaf_true_slepc_vector) || 
+          (inp.sol == Solver_choice::slepc_vector))
       {
         for (int g{0}; g < scalar_flux.ngroup(); ++g)
         {
