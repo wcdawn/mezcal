@@ -79,8 +79,15 @@ int main(int argc, char* argv[])
 
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
-  Device device(inp.device);
+
+  std::string device_str{inp.device};
+  device_str += ",omp";
+  Device device(device_str);
   if (myid == 0) device.Print();
+#ifdef GPU_AWARE_MPI
+  if (device.IsEnabled()) device.SetGPUAwareMPI();
+  std::cout << "HERE" << std::endl;
+#endif
 
   // core block is finished, you can read cross sections from file
   // xs.read_userxs(inp.xs_file);
