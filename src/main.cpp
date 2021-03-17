@@ -86,7 +86,6 @@ int main(int argc, char* argv[])
   if (myid == 0) device.Print();
 #ifdef GPU_AWARE_MPI
   if (device.IsEnabled()) device.SetGPUAwareMPI();
-  std::cout << "HERE" << std::endl;
 #endif
 
   // core block is finished, you can read cross sections from file
