@@ -274,8 +274,10 @@ int main(int argc, char* argv[])
   ParGridFunction power{&scalar_flux_fespace};
   ParGridFunction temperature{&scalar_flux_fespace};
 
+  /* TODO SUM
   ofstream sum{inp.input_file_stub() + ".sum"};
   sum << "=== STATEPOINT SUMMARY ===\n" << "state, spn_order, keff\n";
+  */
 
   for (int state{0}; state < inp.nstate(); ++state)
   {
@@ -426,7 +428,7 @@ int main(int argc, char* argv[])
     output.SetFormat(DataCollection::PARALLEL_FORMAT);
     output.Save();
 
-    sum << state << ',' << inp.spn_order() << ',' << res.keff << '\n';
+    /* TODO SUM sum << state << ',' << inp.spn_order() << ',' << res.keff << '\n'; */
 
     time.stop();
 
