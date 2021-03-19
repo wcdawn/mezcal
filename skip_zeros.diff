@@ -1,0 +1,13 @@
+diff --git a/linalg/sparsemat.cpp b/linalg/sparsemat.cpp
+index 7065e9e4e..389d1411a 100644
+--- a/linalg/sparsemat.cpp
++++ b/linalg/sparsemat.cpp
+@@ -2494,7 +2494,7 @@ void SparseMatrix::AddSubMatrix(const Array<int> &rows, const Array<int> &cols,
+          {
+             // if the element is zero do not assemble it unless this breaks
+             // the symmetric structure
+-            if (&rows != &cols || subm(j, i) == 0.0)
++            if ((skip_zeros == 2) || (&rows != &cols || subm(j, i) == 0.0))
+             {
+                continue;
+             }
