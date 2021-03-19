@@ -567,6 +567,15 @@ void spn_power_iteration(Timer& time, const Input& inp,
 
 }
 
+void spn_amgx_power_iteration(Timer& time, const Input& inp,
+                              Material_library& mat_lib,
+                              Array<int>& ess_bdr,
+                              const ParMesh* const pmesh,
+                              ParFiniteElementSpace* const fespace, Result& res)
+{
+  return;
+}
+
 void diffusion_fixed_src(Timer& time, const Input& inp,
                            const Material_library& mat_lib,
                            const Array<int>& ess_bdr,

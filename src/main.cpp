@@ -300,6 +300,9 @@ int main(int argc, char* argv[])
         case (Solver_choice::power_iteration):
           spn_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
+        case (Solver_choice::amgx_power_iteration):
+          spn_amgx_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          break;
         case (Solver_choice::slepc_vector):
           spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
           MFEMFinalizeSlepc();

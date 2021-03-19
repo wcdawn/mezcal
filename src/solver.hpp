@@ -60,6 +60,11 @@ void spn_power_iteration(Timer& time, const Input& inp,
                          mfem::Array<int>& ess_bdr,
                          const mfem::ParMesh* const pmesh,
                          mfem::ParFiniteElementSpace* const fespace, Result& res);
+void spn_amgx_power_iteration(Timer& time, const Input& inp,
+                              Material_library& mat_lib,
+                              mfem::Array<int>& ess_bdr,
+                              const mfem::ParMesh* const pmesh,
+                              mfem::ParFiniteElementSpace* const fespace, Result& res);
 
 void diffusion_fixed_src(Timer& time, const Input& inp,
                            const Material_library& mat_lib,

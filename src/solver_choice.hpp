@@ -7,6 +7,7 @@ enum class Solver_choice
 {
   invalid = -1,
   power_iteration,
+  amgx_power_iteration,
   lobpcg,
   slepc_vector,
   slepc_manual,
