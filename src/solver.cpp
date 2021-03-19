@@ -651,6 +651,8 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   // get the process id so that only the root process writes to terminal
   const int myid{fespace->GetMyRank()};
 
+  if (myid == 0) std::cout << "__spn_order__ = " << inp.spn_order() << std::endl;
+
   mat_lib.set_nmoment(inp.spn_order()+1);
 
   slepc_davidson_hypre_boomeramg_initialize(inp, mat_lib.ngroup()*inp.spn_eq());
@@ -725,17 +727,21 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
   if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::removal_func" << std::endl;
 
+  if (myid == 0) std::cout << "DIFFUSION_ASSEMBLE_BEGIN" << std::endl;
+  time.start("diffusion_assemble");
   diffusion_bilinear.Assemble(skip_zeros);
   diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
   diffusion_bilinear.Finalize(skip_zeros);
+  time.stop("diffusion_assemble");
+  if (myid == 0) std::cout << "DIFFUSION_ASSEMBLE_END" << std::endl;
 
+  time.start("diffusion_par_assemble");
   Ahypre = diffusion_bilinear.ParallelAssemble();
+  time.stop("diffusion_par_assemble");
 
   } // sink construction
 
   { // fiss construction
-
-  ParBilinearForm fission_bilinear{fespace};
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -756,33 +762,36 @@ void spn_slepc_vector(Timer& time, const Input& inp,
       }
     }
   }
+
+  ParBilinearForm fission_bilinear{fespace};
   MatrixPWConstCoefficient fission_func{fission};
+  fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
   if (myid == 0) std::cout << "MATRIXPWCONSTCOEFFICIENT::fission_func" << std::endl;
 
-  fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
+  if (myid == 0) std::cout << "FISSION_ASSEMBLE_BEGIN" << std::endl;
+  time.start("fission_assemble");
   fission_bilinear.Assemble(skip_zeros);
   fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
   fission_bilinear.Finalize(skip_zeros);
+  time.start("fission_assemble");
+  if (myid == 0) std::cout << "FISSION_ASSEMBLE_END" << std::endl;
 
+  time.start("fission_par_assemble");
   Mhypre = fission_bilinear.ParallelAssemble();
+  time.stop("fission_par_assemble");
 
   } // fiss construction
 
-  time.stop();
-
-  SlepcEigenSolver slepc{MPI_COMM_WORLD};
-  slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
-  slepc.SetMaxIter(inp.tol.max_outer);
-
-  // spectral transformation will not be useful for Generalized Davidson solver
-  // as it uses a preconditioner instead of a spectral transformation
-  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+  time.stop(time.matrix_assembly);
 
   constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
 
+  if (myid == 0) std::cout << "PETSC_ASSEMBLE_BEGIN" << std::endl;
+  time.start("petsc_assemble");
   PetscParMatrix A{Ahypre, petsc_format};
   PetscParMatrix M{Mhypre, petsc_format};
+  time.stop("petsc_assemble");
+  if (myid == 0) std::cout << "PETSC_ASSEMBLE_END" << std::endl;
 
   const int vdim{mat_lib.ngroup()*inp.spn_eq()};
   PetscErrorCode ierr;
@@ -796,6 +805,11 @@ void spn_slepc_vector(Timer& time, const Input& inp,
     delete Mhypre;
   }
 
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetMaxIter(inp.tol.max_outer);
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(A, M);
 
   /* RESTART
@@ -808,9 +822,11 @@ void spn_slepc_vector(Timer& time, const Input& inp,
   EPSSetInitialSpace(slepc, 1, array.get());
   */
 
+  if (myid == 0) std::cout << "SOLVE_BEGIN" << std::endl;
   time.start(time.solver);
   slepc.Solve();
   time.stop();
+  if (myid == 0) std::cout << "SOLVE_END" << std::endl;
 
   if ((petsc_format == Operator::PETSC_MATHYPRE) ||
       (petsc_format == Operator::PETSC_MATSHELL))
