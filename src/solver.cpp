@@ -573,6 +573,13 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
                               const ParMesh* const pmesh,
                               ParFiniteElementSpace* const fespace, Result& res)
 {
+
+  /*
+   * 1) Efficiency of bassemble. Begin with quadrature functions.
+   * 2) Boundary conditions.
+   * 3) bassemble on GPU.
+   */
+
   constexpr int skip_zeros{2};
   const int myid{fespace->GetMyRank()};
   if (myid == 0) std::cout << "__spn_order__=" << inp.spn_order() << std::endl;
@@ -667,12 +674,10 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     fiss[g] = std::make_unique<ParLinearForm>(fespace);
-
     Vector nusf(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
       nusf(i) = mat_lib.mat[i].rec.nusf[g];
     PWConstCoefficient nusf_func{nusf};
-
     fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_func});
     fiss[g]->Assemble();
   }
