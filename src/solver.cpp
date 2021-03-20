@@ -290,7 +290,7 @@ void spn_power_iteration(Timer& time, const Input& inp,
   double fiss_sum{1.0};
   double fiss_sum_old{1.0};
 
-  // initialize convergence critera (make sure we enter the loop at least once)
+  // initialize convergence criteria (make sure we enter the loop at least once)
   double k_conv{inp.tol.k * 1e1 + 1e-5};
   double phi_conv{inp.tol.phi * 1e1 + 1e-5};
 
@@ -573,6 +573,200 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
                               const ParMesh* const pmesh,
                               ParFiniteElementSpace* const fespace, Result& res)
 {
+  constexpr int skip_zeros{2};
+  const int myid{fespace->GetMyRank()};
+  if (myid == 0) std::cout << "__spn_order__=" << inp.spn_order() << std::endl;
+
+  mat_lib.set_nmoment(inp.spn_order()+1);
+
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  time.start(time.matrix_assembly);
+
+  SPNWrapper<AmgXSolver> sol(mat_lib.ngroup(), inp.spn_eq());
+  SPNWrapper<std::unique_ptr<HypreParMatrix>> amat(mat_lib.ngroup(), inp.spn_eq());
+  sol.resize();
+  amat.resize();
+
+  for (int n{0}; n < inp.spn_eq(); ++n)
+  {
+    const double dble_n{2.0*n};
+    const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+    const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      ParBilinearForm a{fespace};
+
+      Vector leakage(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      {
+        leakage(i) = xmult_next / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        if (n > 0) leakage(i) += xmult_prev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+      }
+      PWConstCoefficient leakage_func{leakage};
+      a.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+
+      Vector removal(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+        removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
+      PWConstCoefficient removal_func{removal};
+      a.AddDomainIntegrator(new MassIntegrator{removal_func});
+
+      a.Assemble(skip_zeros);
+      a.Finalize(skip_zeros);
+
+      // TODO figure out how to impose boundary conditions.
+      // FormSystemMatrix() looks promising.
+      amat(g,n).reset(a.ParallelAssemble());
+
+      sol(g,n).DefaultParameters(AmgXSolver::SOLVER, inp.verbose); // setup solver
+      sol(g,n).ReadParameters("amgxrc", AmgXSolver::EXTERNAL); // read solver properties from file
+      sol(g,n).InitExclusiveGPU(fespace->GetComm()); // mandate one MPI per gpu
+      sol(g,n).SetOperator(*amat(g,n));
+    }
+  }
+
+  time.stop(time.matrix_assembly);
+
+  std::vector<ScatteringCoefficient> scat_coeff;
+  std::vector<FissionCoefficient> fiss_coeff;
+  std::vector<SPNSourceCoefficient> spn_coeff;
+  scat_coeff.reserve(mat_lib.ngroup());
+  fiss_coeff.reserve(mat_lib.ngroup());
+  spn_coeff.reserve(mat_lib.ngroup()*inp.spn_eq());
+
+  SPNWrapper<std::unique_ptr<ParLinearForm>> b(mat_lib.ngroup(), inp.spn_eq());
+  b.resize();
+
+  // TODO massive improvement needed. Needs to use quadrature function, etc.
+  for (int n{0}; n < inp.spn_eq(); ++n)
+  {
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      b(g,n) = std::make_unique<ParLinearForm>(fespace);
+      b(g,n)->UseDevice(true);
+
+      if (n == 0)
+      {
+        scat_coeff.emplace_back(g, mat_lib, res);
+        fiss_coeff.emplace_back(g, res.keff, mat_lib, res);
+        b(g,n)->AddDomainIntegrator(new DomainLFIntegrator{scat_coeff.back()});
+        b(g,n)->AddDomainIntegrator(new DomainLFIntegrator{fiss_coeff.back()});
+      }
+
+      spn_coeff.emplace_back(g, n, inp.spn_eq(), mat_lib, res);
+      b(g,n)->AddDomainIntegrator(new DomainLFGradIntegrator{spn_coeff.back()});
+
+    }
+  }
+
+////////////////////////////////////////////////////////////////////////////////
+  std::vector<std::unique_ptr<ParLinearForm>> fiss(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss[g] = std::make_unique<ParLinearForm>(fespace);
+
+    Vector nusf(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      nusf(i) = mat_lib.mat[i].rec.nusf[g];
+    PWConstCoefficient nusf_func{nusf};
+
+    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_func});
+    fiss[g]->Assemble();
+  }
+////////////////////////////////////////////////////////////////////////////////
+
+  // initialize "old" data
+  double keff_old{res.keff};
+  double fiss_sum{1.0};
+  double fiss_sum_old{1.0};
+
+  // initialize convergence criteria (make sure we enter the loop at least once)
+  double k_conv{inp.tol.k * 1e1 + 1e-5};
+  double phi_conv{inp.tol.phi * 1e1 + 1e-5};
+
+  for (int n{0}; n < inp.spn_eq(); ++n)
+  {
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      if (n == 0) res(g) = 1.0;
+      ConstantCoefficient zero{0.0};
+      res(g,n).ProjectBdrCoefficient(zero, ess_bdr);
+    }
+  }
+
+  for (int n{0}; n < inp.spn_eq(); ++n)
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      res(g,n).UseDevice(true);
+
+  for (int iter{0}; (iter < inp.tol.max_outer) && 
+      ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
+  {
+
+    double local_phi_conv{0.0};
+
+    for (int n{0}; n < inp.spn_eq(); ++n)
+    {
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+
+        time.start("bassemble");
+        b(g,n)->Assemble();
+        std::unique_ptr<HypreParVector> bvec{b(g,n)->ParallelAssemble()}; // TODO this is where all time is being spent rn
+        time.stop("bassemble");
+
+        time.start("phi_copy");
+        ParGridFunction phi_old{res(g,n)};
+        phi_old.UseDevice(true);
+        time.stop("phi_copy");
+
+        time.start("mult");
+        sol(g,n).Mult(*bvec, res(g,n));
+        time.stop("mult");
+
+        time.start("local_phi_conv");
+        phi_old -= res(g,n);
+        phi_old.HostRead(); // TODO needs a lot of work (maybe?)
+        local_phi_conv = std::max(local_phi_conv, phi_old.Normlinf() / res(g,n).Normlinf());
+        time.stop("local_phi_conv");
+
+      }
+    }
+
+    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+    time.start("fiss_sum");
+    double local_fiss_sum{0.0};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      local_fiss_sum += (*fiss[g])(res(g));
+    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    time.stop("fiss_sum");
+
+    if (iter > 0) res.keff *= fiss_sum / fiss_sum_old;
+    k_conv = std::abs(res.keff - keff_old); // = std::abs(1.0 - fiss_sum/fiss_sum_old);
+
+    // copy old data
+    keff_old = res.keff;
+    fiss_sum_old = fiss_sum;
+
+    if (myid == 0)
+    {
+      std::cout << "iter=" << iter << " keff=" << res.keff << " dk=" << k_conv
+                << " dphi=" << phi_conv << '\n' << std::flush;
+    }
+
+  }
+
+  for (int n{0}; n < inp.spn_eq(); ++n)
+  {
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      sol(g,n).Finalize();
+    }
+  }
+
   return;
 }
 

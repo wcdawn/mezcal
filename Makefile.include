@@ -37,6 +37,8 @@ CUDA_DIR = /opt/cuda
 PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 
+AMGX_DIR = /home/wcdawn/projects/amgx
+
 else
 
 $(error Invalid MACH)
@@ -75,5 +77,8 @@ PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
 SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB)
+AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
+AMGX_LIB = -L$(AMGX_DIR)/build -lamgx -lcublas -lcusparse -lcusolver -lnvToolsExt
+
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)
