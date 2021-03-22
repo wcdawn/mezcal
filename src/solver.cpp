@@ -718,9 +718,11 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
       {
 
         time.start("bassemble");
-        b(g,n)->Assemble();
-        std::unique_ptr<HypreParVector> bvec{b(g,n)->ParallelAssemble()}; // TODO this is where all time is being spent rn
+        b(g,n)->Assemble(); // All of the time is here...
         time.stop("bassemble");
+        time.start("bassemble_hypre");
+        std::unique_ptr<HypreParVector> bvec{b(g,n)->ParallelAssemble()};
+        time.stop("bassemble_hypre");
 
         time.start("phi_copy");
         ParGridFunction phi_old{res(g,n)};
