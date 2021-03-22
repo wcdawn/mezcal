@@ -21,6 +21,10 @@ SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
 
 CXXFLAGS += -DGPU_AWARE_MPI
 
+AMGX_DIR = $(OLCF_AMGX_ROOT)
+AMGX_LIB_DIR = $(AMGX_DIR)/lib
+AMGX_INCLUDE_DIR = $(AMGX_DIR)/include
+
 else ifeq ($(MACH),ARCHBUILD)
 STD = c++17
 MPICXX = /opt/mpich/bin/mpicxx
@@ -38,6 +42,8 @@ PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 
 AMGX_DIR = /home/wcdawn/projects/amgx
+AMGX_LIB_DIR = $(AMGX_DIR)/build
+AMGX_INCLUDE_DIR  = $(AMGX_DIR)/base/include
 
 else
 
@@ -77,8 +83,8 @@ PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
 SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
-AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
-AMGX_LIB = -L$(AMGX_DIR)/build -lamgx -lcublas -lcusparse -lcusolver -lnvToolsExt
+AMGX_INCLUDE = -I$(AMGX_INCLUDE_DIR)
+AMGX_LIB = -L$(AMGX_LIB_DIR) -lamgx -lcublas -lcusparse -lcusolver -lnvToolsExt
 
 INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
 LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)
