@@ -32,6 +32,8 @@ CPP_FILES = main.cpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp
 
+CU_FILES = solver_amgx.cu
+
 HPP_FILES = analytic.hpp \
 			conduction.hpp \
 			delaunay.hpp \
@@ -62,13 +64,15 @@ HPP_FILES = analytic.hpp \
 			$(ADDON_DIR)/tensor.hpp \
 			$(ADDON_DIR)/mfem_addon.hpp
 
-OBJ = $(CPP_FILES:.cpp=.o)
+H_FILES = solver_amgx.h
+
+OBJ = $(CPP_FILES:.cpp=.o) $(CU_FILES:.cu=.o)
 
 EXEC = micro.x
 
 GIT_VERSION = $(shell git describe --dirty --always --tags)
 GIT_SHA     = $(shell git log -n1 --format=format:"%H")
-DATE        = $(shell date +"%a %d %b %Y %T %Z") # TODO replace T with R
+DATE        = $(shell date +"%a %d %b %Y %T %Z")
 HOST        = $(shell hostname)
 
 .SUFFIXES :
@@ -83,10 +87,14 @@ all : $(EXEC)
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
 	@$(MAKE) -C $(ADDON_DIR)
-	$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) 
+	@#$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) 
+	$(NVCC) $(LDFLAGS) -Xcompiler -fopenmp -Xcompiler -pthread $^ -o $@ $(LIBS) $(MPI_LIB)
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<
+
+%.o : %.cu
+	$(NVCC) -O3 $(INCLUDE) $(MPI_INCLUDE) -c $<
 
 version:
 	$(RM) version.hpp
@@ -127,7 +135,7 @@ clean :
 	$(RM) $(OBJ) $(EXEC) version.cpp version.hpp
 	$(MAKE) -C $(ADDON_DIR) clean
 
-format : $(CPP_FILES) $(HPP_FILES)
+format : $(CPP_FILES) $(HPP_FILES) $(CU_FILES) $(H_FILES)
 	@clang-format -i --verbose $^
 
 addon :

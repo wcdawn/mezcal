@@ -1,12 +1,17 @@
 # Makefile
 
 CXXFLAGS = -Wall -pedantic-errors -std=$(STD) -fopenmp
-LDFLAGS = -std=$(STD) -fopenmp
+# LDFLAGS = -std=$(STD) # -fopenmp # doesn't work with nvcc
+LDFLAGS = -std=$(STD)
+
+NVCC = nvcc
 
 ifeq ($(MACH),SUMMIT)
 STD = c++11
 MPICXX = mpixlC
 H5_DIR = $(OLCF_HDF5_ROOT)/lib
+
+MPI_DIR = $(OLCF_SPECTRUM_MPI_ROOT)
 
 PROJ = /ccs/proj/csc404/wcdawn
 MFEM_DIR = $(PROJ)/mfem
@@ -29,6 +34,8 @@ else ifeq ($(MACH),ARCHBUILD)
 STD = c++17
 MPICXX = /opt/mpich/bin/mpicxx
 H5_DIR = /usr/lib
+
+MPI_DIR = /opt/mpich
 
 MICROREACTOR_DIR = /home/wcdawn/work/microreactor
 MFEM_DIR = $(MICROREACTOR_DIR)/mfem
@@ -61,7 +68,7 @@ MPICXXFLAGS = $(CXXFLAGS)
 
 H5CXXFLAGS = $(CXXFLAGS)
 # generated using "h5c++ -show"
-H5_LIB = -L$(OLCF_HDF5_ROOT) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
+H5_LIB = -L$(H5_DIR) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
 
 LD = $(MPICXX) 
 
@@ -75,7 +82,7 @@ HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 METIS_INCLUDE = -I$(METIS_DIR)/include
 
 CUDA_INCLUDE = -I$(CUDA_DIR)/include
-CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -pthread -lcusparse_static
+CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -lcusparse_static -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
 
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
@@ -83,8 +90,11 @@ PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
 SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
-AMGX_INCLUDE = -I$(AMGX_INCLUDE_DIR)
-AMGX_LIB = -L$(AMGX_LIB_DIR) -lamgx -lcublas -lcusparse -lcusolver -lnvToolsExt
+AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
+AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
+
+MPI_INCLUDE = -I$(MPI_DIR)/include
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi
 
 INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
 LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)
