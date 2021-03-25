@@ -10,6 +10,7 @@ enum class Solver_choice
   amgx_power_iteration,
   lobpcg,
   slepc_vector,
+  amgx_vector,
   slepc_manual,
   epdo_power_iteration,
   sfent_power_iteration,

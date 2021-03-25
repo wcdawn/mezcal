@@ -10,6 +10,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
     case (Solver_choice::amgx_power_iteration): return "amgx_power_iteration";
     case (Solver_choice::lobpcg):          return "lobpcg";
     case (Solver_choice::slepc_vector):    return "slepc_vector";
+    case (Solver_choice::amgx_vector):    return "amgx_vector";
     case (Solver_choice::slepc_manual):    return "slepc_manual";
     case (Solver_choice::epdo_power_iteration): return "epdo_power_iteration";
     case (Solver_choice::sfent_power_iteration): return "sfent_power_iteration";
@@ -27,6 +28,7 @@ Solver_choice solver_choice_str_to_enum(const string& solver)
   if (solver == "amgx_power_iteration") return Solver_choice::amgx_power_iteration;
   if (solver == "lobpcg")          return Solver_choice::lobpcg;
   if (solver == "slepc_vector")    return Solver_choice::slepc_vector;
+  if (solver == "amgx_vector")    return Solver_choice::amgx_vector;
   if (solver == "slepc_manual")    return Solver_choice::slepc_manual;
   if (solver == "epdo_power_iteration") return Solver_choice::epdo_power_iteration;
   if (solver == "sfent_power_iteration") return Solver_choice::sfent_power_iteration;
