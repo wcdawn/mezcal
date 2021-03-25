@@ -5,6 +5,7 @@
 #include "result.hpp"
 
 #include "solver.hpp"
+#include "solver_amgx.h"
 #include "conduction.hpp"
 
 #include "timer.hpp"
@@ -190,11 +191,11 @@ int main(int argc, char* argv[])
       }
   }
 
-  // TODO this needs to allow for differing values of spn_eq with different states
   int vdim{0};
   switch (inp.sol)
   {
     case (Solver_choice::slepc_vector):
+    case (Solver_choice::amgx_vector):
       vdim = mat_lib.ngroup()*inp.spn_eq();
       break;
     case (Solver_choice::saaf_slepc_vector):
@@ -218,6 +219,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::slepc_vector):
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::amgx_vector):
       break;
     case (Solver_choice::saaf_angle_power_iteration):
       dof *= mat_lib.ngroup();
@@ -242,6 +244,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::slepc_vector):
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::amgx_vector):
       flux_length = 1;
       break;
     default:
@@ -256,6 +259,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::saaf_angle_power_iteration):
+    case (Solver_choice::amgx_vector):
       moment_angle_length = 1;
       break;
     case (Solver_choice::saaf_power_iteration):
@@ -308,6 +312,9 @@ int main(int argc, char* argv[])
           MFEMFinalizeSlepc();
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           temperature_heat_conduction(inp, mat_lib, power, temperature);
+          break;
+        case (Solver_choice::amgx_vector):
+          spn_amgx_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
           break;
         case (Solver_choice::slepc_manual):
           spn_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
@@ -381,7 +388,8 @@ int main(int argc, char* argv[])
 
     if ((inp.sol == Solver_choice::slepc_vector) || 
         (inp.sol == Solver_choice::saaf_slepc_vector) || 
-        (inp.sol == Solver_choice::saaf_true_slepc_vector))
+        (inp.sol == Solver_choice::saaf_true_slepc_vector) ||
+        (inp.sol == Solver_choice::amgx_vector))
     {
       output.RegisterField("phi", &res(0));
       if ((inp.sol == Solver_choice::saaf_true_slepc_vector) || 

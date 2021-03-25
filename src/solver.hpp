@@ -80,6 +80,14 @@ void spn_slepc_vector(Timer& time, const Input& inp,
                         Result& res,
                         Result& scalar_flux);
 
+void spn_amgx_vector(Timer& time, const Input& inp,
+                     Material_library& mat_lib,
+                     const mfem::Array<int>& ess_bdr,
+                     const mfem::ParMesh* const pmesh,
+                     mfem::ParFiniteElementSpace* const fespace,
+                     Result& res);
+
+
 void spn_slepc_manual(Timer& time, const Input& inp,
                               Material_library& mat_lib,
                               const mfem::Array<int>& ess_bdr,
