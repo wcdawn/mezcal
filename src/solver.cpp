@@ -1228,12 +1228,14 @@ void spn_amgx_vector(Timer& time, const Input& inp,
 
   time.stop(time.matrix_assembly);
 
+  constexpr bool compute_residual{true};
+
   AmgXSolver Aamgx;
   Aamgx.DefaultParameters(AmgXSolver::SOLVER, true); // verbose == true
   Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
   Aamgx.InitExclusiveGPU(fespace->GetComm());
   Aamgx.SetOperator(*Ahypre);
-  delete Ahypre;
+  if (!compute_residual) delete Ahypre;
 
   HypreParVector x{*Mhypre};
   x.UseDevice(true);
@@ -1275,6 +1277,23 @@ void spn_amgx_vector(Timer& time, const Input& inp,
     k_conv = std::abs(k - k_old);
     x_old -= x;
     x_conv = x_old.Norml2(); // NOTE: Normlinf is *not* on the GPU.
+
+    if (compute_residual)
+    {
+      // r = A*x - M*x/k
+      HypreParVector r0{x};
+      r0.UseDevice(true);
+      Ahypre->Mult(x, r0);
+
+      HypreParVector r1{x};
+      r1.UseDevice(true);
+      Mhypre->Mult(x, r1);
+      r1 /= k;
+
+      r0 -= r1;
+      const double residual{r0.Norml2()};
+      std::cout << "residual=" << residual << std::endl;
+    }
 
     std::cout << "iter=" << iter 
               << " k=" << k 
