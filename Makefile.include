@@ -12,6 +12,7 @@ MPICXX = mpixlC
 H5_DIR = $(OLCF_HDF5_ROOT)/lib
 
 MPI_DIR = $(OLCF_SPECTRUM_MPI_ROOT)
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi_ibm
 
 PROJ = /ccs/proj/csc404/wcdawn
 MFEM_DIR = $(PROJ)/mfem
@@ -36,6 +37,7 @@ MPICXX = /opt/mpich/bin/mpicxx
 H5_DIR = /usr/lib
 
 MPI_DIR = /opt/mpich
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi
 
 MICROREACTOR_DIR = /home/wcdawn/work/microreactor
 MFEM_DIR = $(MICROREACTOR_DIR)/mfem
@@ -94,7 +96,6 @@ AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
 AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
 MPI_INCLUDE = -I$(MPI_DIR)/include
-MPI_LIB = -L$(MPI_DIR)/lib -lmpi
 
 INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
 LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)

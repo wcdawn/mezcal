@@ -1233,8 +1233,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
   Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
   Aamgx.InitExclusiveGPU(fespace->GetComm());
   Aamgx.SetOperator(*Ahypre);
-  Aamgx.SetZeroGuess(false);
-  //delete Ahypre;
+  delete Ahypre;
 
   HypreParVector x{*Mhypre};
   x.UseDevice(true);

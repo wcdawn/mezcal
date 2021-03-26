@@ -32,7 +32,9 @@ CPP_FILES = main.cpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp
 
+ifeq ($(MACH),ARCHBUILD)
 CU_FILES = solver_amgx.cu
+endif
 
 HPP_FILES = analytic.hpp \
 			conduction.hpp \
@@ -64,7 +66,9 @@ HPP_FILES = analytic.hpp \
 			$(ADDON_DIR)/tensor.hpp \
 			$(ADDON_DIR)/mfem_addon.hpp
 
+ifeq ($(MACH),ARCHBUILD)
 H_FILES = solver_amgx.h
+endif
 
 OBJ = $(CPP_FILES:.cpp=.o) $(CU_FILES:.cu=.o)
 
