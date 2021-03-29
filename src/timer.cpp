@@ -70,16 +70,21 @@ void Timer::Print(ostream& os)
   const auto final_clock{clock::now()};
   const auto total_elapsed{final_clock - init_clock};
 
-  // finalize times
+  // finalize times and figure out maximum length
+  std::size_t max_name_length{0};
   for (auto& tr : timers)
+  {
     tr.second.stop();
+    max_name_length = std::max(max_name_length, tr.first.length());
+  }
+  max_name_length++;
 
   os << "=== Timing Summary [s] ===\n";
   for (const auto& tr : timers)
   {
     const string& name{tr.first};
     const Time_record& time{tr.second};
-    os << left << setw(20) << name << right << setw(5)
+    os << left << setw(max_name_length) << name << right << setw(5)
        << duration_cast<milliseconds>(time.elapsed()).count() / 1000.0 << " ("
        << setprecision(4)
        << static_cast<double>(time.elapsed().count()) / total_elapsed.count()
