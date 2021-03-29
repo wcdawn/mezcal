@@ -1228,14 +1228,20 @@ void spn_amgx_vector(Timer& time, const Input& inp,
 
   time.stop(time.matrix_assembly);
 
-  constexpr bool compute_residual{true};
+  constexpr bool compute_residual{false};
 
+  time.start("amgx_setup");
   AmgXSolver Aamgx;
-  Aamgx.DefaultParameters(AmgXSolver::SOLVER, true); // verbose == true
+  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
   Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
   Aamgx.InitExclusiveGPU(fespace->GetComm());
   Aamgx.SetOperator(*Ahypre);
-  if (!compute_residual) delete Ahypre;
+  if (!compute_residual) 
+  {
+    delete Ahypre;
+    Ahypre = nullptr;
+  }
+  time.stop("amgx_setup");
 
   HypreParVector x{*Mhypre};
   x.UseDevice(true);
@@ -1249,37 +1255,51 @@ void spn_amgx_vector(Timer& time, const Input& inp,
       ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
   {
 
+    time.start("old_copy");
     const double k_old{k};
     HypreParVector x_old{x}; // constructor doesn't perform deep copy
     x_old.UseDevice(true);
     x_old = x;
+    time.stop("old_copy");
 
+    time.start("calc_v");
     // v = x / \| x \|
-    // looks like Norml2 is on the cpu (maybe)
     HypreParVector v{x}; // constructor doesn't perform deep copy
     v.UseDevice(true);
     v = x;
-    v /= x.Norml2();
+    const double local_x_norml2{x.Norml2()};
+    double x_norml2{0.0};
+    MPI_Allreduce(&local_x_norml2, &x_norml2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    v /= x_norml2;
+    time.stop("calc_v");
 
+    time.start("matvec");
     // b = M*v
     HypreParVector b{v}; // constructor doesn't perform deep copy
     b.UseDevice(true);
     Mhypre->Mult(v, b); // this is performed on CPU
-
+    time.stop("matvec");
     
+    time.start("amgx_solve");
     // x = A^-1 * b
-    Aamgx.Mult(b, x); // do not zero initial guess
+    Aamgx.Mult(b, x);
+    time.stop("amgx_solve");
 
+    time.start("dot_product");
     // k = v^T * x
-    k = v*x;
+    const double local_k{v*x};
+    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    time.stop("dot_product");
 
     // convergence criteria
     k_conv = std::abs(k - k_old);
     x_old -= x;
-    x_conv = x_old.Norml2(); // NOTE: Normlinf is *not* on the GPU.
+    const double local_conv_norml2{x_old.Norml2()}; // NOTE: Norml2inf is not on the GPU
+    MPI_Allreduce(&local_conv_norml2, &x_conv, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     if (compute_residual)
     {
+      time.start("residual");
       // r = A*x - M*x/k
       HypreParVector r0{x};
       r0.UseDevice(true);
@@ -1291,23 +1311,30 @@ void spn_amgx_vector(Timer& time, const Input& inp,
       r1 /= k;
 
       r0 -= r1;
-      const double residual{r0.Norml2()};
+      const double local_residual{r0.Norml2()};
+      double residual{0.0};
+      MPI_Allreduce(&local_residual, &residual, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       std::cout << "residual=" << residual << std::endl;
+      time.stop("residual");
     }
 
-    std::cout << "iter=" << iter 
-              << " k=" << k 
-              << " dk=" << k_conv 
-              << " dx=" << x_conv 
-              << std::endl;
+    if (myid == 0) std::cout << "iter=" << iter
+                             << " inner=" << Aamgx.GetNumIterations()
+                             << " k=" << k 
+                             << " dk=" << k_conv 
+                             << " dx=" << x_conv 
+                             << std::endl;
   }
 
-  res.keff = k;
-  res(0).Distribute(x);
+  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
 
   delete Ahypre;
   delete Mhypre;
 
+  res.keff = k;
+  time.start("distribute");
+  res(0).Distribute(x);
+  time.stop("distribute");
   return;
 }
 
