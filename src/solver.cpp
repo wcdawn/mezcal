@@ -1236,9 +1236,18 @@ void spn_amgx_vector(Timer& time, const Input& inp,
   AmgXSolver Aamgx;
   Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
   Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-  //Aamgx.InitExclusiveGPU(fespace->GetComm());
-  constexpr int ndevice{1};
-  Aamgx.InitMPITeams(fespace->GetComm(), ndevice);
+
+  if (inp.ndevices > 0)
+  {
+    // use MPITeams
+    Aamgx.InitMPITeams(fespace->GetComm(), inp.ndevices);
+  }
+  else
+  {
+    // use MPI Exclusive
+    Aamgx.InitExclusiveGPU(fespace->GetComm());
+  }
+
   Aamgx.SetOperator(*Ahypre);
   if (!compute_residual) 
   {

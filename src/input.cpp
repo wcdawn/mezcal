@@ -377,6 +377,10 @@ OptionsParser custom_arguments(Input& inp, int argc, char* argv[])
   args.AddOption(&inp.verbose, "-v", "--verbose", "-no-v", "--no-verbose",
                  "Enable verbose output.");
 
+  // GPU
+  args.AddOption(&inp.ndevices, "-nd", "--ndevices",
+                 "Number of GPU devices in pool that will be used in MPITeams.");
+
   // Note: STATE variables cannot be input from the command line as they will be
   // overwritten by reading the STATE block in the input file at for the first
   // state.
