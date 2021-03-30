@@ -1271,11 +1271,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
     HypreParVector v{x}; // constructor doesn't perform deep copy
     v.UseDevice(true);
     v = x;
-    const double local_x_norml2{std::pow(x.Norml2(),2)};
-    double x_norml2{0.0};
-    MPI_Allreduce(&local_x_norml2, &x_norml2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    x_norml2 = std::sqrt(x_norml2);
-    v /= x_norml2;
+    v /= par_norml2(x);
     time.stop("calc_v");
 
     time.start("matvec");
@@ -1300,9 +1296,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
     // convergence criteria
     k_conv = std::abs(k - k_old);
     x_old -= x;
-    const double local_conv_norml2{std::pow(x_old.Norml2(),2)}; // NOTE: Norml2inf is not on the GPU
-    MPI_Allreduce(&local_conv_norml2, &x_conv, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    x_conv = std::sqrt(x_conv);
+    x_conv = par_norml2(x_old);
 
     if (compute_residual)
     {
@@ -1318,10 +1312,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
       r1 /= k;
 
       r0 -= r1;
-      const double local_residual{r0.Norml2()};
-      double residual{0.0};
-      MPI_Allreduce(&local_residual, &residual, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-      std::cout << "residual=" << residual << std::endl;
+      std::cout << "residual=" << par_norml2(r0) << std::endl;
       time.stop("residual");
     }
 
