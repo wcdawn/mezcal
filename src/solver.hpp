@@ -139,6 +139,12 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
                             const Material_library& mat_lib,
                             Result& angular_flux);
 
+void saaf_true_amgx_vector(const Quadrature* const quad,
+                           Timer& time,
+                           const Input& inp,
+                           const Material_library& mat_lib,
+                           Result& angular_flux);
+
 void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations);
 
 void calc_scalar_flux(int g,

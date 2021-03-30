@@ -41,6 +41,8 @@ bool exists(const std::string& fname)
 
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
 
+double par_norml2(const Vector &x);
+
 Memory_stats mem(Memory_stats::megabyte);
 
 double omega_x;
@@ -1234,7 +1236,9 @@ void spn_amgx_vector(Timer& time, const Input& inp,
   AmgXSolver Aamgx;
   Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
   Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-  Aamgx.InitExclusiveGPU(fespace->GetComm());
+  //Aamgx.InitExclusiveGPU(fespace->GetComm());
+  constexpr int ndevice{1};
+  Aamgx.InitMPITeams(fespace->GetComm(), ndevice);
   Aamgx.SetOperator(*Ahypre);
   if (!compute_residual) 
   {
@@ -3059,6 +3063,294 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   return;
 }
 
+void saaf_true_amgx_vector(const Quadrature* const quad,
+                           Timer &time,
+                           const Input &inp,
+                           const Material_library &mat_lib,
+                           Result &angular_flux)
+{
+  ParFiniteElementSpace* const fespace{angular_flux(0).ParFESpace()};
+  ParMesh* const pmesh{fespace->GetParMesh()};
+
+  const int myid{fespace->GetMyRank()};
+  const int block_rank{mat_lib.ngroup()*quad->nd()}; // aka vdim
+  constexpr int skip_zeros{2};
+
+  HypreParMatrix *Ahypre{nullptr}, *Mhypre{nullptr};
+
+  time.start(time.matrix_assembly);
+
+  { // sink construction
+
+  std::vector<DenseMatrix> omega_operator(quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
+  {
+    omega_operator[n].SetSize(quad->dim());
+    MultVVt(quad->omega(n), omega_operator[n]);
+  }
+
+  ParBilinearForm sink_bilinear{fespace};
+
+  std::vector<Tensor<mfem::DenseMatrix>> leakage(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    const XSRecord& rec{mat_lib.mat[i].rec};
+    leakage[i].reserve(block_rank);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const int dia{n + g*quad->nd()};
+        omega_operator[n] *= 1.0/rec.sigma_t[g];
+        leakage[i].AddElement(omega_operator[n], dia);
+        omega_operator[n] *= rec.sigma_t[g];
+      }
+    }
+  }
+  MatrixTensorPWConstCoefficient leakage_func{block_rank, leakage};
+  sink_bilinear.AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
+
+  Tensor<mfem::Vector> boundary;
+  boundary.reserve(block_rank);
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    for (int n{0}; n < quad->nd(); ++n)
+      boundary.AddElement(quad->omega(n), n+g*quad->nd());
+  VectorTensorConstantCoefficient boundary_func{block_rank, boundary};
+  sink_bilinear.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{boundary_func, 1.0});
+
+  std::vector<DenseMatrix> removal(pmesh->attributes.Max());
+  std::vector<Tensor<mfem::Vector>> removal_saaf(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    removal[i].SetSize(block_rank);
+    removal_saaf[i].reserve(block_rank*block_rank);
+    const XSRecord& record{mat_lib.mat[i].rec};
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      Array<int> col_idx;
+      Vector scat_dat;
+      record.sigma_s.GetRow(g, col_idx, scat_dat);
+
+      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+      {
+        const int gprime{col_idx[gidx]};
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int row{n + g*quad->nd()};
+          for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          {
+            const int col{nprime + gprime*quad->nd()};
+            const double val{-scat_dat(gidx)*quad->weight(nprime)};
+            removal[i](row,col) = val;
+
+            Vector v{quad->omega(n)};
+            v /= record.sigma_t[g];
+            v *= val;
+            removal_saaf[i].AddElement(v, row, col);
+          } // nprime < quad->nd()
+        } // n < quad->nd()
+      } // gidx < col_idx.Size()
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const int dia{n + g*quad->nd()};
+        removal[i](dia,dia) += record.sigma_t[g];
+      } // n < quad->nd()
+
+    } // g < mat_lib.ngroup()
+  } // i < pmesh->attributes.Max()
+  MatrixPWConstCoefficient removal_func{removal};
+  VectorTensorPWConstCoefficient removal_saaf_func{block_rank, removal_saaf};
+
+  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+  sink_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{removal_saaf_func});
+
+  std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
+  time.start("sink_assemble");
+  sink_bilinear.Assemble(skip_zeros);
+  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
+  time.stop("sink_assemble");
+  std::cout << "SINK_ASSEMBLE_END id=" << myid << std::endl;
+
+  if (myid == 0) std::cout << "SINK_TRANSLATION_BEGIN" << std::endl;
+  time.start("sink_par_assemble");
+  Ahypre = sink_bilinear.ParallelAssemble();
+  time.stop("sink_par_assemble");
+  if (myid == 0) std::cout << "SINK_TRANSLATION_END" << std::endl;
+
+  }
+
+  { // fiss construction
+
+  std::vector<DenseMatrix> fiss(pmesh->attributes.Max());
+  std::vector<Tensor<mfem::Vector>> fiss_saaf(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    fiss[i].SetSize(block_rank);
+    fiss_saaf[i].reserve(block_rank*block_rank);
+    const Material_record& mat{mat_lib.mat[i]};
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+      {
+
+        double val{0.0};
+        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+        {
+          const Material_isotope& isotope{mat.iso[iso_idx]};
+          const XSRecord& record{isotope.rec};
+          const double nden{isotope.nden};
+          val += record.chi[g] * nden * record.nusf[gprime];
+        } // iso_idx < mat.niso
+
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int row{n + g*quad->nd()};
+          for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          {
+            const int col{nprime + gprime*quad->nd()};
+            fiss[i](row,col) = val*quad->weight(nprime);
+
+            Vector v{quad->omega(n)};
+            v /= mat.rec.sigma_t[g];
+            v *= val * quad->weight(nprime);
+            fiss_saaf[i].AddElement(v, row, col);
+          } // nprime < quad->nd()
+        } // n < quad->nd()
+
+      } // gprime < mat_lib.ngroup()
+    } // g < mat_lib.ngroup()
+  } // i < pmesh->attributes.Max()
+  MatrixPWConstCoefficient fiss_func{fiss};
+  VectorTensorPWConstCoefficient fiss_saaf_func{block_rank, fiss_saaf};
+
+  ParBilinearForm fiss_bilinear{fespace};
+  fiss_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
+  fiss_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{fiss_saaf_func});
+
+  std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
+  time.start("fiss_assemble");
+  fiss_bilinear.Assemble(skip_zeros);
+  fiss_bilinear.Finalize(skip_zeros);
+  time.stop("fiss_assemble");
+  std::cout << "FISSION_ASSEMBLY_END id=" << myid << std::endl;
+
+  if (myid == 0) std::cout << "FISS_TRANSLATION_BEGIN" << std::endl;
+  time.start("fiss_par_assemble");
+  Mhypre = fiss_bilinear.ParallelAssemble();
+  time.stop("fiss_par_assemble");
+  if (myid == 0) std::cout << "FISS_TRANSLATION_END" << std::endl;
+
+  }
+
+  constexpr bool compute_residual{false};
+
+  time.start("amgx_setup");
+  AmgXSolver Aamgx;
+  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+  Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+  Aamgx.InitExclusiveGPU(fespace->GetComm());
+  Aamgx.SetOperator(*Ahypre);
+  if (!compute_residual) 
+  {
+    delete Ahypre;
+    Ahypre = nullptr;
+  }
+  time.stop("amgx_setup");
+
+  HypreParVector x{*Mhypre};
+  x.UseDevice(true);
+  x.Randomize(730); // if default seed is used, the seed is actually the time and we lose reproducability
+
+  double k_conv{inp.tol.k*1e2+1.0};
+  double x_conv{inp.tol.phi*1e2+1.0};
+
+  double k{1.0};
+  for (int iter{0}; (iter < inp.tol.max_outer) && 
+      ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
+  {
+
+    time.start("old_copy");
+    const double k_old{k};
+    HypreParVector x_old{x}; // constructor doesn't perform deep copy
+    x_old.UseDevice(true);
+    x_old = x;
+    time.stop("old_copy");
+
+    time.start("calc_v");
+    // v = x / \| x \|
+    HypreParVector v{x}; // constructor doesn't perform deep copy
+    v.UseDevice(true);
+    v = x;
+    v /= par_norml2(x);
+    time.stop("calc_v");
+
+    time.start("matvec");
+    // b = M*v
+    HypreParVector b{v}; // constructor doesn't perform deep copy
+    b.UseDevice(true);
+    //Mhypre->Mult(v, b); // this is performed on CPU
+    Mhypre->Mult(v, b, 1.0, 0.0); // make sure we use the proper function signature
+    time.stop("matvec");
+    
+    time.start("amgx_solve");
+    // x = A^-1 * b
+    Aamgx.Mult(b, x);
+    time.stop("amgx_solve");
+
+    time.start("dot_product");
+    // k = v^T * x
+    const double local_k{v*x};
+    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    time.stop("dot_product");
+
+    // convergence criteria
+    k_conv = std::abs(k - k_old);
+    x_old -= x;
+    x_conv = par_norml2(x_old);
+
+    if (compute_residual)
+    {
+      time.start("residual");
+      // r = A*x - M*x/k
+      HypreParVector r0{x};
+      r0.UseDevice(true);
+      Ahypre->Mult(x, r0);
+
+      HypreParVector r1{x};
+      r1.UseDevice(true);
+      Mhypre->Mult(x, r1);
+      r1 /= k;
+
+      r0 -= r1;
+      std::cout << "residual=" << par_norml2(r0) << std::endl;
+      time.stop("residual");
+    }
+
+    if (myid == 0) std::cout << "iter=" << iter
+                             << " inner=" << Aamgx.GetNumIterations()
+                             << " k=" << k 
+                             << " dk=" << k_conv 
+                             << " dx=" << x_conv 
+                             << std::endl;
+  }
+
+  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
+
+  delete Ahypre;
+  delete Mhypre;
+
+  angular_flux.keff = k;
+  time.start("distribute");
+  angular_flux(0).Distribute(x);
+  time.stop("distribute");
+
+  return;
+}
+
 void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Timer& time,
                                 const Input& inp,
@@ -3845,4 +4137,12 @@ void calc_power(const Material_library& mat_lib,
   power *= factor; // power has units [W/cc]
 
   return;
+}
+
+double par_norml2(const Vector &x)
+{
+  const double local_norm{std::pow(x.Norml2(),2)};
+  double norm{0.0};
+  MPI_Allreduce(&local_norm, &norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  return std::sqrt(norm);
 }

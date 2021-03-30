@@ -164,7 +164,8 @@ int main(int argc, char* argv[])
     (inp.sol == Solver_choice::saaf_power_iteration) ||
     (inp.sol == Solver_choice::saaf_angle_power_iteration) ||
     (inp.sol == Solver_choice::saaf_slepc_vector) ||
-    (inp.sol == Solver_choice::saaf_true_slepc_vector))};
+    (inp.sol == Solver_choice::saaf_true_slepc_vector) || 
+    (inp.sol == Solver_choice::saaf_true_amgx_vector))};
 
   std::unique_ptr<Quadrature> quad;
   switch (inp.quadrature_type)
@@ -200,6 +201,7 @@ int main(int argc, char* argv[])
       break;
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::saaf_true_amgx_vector):
       vdim = mat_lib.ngroup()*quad->nd();
       break;
     case (Solver_choice::saaf_angle_power_iteration):
@@ -220,6 +222,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::amgx_vector):
+    case (Solver_choice::saaf_true_amgx_vector):
       break;
     case (Solver_choice::saaf_angle_power_iteration):
       dof *= mat_lib.ngroup();
@@ -245,6 +248,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::amgx_vector):
+    case (Solver_choice::saaf_true_amgx_vector):
       flux_length = 1;
       break;
     default:
@@ -260,6 +264,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::saaf_angle_power_iteration):
     case (Solver_choice::amgx_vector):
+    case (Solver_choice::saaf_true_amgx_vector):
       moment_angle_length = 1;
       break;
     case (Solver_choice::saaf_power_iteration):
@@ -343,6 +348,14 @@ int main(int argc, char* argv[])
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
+        case (Solver_choice::saaf_true_amgx_vector):
+          saaf_true_amgx_vector(quad.get(), time, inp, mat_lib, res);
+          /* TODO finish implementation
+          calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
+          calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+          temperature_heat_conduction(inp, mat_lib, power, temperature);
+          */
+          break;
         default:
           cerr << "Invalid solver choice.\n";
           MPI_Finalize();
@@ -389,12 +402,13 @@ int main(int argc, char* argv[])
     if ((inp.sol == Solver_choice::slepc_vector) || 
         (inp.sol == Solver_choice::saaf_slepc_vector) || 
         (inp.sol == Solver_choice::saaf_true_slepc_vector) ||
-        (inp.sol == Solver_choice::amgx_vector))
+        (inp.sol == Solver_choice::amgx_vector) || 
+        (inp.sol == Solver_choice::saaf_true_amgx_vector))
     {
       output.RegisterField("phi", &res(0));
       if ((inp.sol == Solver_choice::saaf_true_slepc_vector) || 
           (inp.sol == Solver_choice::slepc_vector))
-      {
+      { // TODO finish implementation for saaf_true_amgx_vector
         for (int g{0}; g < scalar_flux.ngroup(); ++g)
         {
           std::ostringstream scalar_flux_record;
