@@ -1267,9 +1267,10 @@ void spn_amgx_vector(Timer& time, const Input& inp,
     HypreParVector v{x}; // constructor doesn't perform deep copy
     v.UseDevice(true);
     v = x;
-    const double local_x_norml2{x.Norml2()};
+    const double local_x_norml2{std::pow(x.Norml2(),2)};
     double x_norml2{0.0};
     MPI_Allreduce(&local_x_norml2, &x_norml2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    x_norml2 = std::sqrt(x_norml2);
     v /= x_norml2;
     time.stop("calc_v");
 
@@ -1277,7 +1278,8 @@ void spn_amgx_vector(Timer& time, const Input& inp,
     // b = M*v
     HypreParVector b{v}; // constructor doesn't perform deep copy
     b.UseDevice(true);
-    Mhypre->Mult(v, b); // this is performed on CPU
+    //Mhypre->Mult(v, b); // this is performed on CPU
+    Mhypre->Mult(v, b, 1.0, 0.0); // make sure we use the proper function signature
     time.stop("matvec");
     
     time.start("amgx_solve");
@@ -1294,8 +1296,9 @@ void spn_amgx_vector(Timer& time, const Input& inp,
     // convergence criteria
     k_conv = std::abs(k - k_old);
     x_old -= x;
-    const double local_conv_norml2{x_old.Norml2()}; // NOTE: Norml2inf is not on the GPU
+    const double local_conv_norml2{std::pow(x_old.Norml2(),2)}; // NOTE: Norml2inf is not on the GPU
     MPI_Allreduce(&local_conv_norml2, &x_conv, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    x_conv = std::sqrt(x_conv);
 
     if (compute_residual)
     {
