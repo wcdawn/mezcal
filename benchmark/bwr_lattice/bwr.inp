@@ -15,8 +15,9 @@ name C20 C20 1.0
 
 [STATE]
 
-solver slepc_vector
-spn 15
+solver saaf_true_amgx_vector
+quadrature level_symmetric
+quad_order 2
 
 #### solver saaf_power_iteration
 #### quadrature level_symmetric
@@ -24,7 +25,7 @@ spn 15
 
 inner_abs_tol 0.0
 #inner_rel_tol 1e-6
-k_tol 1
+k_tol 1e-6
 phi_tol 1e-6
 
-max_outer 10000
+max_outer 100
