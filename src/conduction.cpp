@@ -5,7 +5,30 @@
 #include <iostream>
 #include <unordered_set>
 
+#include <cmath>
+
 using namespace mfem;
+
+double linear_source(const Vector& v)
+{
+  const double x{v(0)};
+  constexpr double L{1.0};
+  constexpr double q0{1.0};
+  return q0 * std::sin(M_PI * x / L);
+}
+
+double radial_source(const Vector& v)
+{
+  const double x{v(0)};
+  const double y{v(1)};
+  const double r{std::sqrt(std::pow(x,2) + std::pow(y,2))};
+
+  constexpr double R_HP{0.5};
+  constexpr double R_B{2.0};
+  constexpr double q0{1.0};
+
+  return q0 * (R_B - r) / (R_B - R_HP);
+}
 
 void temperature_heat_conduction(const Input& inp,
                                  const Material_library& mat_lib,
@@ -73,6 +96,11 @@ void temperature_heat_conduction(const Input& inp,
   // For Robin bc, add BoundaryMassIntegrator
 
   GridFunctionCoefficient power_coeff{&power};
+
+  /* TODO these will be used for validation problems
+  FunctionCoefficient linear_source_coeff{linear_source};
+  FunctionCoefficient radial_source_coeff{radial_source};
+  */
 
   ParLinearForm b{parfespace};
   b.AddDomainIntegrator(new DomainLFIntegrator{power_coeff});
