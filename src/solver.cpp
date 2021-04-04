@@ -1337,6 +1337,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
 
   delete Ahypre;
   delete Mhypre;
+  Aamgx.Finalize();
 
   res.keff = k;
   time.start("distribute");
