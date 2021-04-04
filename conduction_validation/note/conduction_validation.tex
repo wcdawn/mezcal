@@ -1,0 +1,262 @@
+\pdfsuppresswarningpagegroup=1
+\documentclass{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{newtxtext,newtxmath}
+\usepackage{amsmath}
+
+\usepackage[
+  pdfauthor={William C. Dawn},
+  pdftitle={Analytic Solutions of the Heat Conduction Equation for Validation},
+  pdfcreator={pdflatex},
+  pdfsubject={Heat Conduction Validation},
+  pdfkeywords={},
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  filecolor=black,
+  urlcolor=black,
+]{hyperref}
+
+\usepackage{graphicx,subcaption}
+\usepackage[section]{placeins}
+\usepackage{booktabs}
+
+\title{Analytic Solutions of the Heat Conduction Equation for Validation}
+\author{William C. Dawn}
+
+\newcommand{\grad}{\nabla}
+
+\newcommand{\vr}{\mathbf{r}}
+
+% reference macros
+\newcommand{\eref}[1]{\hyperref[#1]{Eq.~}(\ref{#1})}
+\newcommand{\fref}[1]{\hyperref[#1]{Fig.~}\ref{#1}}
+\newcommand{\tref}[1]{\hyperref[#1]{Table~}\ref{#1}}
+\newcommand{\sref}[1]{\hyperref[#1]{\S~}\ref{#1}}
+\newcommand{\algorithmref}[1]{\hyperref[#1]{Algorithm~}\ref{#1}}
+
+\begin{document}
+
+\maketitle
+
+\section{Purpose}
+
+This note provides analytic solutions to the heat conduction equation that can be used to validate a computer program.
+These solutions were originally developed for use with microreactor modeling so special attention is paid to solutions with heat pipes.
+
+\section{General Solution}
+
+The general form of the steady-state heat conduction equation is
+\begin{equation}
+  \label{eq:general_heat_conduction}
+  - \grad \cdot ( k(T(\vr),\vr) \, \grad T(\vr) ) = q(\vr)
+\end{equation}
+where $k$ is the thermal conductivity of the material, $T$ is the temperature distribution, $q$ is the volumetric heat source, and $\vr$ is the position vector.
+
+Note that in its most general form, the thermal conductivity depends on both position (i.e. the material at that position) and temperature.
+Physically speaking, thermal conductivity is temperature dependent.
+However, \eref{eq:general_heat_conduction} can be solved using an fixed-point iteration algorithm so solvers typically only need to consider thermal conductivity as a piecewise-constant function of position.
+The fixed-point iteration algorithm is not guaranteed to converge as it would require knowledge of the properties of the thermal conductivity function, but this method is typically acceptable for physical simulations.
+For the rest of this note, $k$ will be considered a constant.
+Therefore, the thermal conductivity equation solved here is
+\begin{equation}
+  \label{eq:constant_k_heat_conduction}
+  - k \grad^2 T(\vr) = q(\vr)
+\end{equation}
+where $\grad^2 = \grad \cdot \grad$ is the Laplacian.
+The solution to \eref{eq:constant_k_heat_conduction} can be obtained by integrating the volumetric heat source twice.
+
+When evaluating \eref{eq:constant_k_heat_conduction}, one must appropriately consider the Laplacian in the space (e.g. for cylindrical coordinates).
+Specific geometries and heat source functions are considered next.
+
+\section{Heat Pipe Modeling}
+
+Several microreactor designs are considering the use of heat pipes for cooling.
+Heat pipes are thin cylindrical tubes filled with a mesh/wick material and a small amount of a coolant (e.g. liquid sodium) such that the heat pipe is only partially filled with fluid.
+The heat removal of a heat pipe is driven by the evaporation of the fluid and capillary action and therefore these can be used without gravity (in space) and do not require the modelling of a moving fluid.
+
+Any attempt to model the temperatures or heat flow within a heat pipe is beyond the scope of this work.
+For the purposes of this model, heat pipes are assumed to operate at a constant temperature.
+If a more accurate heat pipe model is required, an appropriate model could be added to the computer program and solved as an additional multiphysics model.
+
+\section{One-Dimension Cartesian Heat Conduction}
+
+Begin by considering the heat conduction equation in one-dimension
+\begin{equation}
+  \label{eq:oned_heat_conduction}
+  -k \; \frac{d^2}{dx^2} T(x) = q(x).
+\end{equation}
+
+For this specific problem, the geometry in \fref{fig:linear_geometry} will be used.
+\fref{fig:linear_geometry} shows a one-dimension slab of length $L$ with a fixed temperature boundary condition $T(0)=T_{HP}$ (constant heat pipe temperature) and a fixed temperature boundary condition $T(L)=T_{B}$ (constant external boundary temperature).
+The heat source function considered is
+\begin{equation}
+  \label{eq:oned_q}
+  q(x) = q_0 \sin \left( \frac{\pi \, x}{L} \right)
+\end{equation}
+where $q_0$ is a scaling constant.
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.7\textwidth]{../figs/linear_geometry}
+  \caption{One-Dimension Cartesian Heat Conduction Geometry.}
+  \label{fig:linear_geometry}
+\end{figure}
+
+Integrating \eref{eq:oned_heat_conduction} twice yields
+\begin{equation}
+  \label{eq:oned_general_solution}
+  T(x) = \frac{q_0}{k} \left( \frac{L}{\pi} \right)^2 \left( \sin \left( \frac{\pi \, x}{L} \right) + c_1 x + c_2 \right)
+\end{equation}
+where $c_1$ and $c_2$ are constants of integration whose values will be obtained by imposing the boundary conditions.
+Beginning with the boundary condition at $x=0$.
+\begin{align}
+  T(0) &= T_{HP} \\
+  &= \frac{q_0}{k} \left( \frac{L}{\pi} \right)^2 c_2  \\
+  \label{eq:oned_c2}
+  \therefore c_2 &= T_{HP} \frac{k}{q_0} \left( \frac{\pi}{L} \right)^2
+\end{align}
+Substituting \eref{eq:oned_c2} into \eref{eq:oned_general_solution}.
+\begin{equation}
+  \label{eq:oned_intermediate_solution}
+  T(x) = \frac{q_0}{k} \left( \frac{L}{\pi} \right)^2 \left( \sin \left( \frac{\pi \, x}{L} \right) + c_1 x \right) + T_{HP}
+\end{equation}
+Next, evaluate the boundary condition at $x=L$.
+\begin{align}
+  T(L) &= T_B \\
+  &= \frac{q_0}{k} \left( \frac{L}{\pi} \right)^2 c_1 x + T_{HP} \\
+  \label{eq:oned_c1}
+  \therefore c_1 &= \frac{k}{q_0} \left( \frac{L}{\pi} \right)^2 \frac{T_B - T_{HP}}{L}
+\end{align}
+Finally, substitute \eref{eq:oned_c1} into \eref{eq:oned_intermediate_solution} to obtain the final form of the solution.
+\begin{equation}
+  \label{eq:oned_solution}
+  T(x) = \frac{q_0}{k} \left( \frac{L}{\pi} \right)^2 \sin \left( \frac{\pi \, x}{L} \right) + \frac{T_B - T_{HP}}{L} x + T_{HP}
+\end{equation}
+Using the (dimensionless) values in \tref{tab:oned}, an example solution is plotted in \fref{fig:linear}.
+
+\begin{table}
+  \centering
+  \caption{One-Dimension Cartesian Heat Conduction Constants.}
+  \label{tab:oned}
+  \begin{tabular}{cc}
+    \\
+    \toprule
+    Variable & Value \\
+    \midrule
+    $T_{HP}$ & 400 \\
+    $T_{B}$  & 300 \\
+    $L$      & 1   \\
+    $k$      & 0.1 \\
+    $q_0$    & 100 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.7\textwidth]{../figs/linear}
+  \caption{One-Dimension Cartesian Heat Conduction Solution.}
+  \label{fig:linear}
+\end{figure}
+
+\section{One-Dimension Cylindrical Heat Conduction with Heat Pipe}
+
+Begin by considering the heat conduction equation in one-dimension cylindrical geometry.
+\begin{equation}
+  \label{eq:cyl_heat_conduction}
+  -k \; \frac{d}{dr} \left( \frac{1}{r} \frac{d}{dr} \left( r \, T(r) \right) \right) = q(r)
+\end{equation}
+Note the proper treatment of the Laplacian for one-dimension cylindrical geometry in \eref{eq:cyl_heat_conduction}.
+
+This problem is designed to model the treatment of heat pipes in a thermal conduction solver.
+The geometry for this problem is shown in \fref{fig:radial_geometry}.
+The model is a cylindrical heat pipe surrounded by a heat generating and conducting medium with thermal conductivity $k$ and heat source $q(r)$.
+When the heat pipe is treated as a constant temperature boundary condition, this is a one-dimension cylindrical model with boundary conditions $T(R_{HP}) = T_{HP}$ and $T(R_B) = T_B$ where $R_{HP}$ is the radius of the heat pipe and $R_B$ is the radius of the external boundary.
+The heat source function considered is
+\begin{equation}
+  \label{eq:cyl_source}
+  q(r) = q_0 \frac{R_B - r}{R_B - R_{HP}}
+\end{equation}
+where $q_0$ is a scaling constant.
+\eref{eq:cyl_source} has the property that it is linear and $q(R_{HP})=q_0$ and $q(R_B)=0$. 
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.5\textwidth]{../figs/radial_geometry}
+  \caption{One-Dimension Cylindrical Heat Conduction Geometry.}
+  \label{fig:radial_geometry}
+\end{figure}
+
+Integrating \eref{eq:cyl_heat_conduction} twice in cylindrical geometry yields
+\begin{equation}
+  \label{eq:cyl_general}
+  T(r) = \frac{q_0}{k} \frac{1}{R_B-R_{HP}} \left( \frac{r^3}{9} - \frac{R_B \, r^2}{4} + c_1 \ln(r) + c_2 \right)
+\end{equation}
+where $c_1$ and $c_2$ are integration constants that will be obtained by evaluating the boundary conditions.
+
+A warning: there is very little cancellation in this problem and lots of tedious algebra.
+Begin by evaluating the heat pipe boundary condition at $r=R_{HP}$.
+\begin{align}
+  T(R_{HP}) &= T_{HP} \\
+  &= \frac{q_0}{k} \frac{1}{R_B - R_{HP}} \left( \frac{R_{HP}^3}{9} - \frac{R_{B} \, R_{HP}^2}{4} + c_1 \ln(R_{HP}) + c2 \right) \\
+  \label{eq:cyl_c2_expression1}
+  \therefore c_2 &= T_{HP} \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - c_1 \ln(R_{HP})
+\end{align}
+Continue by evaluating the external boundary condition at $r=R_B$.
+\begin{align}
+  T(R_B) &= T_B \\
+  &= \frac{q_0}{k} \frac{1}{R_B - R_{HP}} \left( \frac{R_B^3}{9} - \frac{B_B^3}{4} + c_1 \ln(R_B) + c_2 \right) \\
+  \label{eq:cyl_c2_expression2}
+  \therefore c_2 &= T_B \frac{k}{q_0} (R_B - R_{HP}) + \frac{5}{36} R_B^3 - c_1 \ln(R_B)
+\end{align}
+Setting \eref{eq:cyl_c2_expression1} equal to \eref{eq:cyl_c2_expression2} yields an expression for $c_1$.
+\begin{gather}
+  T_{HP} \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - c_1 \ln(R_{HP}) = T_B \frac{k}{q_0} (R_B - R_{HP}) + \frac{5}{36} R_B^3 - c_1 \ln(R_B) \\
+  (T_{HP} - T_{B}) \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - \frac{5}{36} R_B^3 = c_1 \left( \ln(R_{HP}) - \ln(R_B) \right) \\
+  \label{eq:cyl_c1_expression}
+  \therefore c_1 = \frac{1}{\ln\left(\frac{R_{HP}}{R_B}\right)} \left( (T_{HP} - T_B) \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - \frac{5}{36} R_B^3 \right)
+\end{gather}
+
+There is no ``clean'' final form of the solution for this problem.
+The solution is given by the combination of \eref{eq:cyl_general}, \eref{eq:cyl_c2_expression2}, and \eref{eq:cyl_c1_expression}.
+Evaluating the solution with the constants in \tref{tab:radial} yields the result plotted in \fref{fig:radial}.
+Note that the temperature is treated as constant within the heat pipe.
+
+\begin{table}
+  \centering
+  \caption{One-Dimension Cylindrical Heat Conduction Constants.}
+  \label{tab:radial}
+  \begin{tabular}{cc}
+    \\
+    \toprule
+    Variable & Value \\
+    \midrule
+    $T_{HP}$ & 400 \\
+    $T_{B}$  & 300 \\
+    $R_{HP}$ & 0.5 \\
+    $R_{B}$  & 2   \\
+    $k$      & 0.1 \\
+    $q_0$    & 100 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}
+  \centering
+  \begin{subfigure}{0.4\textwidth}
+    \centering
+    \includegraphics[width=\columnwidth]{../figs/radial_line}
+    \label{fig:radial_line}
+  \end{subfigure}
+  \begin{subfigure}{0.4\textwidth}
+    \centering
+    \includegraphics[width=\columnwidth]{../figs/radial_circle}
+    \label{fig:radial_circle}
+  \end{subfigure}
+  \caption{One-Dimension Cylindrical Heat Conduction Solution.}
+  \label{fig:radial}
+\end{figure}
+
+\end{document}

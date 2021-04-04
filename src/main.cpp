@@ -356,6 +356,10 @@ int main(int argc, char* argv[])
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           */
           break;
+        case (Solver_choice::conduction_radial):
+        case (Solver_choice::conduction_linear):
+          temperature_heat_conduction(inp, mat_lib, power, temperature);
+          break;
         default:
           cerr << "Invalid solver choice.\n";
           MPI_Finalize();
@@ -398,6 +402,12 @@ int main(int argc, char* argv[])
       moment_width = std::to_string(res.nmoment()).length();
     else
       moment_width = std::to_string(2*inp.spn_eq()).length();
+
+    if ((inp.sol == Solver_choice::conduction_radial) ||
+        (inp.sol == Solver_choice::conduction_linear))
+    {
+      output.RegisterField("temperature", &temperature);
+    }
 
     if ((inp.sol == Solver_choice::slepc_vector) || 
         (inp.sol == Solver_choice::saaf_slepc_vector) || 

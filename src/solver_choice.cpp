@@ -19,6 +19,8 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
     case (Solver_choice::saaf_slepc_vector): return "saaf_slepc_vector";
     case (Solver_choice::saaf_true_slepc_vector): return "saaf_true_slepc_vector";
     case (Solver_choice::saaf_true_amgx_vector): return "saaf_true_amgx_vector";
+    case (Solver_choice::conduction_linear): return "conduction_linear";
+    case (Solver_choice::conduction_radial): return "conduction_radial";
     default: return "invalid";
   }
 }
@@ -38,6 +40,8 @@ Solver_choice solver_choice_str_to_enum(const string& solver)
   if (solver == "saaf_slepc_vector") return Solver_choice::saaf_slepc_vector;
   if (solver == "saaf_true_slepc_vector") return Solver_choice::saaf_true_slepc_vector;
   if (solver == "saaf_true_amgx_vector") return Solver_choice::saaf_true_amgx_vector;
+  if (solver == "conduction_linear") return Solver_choice::conduction_linear;
+  if (solver == "conduction_radial") return Solver_choice::conduction_radial;
   return Solver_choice::invalid;
 }
 
