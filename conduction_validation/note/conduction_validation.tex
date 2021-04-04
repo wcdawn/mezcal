@@ -166,7 +166,7 @@ Using the (dimensionless) values in \tref{tab:oned}, an example solution is plot
 Begin by considering the heat conduction equation in one-dimension cylindrical geometry.
 \begin{equation}
   \label{eq:cyl_heat_conduction}
-  -k \; \frac{d}{dr} \left( \frac{1}{r} \frac{d}{dr} \left( \frac{1}{r} T(r) \right) \right) = q(r)
+  -k \; \frac{d}{dr} \left( \frac{1}{r} \frac{d}{dr} \left( r \, T(r) \right) \right) = q(r)
 \end{equation}
 Note the proper treatment of the Laplacian for one-dimension cylindrical geometry in \eref{eq:cyl_heat_conduction}.
 
@@ -192,7 +192,7 @@ where $q_0$ is a scaling constant.
 Integrating \eref{eq:cyl_heat_conduction} twice in cylindrical geometry yields
 \begin{equation}
   \label{eq:cyl_general}
-  T(r) = \frac{q_0}{k} \frac{1}{R_B-R_{HP}} \left( \frac{r^5}{15} - R_B \frac{r^4}{8} + c_1 \frac{r^2}{2} + c_2 \right)
+  T(r) = \frac{q_0}{k} \frac{1}{R_B-R_{HP}} \left( \frac{r^3}{9} - \frac{R_B \, r^2}{4} + c_1 \ln(r) + c_2 \right)
 \end{equation}
 where $c_1$ and $c_2$ are integration constants that will be obtained by evaluating the boundary conditions.
 
@@ -200,27 +200,27 @@ A warning: there is very little cancellation in this problem and lots of tedious
 Begin by evaluating the heat pipe boundary condition at $r=R_{HP}$.
 \begin{align}
   T(R_{HP}) &= T_{HP} \\
-  &= \frac{q_0}{k} \frac{1}{R_B - R_{HP}} \left( \frac{R_{HP}^5}{15} - \frac{R_B R_{HP}^4}{8} + c_1 \frac{R_{HP}^2}{2} + c_2 \right) \\
-  \label{eq:cyl_c2_expression}
-  \therefore c_2 &= T_{HP} (R_B - R_{HP}) \frac{k}{q_0} - \frac{R_{HP}^5}{15} + \frac{R_B R_{HP}^4}{8} - c_1 \frac{R_{HP}^2}{2}
+  &= \frac{q_0}{k} \frac{1}{R_B - R_{HP}} \left( \frac{R_{HP}^3}{9} - \frac{R_{B} \, R_{HP}^2}{4} + c_1 \ln(R_{HP}) + c2 \right) \\
+  \label{eq:cyl_c2_expression1}
+  \therefore c_2 &= T_{HP} \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - c_1 \ln(R_{HP})
 \end{align}
 Continue by evaluating the external boundary condition at $r=R_B$.
 \begin{align}
   T(R_B) &= T_B \\
-  &= \frac{q_0}{k} \frac{1}{R_B - R_{HP}} \left( \frac{-7 R_B^5}{120} + c_1 \frac{R_B^2}{2} + c_2 \right) \\
-  \label{eq:cyl_intermediate_expression}
-  T_B (R_B - R_{HP}) \frac{k}{q_0} + \frac{7 R_B^5}{120} &= c_1 \frac{r_B^2}{2} + c_2
+  &= \frac{q_0}{k} \frac{1}{R_B - R_{HP}} \left( \frac{R_B^3}{9} - \frac{B_B^3}{4} + c_1 \ln(R_B) + c_2 \right) \\
+  \label{eq:cyl_c2_expression2}
+  \therefore c_2 &= T_B \frac{k}{q_0} (R_B - R_{HP}) + \frac{5}{36} R_B^3 - c_1 \ln(R_B)
 \end{align}
-Insert the expression for $c_2$ from \eref{eq:cyl_c2_expression} into \eref{eq:cyl_intermediate_expression}.
+Setting \eref{eq:cyl_c2_expression1} equal to \eref{eq:cyl_c2_expression2} yields an expression for $c_1$.
 \begin{gather}
-  T_B (R_B - R_{HP}) \frac{k}{q_0} + \frac{7 R_B^5}{120} = c_1 \frac{R_B^2}{2} + T_{HP} (R_B - R_{HP}) \frac{k}{q_0} - \frac{R_{HP}^5}{15} + \frac{R_B R_{HP}^4}{8} - c_1 \frac{R_{HP}^2}{2} \\
-  (T_B - T_{HP}) (R_B - R_{HP}) \frac{k}{q_0} + \frac{7 R_B^5}{120} + \frac{R_{HP}^5}{15} - \frac{R_B R_{HP}^4}{8} = c_1 \frac{R_B^2}{2} - c_1 \frac{R_{HP}^2}{2} \\
+  T_{HP} \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - c_1 \ln(R_{HP}) = T_B \frac{k}{q_0} (R_B - R_{HP}) + \frac{5}{36} R_B^3 - c_1 \ln(R_B) \\
+  (T_{HP} - T_{B}) \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - \frac{5}{36} R_B^3 = c_1 \left( \ln(R_{HP}) - \ln(R_B) \right) \\
   \label{eq:cyl_c1_expression}
-  \therefore c_1 = \frac{2}{R_B^2 - R_{HP}^2} \left( (T_B - T_{HP}) (R_B - R_{HP}) \frac{k}{q_0} + \frac{7 R_B^5}{120} + \frac{R_{HP}^5}{15} - \frac{R_B R_{HP}^4}{8} \right)
+  \therefore c_1 = \frac{1}{\ln\left(\frac{R_{HP}}{R_B}\right)} \left( (T_{HP} - T_B) \frac{k}{q_0} (R_B - R_{HP}) - \frac{R_{HP}^3}{9} + \frac{R_B \, R_{HP}^2}{4} - \frac{5}{36} R_B^3 \right)
 \end{gather}
 
 There is no ``clean'' final form of the solution for this problem.
-The solution is given by the combination of \eref{eq:cyl_general}, \eref{eq:cyl_c2_expression}, and \eref{eq:cyl_c1_expression}.
+The solution is given by the combination of \eref{eq:cyl_general}, \eref{eq:cyl_c2_expression2}, and \eref{eq:cyl_c1_expression}.
 Evaluating the solution with the constants in \tref{tab:radial} yields the result plotted in \fref{fig:radial}.
 Note that the temperature is treated as constant within the heat pipe.
 

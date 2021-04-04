@@ -18,7 +18,9 @@ enum class Solver_choice
   saaf_angle_power_iteration,
   saaf_slepc_vector,
   saaf_true_slepc_vector,
-  saaf_true_amgx_vector
+  saaf_true_amgx_vector,
+  conduction_linear,
+  conduction_radial
 };
 
 std::string solver_choice_enum_to_str(const Solver_choice& solver);

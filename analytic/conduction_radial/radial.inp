@@ -1,0 +1,17 @@
+[CORE]
+
+mesh_file circle.vtk
+boundary_conditions 1
+userxs finite_cyl.xs
+
+[MATERIAL]
+
+[STATE]
+solver conduction_radial
+
+temp_boundary 300.
+temp_heat_pipe 400.
+
+temp_inner_rel 1e-12
+temp_inner_abs 1e-12
+temp_max_inner 1000

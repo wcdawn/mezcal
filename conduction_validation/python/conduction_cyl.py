@@ -20,13 +20,13 @@ q0 = 100.
 
 q = lambda r : q0 * (R_B - x) / (R_B - R_HP)
 
-c1 = (2./(R_B**2 - R_HP**2)) * ((T_B-T_HP)*(R_B-R_HP)*(k/q0) + 7/120*R_B**5 + \
-    R_HP**5/15 - R_B*R_HP**4/8)
-c2 = T_HP*(R_B-R_HP)*(k/q0) - R_HP**5/15 + R_B*R_HP**4/8 - c1*R_HP**2/2
+c1 = 1.0/np.log(R_HP/R_B) * (
+    (T_HP-T_B)*(R_B-R_HP)*k/q0 - R_HP**3/9. + 0.25*R_B*R_HP**2 - 5./36.*R_B**3)
+c2 = T_B * k/q0 * (R_B-R_HP) + 5./36.*R_B**3 - c1*np.log(R_B)
 
-T = lambda r : q0/k * (1.0/(R_B-R_HP)) * (r**5/15 - R_B*r**4/8 + c1*r**2/2 + c2)
+T = lambda r : q0/k * (1.0/(R_B-R_HP)) * (r**3/9. - 0.25*R_B*r**2 + c1*np.log(r) + c2)
 
-r = np.linspace(R_HP, R_B)
+r = np.linspace(R_HP, R_B, 1000)
 
 plt.figure(figsize=(6,2))
 ax = plt.gca()
@@ -60,7 +60,7 @@ yl = plt.ylim()
 plt.plot((R_HP,R_HP), yl, '-k', lw=1)
 plt.plot((R_B,R_B), yl, '-k', lw=1)
 
-plt.text(R_HP*0.5, np.mean(yl), 'Heat Pipe', horizontalalignment='center', size=14)
+plt.text(R_HP*0.5, np.mean(yl)+5, 'Heat Pipe', horizontalalignment='center', size=14)
 
 plt.xlim((0.0, R_B*1.1))
 plt.ylim(yl)
