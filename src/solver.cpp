@@ -1230,119 +1230,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
 
   time.stop(time.matrix_assembly);
 
-  constexpr bool compute_residual{false};
-
-  time.start("amgx_setup");
-  AmgXSolver Aamgx;
-  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-  Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-
-  if (inp.ndevices > 0)
-  {
-    // use MPITeams
-    Aamgx.InitMPITeams(fespace->GetComm(), inp.ndevices);
-  }
-  else
-  {
-    // use MPI Exclusive
-    Aamgx.InitExclusiveGPU(fespace->GetComm());
-  }
-
-  Aamgx.SetOperator(*Ahypre);
-  if (!compute_residual) 
-  {
-    delete Ahypre;
-    Ahypre = nullptr;
-  }
-  time.stop("amgx_setup");
-
-  HypreParVector x{*Mhypre};
-  x.UseDevice(true);
-  x.Randomize(730); // if default seed is used, the seed is actually the time and we lose reproducability
-
-  double k_conv{inp.tol.k*1e2+1.0};
-  double x_conv{inp.tol.phi*1e2+1.0};
-
-  double k{1.0};
-  for (int iter{0}; (iter < inp.tol.max_outer) && 
-      ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
-  {
-
-    time.start("old_copy");
-    const double k_old{k};
-    HypreParVector x_old{x}; // constructor doesn't perform deep copy
-    x_old.UseDevice(true);
-    x_old = x;
-    time.stop("old_copy");
-
-    time.start("calc_v");
-    // v = x / \| x \|
-    HypreParVector v{x}; // constructor doesn't perform deep copy
-    v.UseDevice(true);
-    v = x;
-    v /= par_norml2(x);
-    time.stop("calc_v");
-
-    time.start("matvec");
-    // b = M*v
-    HypreParVector b{v}; // constructor doesn't perform deep copy
-    b.UseDevice(true);
-    //Mhypre->Mult(v, b); // this is performed on CPU
-    Mhypre->Mult(v, b, 1.0, 0.0); // make sure we use the proper function signature
-    time.stop("matvec");
-    
-    time.start("amgx_solve");
-    // x = A^-1 * b
-    Aamgx.Mult(b, x);
-    time.stop("amgx_solve");
-
-    time.start("dot_product");
-    // k = v^T * x
-    const double local_k{v*x};
-    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    time.stop("dot_product");
-
-    // convergence criteria
-    k_conv = std::abs(k - k_old);
-    x_old -= x;
-    x_conv = par_norml2(x_old);
-
-    if (compute_residual)
-    {
-      time.start("residual");
-      // r = A*x - M*x/k
-      HypreParVector r0{x};
-      r0.UseDevice(true);
-      Ahypre->Mult(x, r0);
-
-      HypreParVector r1{x};
-      r1.UseDevice(true);
-      Mhypre->Mult(x, r1);
-      r1 /= k;
-
-      r0 -= r1;
-      std::cout << "residual=" << par_norml2(r0) << std::endl;
-      time.stop("residual");
-    }
-
-    if (myid == 0) std::cout << "iter=" << iter
-                             << " inner=" << Aamgx.GetNumIterations()
-                             << " k=" << k 
-                             << " dk=" << k_conv 
-                             << " dx=" << x_conv 
-                             << std::endl;
-  }
-
-  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
-
-  delete Ahypre;
-  delete Mhypre;
-  Aamgx.Finalize();
-
-  res.keff = k;
-  time.start("distribute");
-  res(0).Distribute(x);
-  time.stop("distribute");
+  power_iteration_amgx(Ahypre, Mhypre, inp, time, res);
   return;
 }
 
@@ -3247,108 +3135,9 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
 
   }
 
-  constexpr bool compute_residual{false};
+  time.stop(time.matrix_assembly);
 
-  time.start("amgx_setup");
-  AmgXSolver Aamgx;
-  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-  Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-  Aamgx.InitExclusiveGPU(fespace->GetComm());
-  Aamgx.SetOperator(*Ahypre);
-  if (!compute_residual) 
-  {
-    delete Ahypre;
-    Ahypre = nullptr;
-  }
-  time.stop("amgx_setup");
-
-  HypreParVector x{*Mhypre};
-  x.UseDevice(true);
-  x.Randomize(730); // if default seed is used, the seed is actually the time and we lose reproducability
-
-  double k_conv{inp.tol.k*1e2+1.0};
-  double x_conv{inp.tol.phi*1e2+1.0};
-
-  double k{1.0};
-  for (int iter{0}; (iter < inp.tol.max_outer) && 
-      ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
-  {
-
-    time.start("old_copy");
-    const double k_old{k};
-    HypreParVector x_old{x}; // constructor doesn't perform deep copy
-    x_old.UseDevice(true);
-    x_old = x;
-    time.stop("old_copy");
-
-    time.start("calc_v");
-    // v = x / \| x \|
-    HypreParVector v{x}; // constructor doesn't perform deep copy
-    v.UseDevice(true);
-    v = x;
-    v /= par_norml2(x);
-    time.stop("calc_v");
-
-    time.start("matvec");
-    // b = M*v
-    HypreParVector b{v}; // constructor doesn't perform deep copy
-    b.UseDevice(true);
-    //Mhypre->Mult(v, b); // this is performed on CPU
-    Mhypre->Mult(v, b, 1.0, 0.0); // make sure we use the proper function signature
-    time.stop("matvec");
-    
-    time.start("amgx_solve");
-    // x = A^-1 * b
-    Aamgx.Mult(b, x);
-    time.stop("amgx_solve");
-
-    time.start("dot_product");
-    // k = v^T * x
-    const double local_k{v*x};
-    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    time.stop("dot_product");
-
-    // convergence criteria
-    k_conv = std::abs(k - k_old);
-    x_old -= x;
-    x_conv = par_norml2(x_old);
-
-    if (compute_residual)
-    {
-      time.start("residual");
-      // r = A*x - M*x/k
-      HypreParVector r0{x};
-      r0.UseDevice(true);
-      Ahypre->Mult(x, r0);
-
-      HypreParVector r1{x};
-      r1.UseDevice(true);
-      Mhypre->Mult(x, r1);
-      r1 /= k;
-
-      r0 -= r1;
-      std::cout << "residual=" << par_norml2(r0) << std::endl;
-      time.stop("residual");
-    }
-
-    if (myid == 0) std::cout << "iter=" << iter
-                             << " inner=" << Aamgx.GetNumIterations()
-                             << " k=" << k 
-                             << " dk=" << k_conv 
-                             << " dx=" << x_conv 
-                             << std::endl;
-  }
-
-  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
-
-  delete Ahypre;
-  delete Mhypre;
-
-  angular_flux.keff = k;
-  time.start("distribute");
-  angular_flux(0).Distribute(x);
-  time.stop("distribute");
-
+  power_iteration_amgx(Ahypre, Mhypre, inp, time, angular_flux);
   return;
 }
 
@@ -4146,4 +3935,148 @@ double par_norml2(const Vector &x)
   double norm{0.0};
   MPI_Allreduce(&local_norm, &norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   return std::sqrt(norm);
+}
+
+void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res)
+{
+
+  constexpr bool compute_residual{false};
+  const int myid{res(0).ParFESpace()->GetMyRank()};
+  const MPI_Comm mycomm{res(0).ParFESpace()->GetComm()};
+
+  if (myid == 0) std::cout << "AMGX_SETUP_BEGIN" << std::endl;
+  time.start("amgx_setup");
+  AmgXSolver Aamgx;
+  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+  Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+  if (myid == 0) std::cout << "AMGX_MPI_SETTING_BEGIN" << std::endl;
+  if (inp.ndevices > 0)
+  {
+    // use MPITeams
+    Aamgx.InitMPITeams(mycomm, inp.ndevices);
+  }
+  else
+  {
+    // use MPI Exclusive
+    Aamgx.InitExclusiveGPU(mycomm);
+  }
+  if (myid == 0) std::cout << "AMGX_MPI_SETTING_END" << std::endl;
+
+  if (myid == 0) std::cout << "AMGX_SET_OPERATOR_BEGIN" << std::endl;
+  Aamgx.SetOperator(*A);
+  if (!compute_residual) 
+  {
+    delete A;
+    A = nullptr;
+  }
+  if (myid == 0) std::cout << "AMGX_SET_OPERATOR_END" << std::endl;
+
+  time.stop("amgx_setup");
+  if (myid == 0) std::cout << "AMGX_SETUP_END" << std::endl;
+
+  if (myid == 0) std::cout << "RANDOMIZE_BEGIN" << std::endl;
+  HypreParVector x{*M};
+  x.UseDevice(true);
+  x.Randomize(730); // if default seed is used, the seed is actually the time and we lose reproducability
+  if (myid == 0) std::cout << "RANDOMIZE_END" << std::endl;
+
+  double k_conv{inp.tol.k*1e2+1.0};
+  double x_conv{inp.tol.phi*1e2+1.0};
+
+  if (myid == 0) std::cout << "ITERATION_BEGIN" << std::endl;
+  double k{1.0};
+  for (int iter{0}; (iter < inp.tol.max_outer) && 
+      ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
+  {
+
+    if (myid == 0) std::cout << "COPY_BEGIN" << std::endl;
+    time.start("old_copy");
+    const double k_old{k};
+    HypreParVector x_old{x}; // constructor doesn't perform deep copy
+    x_old.UseDevice(true);
+    x_old = x;
+    time.stop("old_copy");
+    if (myid == 0) std::cout << "COPY_END" << std::endl;
+
+    if (myid == 0) std::cout << "SCALE_BEGIN" << std::endl;
+    time.start("calc_v");
+    // v = x / \| x \|
+    HypreParVector v{x}; // constructor doesn't perform deep copy
+    v.UseDevice(true);
+    v = x;
+    v /= par_norml2(x);
+    time.stop("calc_v");
+    if (myid == 0) std::cout << "SCALE_END" << std::endl;
+
+    if (myid == 0) std::cout << "MATVEC_BEGIN" << std::endl;
+    time.start("matvec");
+    // b = M*v
+    HypreParVector b{v}; // constructor doesn't perform deep copy
+    b.UseDevice(true);
+    //Mhypre->Mult(v, b); // this is performed on CPU
+    M->Mult(v, b, 1.0, 0.0); // make sure we use the proper function signature
+    time.stop("matvec");
+    if (myid == 0) std::cout << "MATVEC_END" << std::endl;
+    
+    if (myid == 0) std::cout << "AMGX_SOLVE_BEGIN" << std::endl;
+    time.start("amgx_solve");
+    // x = A^-1 * b
+    Aamgx.Mult(b, x);
+    time.stop("amgx_solve");
+    if (myid == 0) std::cout << "AMGX_SOLVE_END" << std::endl;
+
+    if (myid == 0) std::cout << "DOT_BEGIN" << std::endl;
+    time.start("dot_product");
+    // k = v^T * x
+    const double local_k{v*x};
+    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    time.stop("dot_product");
+    if (myid == 0)  std::cout << "DOT_END" << std::endl;
+
+    // convergence criteria
+    k_conv = std::abs(k - k_old);
+    x_old -= x;
+    x_conv = par_norml2(x_old);
+
+    if (compute_residual)
+    {
+      time.start("residual");
+      // r = A*x - M*x/k
+      HypreParVector r0{x};
+      r0.UseDevice(true);
+      A->Mult(x, r0);
+
+      HypreParVector r1{x};
+      r1.UseDevice(true);
+      M->Mult(x, r1);
+      r1 /= k;
+
+      r0 -= r1;
+      std::cout << "residual=" << par_norml2(r0) << std::endl;
+      time.stop("residual");
+    }
+
+    if (myid == 0) std::cout << "iter=" << iter
+                             << " inner=" << Aamgx.GetNumIterations()
+                             << " k=" << k 
+                             << " dk=" << k_conv 
+                             << " dx=" << x_conv 
+                             << std::endl;
+
+  }
+  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
+
+
+  // cleanup
+  delete A;
+  delete M;
+  Aamgx.Finalize();
+
+  // store solution
+  res.keff = k;
+  time.start("distribute");
+  res(0).Distribute(x);
+  time.stop("distribute");
+  return;
 }

@@ -201,4 +201,7 @@ class Failed_to_converge : std::exception
     const std::string msg;
 };
 
+double par_norml2(const mfem::Vector& x);
+void power_iteration_amgx(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res);
+
 #endif

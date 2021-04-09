@@ -31,6 +31,11 @@ AMGX_DIR = $(OLCF_AMGX_ROOT)
 AMGX_LIB_DIR = $(AMGX_DIR)/lib
 AMGX_INCLUDE_DIR = $(AMGX_DIR)/include
 
+#### # TODO move this because it will be the same on both machines
+#### AMGX_DIR = $(PROJ)/amgx
+#### AMGX_LIB_DIR = $(AMGX_DIR)/lib
+#### AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
+
 else ifeq ($(MACH),ARCHBUILD)
 STD = c++17
 MPICXX = /opt/mpich/bin/mpicxx
