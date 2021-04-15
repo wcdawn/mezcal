@@ -350,8 +350,8 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::saaf_true_amgx_vector):
           saaf_true_amgx_vector(quad.get(), time, inp, mat_lib, res);
-          /* TODO finish implementation
           calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
+          /* TODO finish implementation
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           */
@@ -417,8 +417,9 @@ int main(int argc, char* argv[])
     {
       output.RegisterField("phi", &res(0));
       if ((inp.sol == Solver_choice::saaf_true_slepc_vector) || 
-          (inp.sol == Solver_choice::slepc_vector))
-      { // TODO finish implementation for saaf_true_amgx_vector
+          (inp.sol == Solver_choice::slepc_vector) |\
+          (inp.sol == Solver_choice::saaf_true_amgx_vector))
+      {
         for (int g{0}; g < scalar_flux.ngroup(); ++g)
         {
           std::ostringstream scalar_flux_record;
