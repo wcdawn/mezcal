@@ -2,6 +2,7 @@
 #define TENSOR_CLASS
 
 #include <vector>
+#include <utility>
 
 #include "mfem.hpp"
 
@@ -42,6 +43,11 @@ public:
     data.reserve(res);
     row_idx.Reserve(res);
     col_idx.Reserve(res);
+  }
+
+  void Transpose()
+  {
+    std::swap(row_idx, col_idx);
   }
 
 private:
