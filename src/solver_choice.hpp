@@ -19,8 +19,8 @@ enum class Solver_choice
   saaf_slepc_vector,
   saaf_true_slepc_vector,
   saaf_true_amgx_vector,
-  conduction_linear,
-  conduction_radial
+  conduction_linear, // TODO move this into "analytic"
+  conduction_radial // TODO move this into "analytic"
 };
 
 std::string solver_choice_enum_to_str(const Solver_choice& solver);
