@@ -8,26 +8,8 @@
 #include <string>
 
 #include <algorithm>
-using std::max_element;
 
 using namespace mfem;
-
-using std::ostream;
-using std::setprecision;
-
-using std::string;
-using std::vector;
-
-using std::max;
-using std::pow;
-using std::sqrt;
-
-using std::abs;
-using std::cos;
-using std::cosh;
-using std::sin;
-using std::sinh;
-using std::tanh;
 
 Analytic::Analytic(const Reference ref, const Solver_choice sol, Result& res, 
                    const XSLibrary& xslib, const Mesh* const mesh)
@@ -121,7 +103,7 @@ Analytic::Analytic(const Reference ref, const Solver_choice sol, Result& res,
   }
 }
 
-void Analytic::analyze(ostream& os) const
+void Analytic::analyze(std::ostream& os) const
 {
   Vector err(node.size());
   for (int i{0}; i < err.Size(); ++i) err[i] = fun(node[i]);
@@ -148,8 +130,8 @@ void Analytic::analyze(ostream& os) const
   MPI_Allreduce(&local_infnorm, &infnorm, 1, MPI_DOUBLE, MPI_MAX,
                 MPI_COMM_WORLD);
 
-  L2norm  = sqrt(L2norm);
-  rmsnorm = L2norm / sqrt(nVert);
+  L2norm  = std::sqrt(L2norm);
+  rmsnorm = L2norm / std::sqrt(nVert);
 
   // These are computed according to the FEM definitions of these and are truly
   // "norms"/integral values defined in the space.
@@ -194,11 +176,11 @@ void Analytic::analyze(ostream& os) const
     {
       const double kref{analytic_keff()};
       const auto previous_precision{os.precision()};
-      os << setprecision(20);
+      os << std::setprecision(20);
       os << "keff = " << keff << '\n';
       os << "kref = " << kref << '\n';
       os << "keff_err_[pcm] = " << (kref - keff) * 1e5 << '\n';
-      os << setprecision(previous_precision);
+      os << std::setprecision(previous_precision);
     }
 
     if (reference_solution == oned_twog)
@@ -206,11 +188,11 @@ void Analytic::analyze(ostream& os) const
       const auto previous_precision{os.precision()};
       const double ratio_ref{Analytic_solutions::oned_twog_ratio()};
       os << "RATIO:" << '\n';
-      os << setprecision(20);
+      os << std::setprecision(20);
       os << "ratio_calc = " << ratio_calc << '\n';
       os << "ratio_ref  = " << ratio_ref << '\n';
       os << "ratio_err  = " << (ratio_ref - ratio_calc) << '\n';
-      os << setprecision(previous_precision);
+      os << std::setprecision(previous_precision);
       os << "(errors only for fast group)\n";
     }
 
@@ -219,11 +201,11 @@ void Analytic::analyze(ostream& os) const
       const auto previous_precision{os.precision()};
       const double ratio_ref{Analytic_solutions::oned_oneg_spn_ratio()};
       os << "RATIO:" << '\n';
-      os << setprecision(20);
+      os << std::setprecision(20);
       os << "ratio_calc = " << ratio_calc << '\n';
       os << "ratio_ref  = " << ratio_ref << '\n';
       os << "ratio_err  = " << (ratio_ref - ratio_calc) << '\n';
-      os << setprecision(previous_precision);
+      os << std::setprecision(previous_precision);
       os << "(errors only for scalar flux)\n";
     }
 
@@ -240,20 +222,20 @@ void Analytic::analyze(ostream& os) const
   }
 }
 
-void Analytic::print(ostream& os) const
+void Analytic::print(std::ostream& os) const
 {
   double* access{phi->GetData()};
   for (int i{0}; i < nVert; ++i, ++access)
   {
     const double val{fun(node[i])};
-    const double err{abs(*access - val)};
+    const double err{*access - val};
     for (int j{0}; j < nDim; ++j) os << node[i][j] << ',';
     if (nDim == 2) os << 0.0 << ',';
     os << *access << ',' << val << ',' << err << '\n';
   }
 }
 
-Analytic::Reference Analytic::reference_str_to_enum(string str)
+Analytic::Reference Analytic::reference_str_to_enum(std::string str)
 {
   if (str == "oned_oneg") return oned_oneg;
   if (str == "twod_oneg") return twod_oneg;
@@ -268,7 +250,7 @@ Analytic::Reference Analytic::reference_str_to_enum(string str)
   return invalid;
 }
 
-string Analytic::reference_enum_to_str(Analytic::Reference ref)
+std::string Analytic::reference_enum_to_str(Analytic::Reference ref)
 {
   switch (ref)
   {
@@ -296,8 +278,8 @@ void Analytic::normalize_solution_flux() const
   // group or moment, forces it to be positive, and adjusts all subsequent
   // energy groups and moments appropriately.
   const double* const max_elem{
-    max_element(phi_vec.GetData(), phi_vec.GetData()+phi_vec.Size(), 
-    [](const double& v1, const double& v2){ return abs(v1) < abs(v2); })};
+    std::max_element(phi_vec.GetData(), phi_vec.GetData()+phi_vec.Size(), 
+    [](const double& v1, const double& v2){ return std::abs(v1) < std::abs(v2); })};
   const double sign{(*max_elem > 0) ? 1.0 : ((*max_elem < 0) ? -1.0 : 0.0)};
 
   *phi *= sign;
@@ -327,13 +309,11 @@ namespace Analytic_solutions
     static constexpr double Lx_small{1.0};
     const double diffusion{1.0 / (3.0 * sigma_tr)};
 
-    const double kappa{sqrt(sigma_r / diffusion)};
+    const double kappa{std::sqrt(sigma_r / diffusion)};
     const double x{v[0]}; // x is the zeroth coordinate
 
-    return (q_fixed / diffusion)
-           * (1.0 - cosh(kappa * x)
-              + (cosh(kappa * Lx_small) - 1.0) / (sinh(kappa * Lx_small))
-                * sinh(kappa * x));
+    return (q_fixed / diffusion) * (1.0 - std::cosh(kappa * x)
+      + (std::cosh(kappa * Lx_small) - 1.0) / (std::sinh(kappa * Lx_small)) * std::sinh(kappa * x));
   }
 
   double saaf_benchmark_fun(const Vector& v)
@@ -348,7 +328,7 @@ namespace Analytic_solutions
   {
     const double x{v[0]};
     static constexpr double Lx{100.0};
-    return sin((M_PI / Lx) * x);
+    return std::sin((M_PI / Lx) * x);
   }
 
   double twod_oneg_fun(const Vector& v)
@@ -357,7 +337,7 @@ namespace Analytic_solutions
     static constexpr double Ly{100.0};
     const double x{v[0]}; // x is the zeroth coordinate
     const double y{v[1]}; // y is the first coordinate
-    return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y);
+    return std::sin((M_PI / Lx) * x) * std::sin((M_PI / Ly) * y);
   }
 
   double threed_oneg_fun(const Vector& v)
@@ -368,7 +348,7 @@ namespace Analytic_solutions
     const double x{v[0]}; // x is the zeroth coordinate
     const double y{v[1]}; // y is the first coordinate
     const double z{v[2]}; // z is the first coordinate
-    return sin((M_PI / Lx) * x) * sin((M_PI / Ly) * y) * sin((M_PI / Lz) * z);
+    return std::sin((M_PI / Lx) * x) * std::sin((M_PI / Ly) * y) * std::sin((M_PI / Lz) * z);
   }
 
   // Note: this may not be the most efficient implementation but it works and
@@ -402,10 +382,10 @@ namespace Analytic_solutions
     static constexpr double R{50.0};
     static constexpr double H{100.0};
 
-    const double r{sqrt(v[0] * v[0] + v[1] * v[1])}; // distance to origin
+    const double r{std::sqrt(v[0] * v[0] + v[1] * v[1])}; // distance to origin
     const double z{v[2]};
 
-    return bessel_j0((alpha0 / R) * r) * sin((M_PI / H) * z);
+    return bessel_j0((alpha0 / R) * r) * std::sin((M_PI / H) * z);
   }
 
   double tworeg_fun(const Vector& v)
@@ -413,11 +393,11 @@ namespace Analytic_solutions
     static constexpr int ell{0}; // for P0 xs
     const XSRecord& fuel{xs_global->rec[0]};
     const XSRecord& reflector{xs_global->rec[1]};
-    const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
-    const vector<double> sigma_r{fuel.sigma_r(0,ell), reflector.sigma_r(0,ell)};
-    const vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
+    const std::vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
+    const std::vector<double> sigma_r{fuel.sigma_r(0,ell), reflector.sigma_r(0,ell)};
+    const std::vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
 
-    vector<double> diffusion(sigma_tr.size());
+    std::vector<double> diffusion(sigma_tr.size());
     for (size_t i{0}; i < diffusion.size(); ++i)
       diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
 
@@ -429,13 +409,11 @@ namespace Analytic_solutions
 
     // indices are material indices, not group indices
 
-    const double kappa{sqrt(sigma_r[1] / diffusion[1])};
+    const double kappa{std::sqrt(sigma_r[1] / diffusion[1])};
 
-    if (x <= L_F) return cos(BF * x);
+    if (x <= L_F) return std::cos(BF * x);
 
-    return cos(BF * L_F)
-           * (cosh(kappa * (x - L_F))
-              - sinh(kappa * (x - L_F)) / tanh(kappa * (L_R - L_F)));
+    return std::cos(BF * L_F) * (std::cosh(kappa * (x - L_F)) - std::sinh(kappa * (x - L_F)) / std::tanh(kappa * (L_R - L_F)));
   }
 
   double oned_oneg_keff()
@@ -449,7 +427,7 @@ namespace Analytic_solutions
 
     const double diffusion{1.0 / (3.0 * transport)};
 
-    return nusf / (diffusion * pow(M_PI / Lx, 2) + removal);
+    return nusf / (diffusion * std::pow(M_PI / Lx, 2) + removal);
   }
 
   double twod_oneg_keff()
@@ -464,8 +442,7 @@ namespace Analytic_solutions
 
     const double diffusion{1.0 / (3.0 * transport)};
 
-    return nusf
-           / (diffusion * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2)) + removal);
+    return nusf / (diffusion * (std::pow(M_PI / Lx, 2) + std::pow(M_PI / Ly, 2)) + removal);
   }
   double threed_oneg_keff()
   {
@@ -480,10 +457,7 @@ namespace Analytic_solutions
 
     const double diffusion{1.0 / (3.0 * transport)};
 
-    return nusf
-           / (diffusion
-              * (pow(M_PI / Lx, 2) + pow(M_PI / Ly, 2) + pow(M_PI / Lz, 2))
-              + removal);
+    return nusf / (diffusion * (std::pow(M_PI / Lx, 2) + std::pow(M_PI / Ly, 2) + std::pow(M_PI / Lz, 2)) + removal);
   }
 
   double finite_cyl_keff()
@@ -498,8 +472,7 @@ namespace Analytic_solutions
 
     const double diffusion{1.0 / (3.0 * transport)};
 
-    return nusf
-           / (diffusion * (pow(alpha0 / R, 2) + pow(M_PI / H, 2)) + removal);
+    return nusf / (diffusion * (std::pow(alpha0 / R, 2) + std::pow(M_PI / H, 2)) + removal);
   }
 
   double tworeg_keff()
@@ -507,18 +480,18 @@ namespace Analytic_solutions
     static constexpr int ell{0}; // for P0 xs
     const XSRecord& fuel{xs_global->rec[0]};
     const XSRecord& reflector{xs_global->rec[1]};
-    const vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
-    const vector<double> sigma_r{fuel.sigma_r(0,ell), reflector.sigma_r(0,ell)};
-    const vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
+    const std::vector<double> sigma_tr{fuel.sigma_tr[0], reflector.sigma_tr[0]};
+    const std::vector<double> sigma_r{fuel.sigma_r(0,ell), reflector.sigma_r(0,ell)};
+    const std::vector<double> nusf{fuel.nusf[0], reflector.nusf[0]};
 
-    vector<double> diffusion(sigma_tr.size());
+    std::vector<double> diffusion(sigma_tr.size());
     for (size_t i{0}; i < diffusion.size(); ++i)
       diffusion[i] = 1.0 / (3.0 * sigma_tr[i]);
 
     static constexpr double BF{0.01716859736590981012}; // [1/cm] LF=80cm
 
     // indices are material indices, not group indices
-    return nusf[0] / (diffusion[0] * pow(BF, 2) + sigma_r[0]);
+    return nusf[0] / (diffusion[0] * std::pow(BF, 2) + sigma_r[0]);
   }
 
   double oned_twog_keff()
@@ -528,11 +501,11 @@ namespace Analytic_solutions
 
     const XSRecord& rec{xs_global->rec[0]};
 
-    vector<double> diffusion(xs_global->ngroup());
+    std::vector<double> diffusion(xs_global->ngroup());
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
-    constexpr double bsq{pow(M_PI / Lx, 2)};
+    constexpr double bsq{std::pow(M_PI / Lx, 2)};
     const double k2k1{oned_twog_ratio()};
     return (rec.nusf[0] + rec.nusf[1] * k2k1)
            / (diffusion[0] * bsq + rec.sigma_r(0,ell));
@@ -542,7 +515,7 @@ namespace Analytic_solutions
   {
     const double c22_c20{oned_oneg_spn_ratio()};
     static constexpr double Lx{100.0};
-    constexpr double bsq{pow(M_PI/Lx,2)};
+    constexpr double bsq{std::pow(M_PI/Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
 
     return rec.nusf[0] / 
@@ -555,9 +528,9 @@ namespace Analytic_solutions
     static constexpr int ell{0}; // for P0 xs
     static constexpr double Lx{100.0};
     const XSRecord& rec{xs_global->rec[0]};
-    const double bsq{pow(M_PI/Lx, 2)};
+    const double bsq{std::pow(M_PI/Lx, 2)};
 
-    vector<double> diffusion(xs_global->ngroup());
+    std::vector<double> diffusion(xs_global->ngroup());
     for (size_t g{0}; g < diffusion.size(); ++g)
       diffusion[g] = 1.0 / (3.0 * rec.sigma_tr[g]);
 
@@ -567,7 +540,7 @@ namespace Analytic_solutions
   double oned_oneg_spn_ratio()
   {
     static constexpr double Lx{100.0};
-    constexpr double bsq{pow(M_PI / Lx,2)};
+    constexpr double bsq{std::pow(M_PI / Lx,2)};
     const XSRecord& rec{xs_global->rec[0]};
     return ((-2.0/15.0) * (1.0/rec.sigma_t[0]) * bsq) / 
       ((11.0/21.0) * (1.0/rec.sigma_t[0]) * bsq + rec.sigma_t[0]);
