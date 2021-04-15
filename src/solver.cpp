@@ -2792,14 +2792,16 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
         const int dia{n + g*quad->nd()};
         removal[i](dia,dia) += record.sigma_t[g];
       } // n < quad->nd()
-
     } // g < mat_lib.ngroup()
+    removal_saaf[i].Transpose();
   } // i < pmesh->attributes.Max()
   MatrixPWConstCoefficient removal_func{removal};
   VectorTensorPWConstCoefficient removal_saaf_func{block_rank, removal_saaf};
 
   sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
-  sink_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{removal_saaf_func});
+  sink_bilinear.AddDomainIntegrator(
+    new TransposeIntegrator{
+    new VectorConvectionIntegrator{removal_saaf_func}});
 
   std::cout << "SINK_ASSENBLE_BEGIN id=" << myid << std::endl;
   sink_bilinear.Assemble(skip_zeros);
@@ -2850,16 +2852,17 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
             fiss_saaf[i].AddElement(v, row, col);
           } // nprime < quad->nd()
         } // n < quad->nd()
-
       } // gprime < mat_lib.ngroup()
     } // g < mat_lib.ngroup()
+    fiss_saaf[i].Transpose();
   } // i < pmesh->attributes.Max()
   MatrixPWConstCoefficient fiss_func{fiss};
   VectorTensorPWConstCoefficient fiss_saaf_func{block_rank, fiss_saaf};
 
   ParBilinearForm fiss_bilinear{fespace};
   fiss_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
-  fiss_bilinear.AddDomainIntegrator(new VectorConvectionIntegrator{fiss_saaf_func});
+  fiss_bilinear.AddDomainIntegrator(new TransposeIntegrator{
+    new VectorConvectionIntegrator{fiss_saaf_func}});
 
   std::cout << "FISSION_ASSEMBLY_BEGIN id=" << myid << std::endl;
   fiss_bilinear.Assemble(skip_zeros);
