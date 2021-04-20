@@ -2968,10 +2968,9 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
 
   std::unique_ptr<HypreParMatrix> Ahypre{nullptr}, Mhypre{nullptr};
 
-  constexpr bool ganapol{true};
-  if (ganapol)
+  if ((mat_lib.ngroup() == 1) && (mat_lib.mat.size() == 1))
   {
-    std::cout << "c=" <<
+    std::cout << "scattering ratio c=" <<
       (mat_lib.mat[0].rec.sigma_s.Elem(0,0) + mat_lib.mat[0].rec.nusf[0]) /
       mat_lib.mat[0].rec.sigma_t[0] << std::endl;
   }
