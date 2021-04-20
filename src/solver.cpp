@@ -2959,8 +2959,6 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
                            Result &angular_flux)
 {
 
-  constexpr int void_id{99};
-
   ParFiniteElementSpace* const fespace{angular_flux(0).ParFESpace()};
   ParMesh* const pmesh{fespace->GetParMesh()};
 
@@ -2998,17 +2996,16 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
     collision[i].SetSize(block_rank);
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      //const double tot{rec.sigma_t[g]};
-      const double sigma_t_star{(i==void_id) ? 1.0 : rec.sigma_t[g]}; // used in 1/sigma_t term
-      const double sigma_t_dagger{(i==void_id) ? 0.0 : rec.sigma_t[g]}; // used in sigma_t term
+      const double tot{rec.sigma_t[g]};
       for (int n{0}; n < quad->nd(); ++n)
       {
         const int dia{n + g*quad->nd()};
-        omega_operator[n] *= 1.0/sigma_t_star;
-        streaming[i].AddElement(omega_operator[n], dia);
-        omega_operator[n] *= sigma_t_star;
 
-        collision[i](dia) = sigma_t_dagger;
+        omega_operator[n] *= 1.0/tot;
+        streaming[i].AddElement(omega_operator[n], dia);
+        omega_operator[n] *= tot;
+
+        collision[i](dia) = tot;
       }
     }
   }
@@ -3041,7 +3038,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
       Vector scat_dat;
       record.sigma_s.GetRow(g, col_idx, scat_dat);
 
-      const double sigma_t_star{(i==void_id) ? 1.0 : record.sigma_t[g]};
+      const double tot{record.sigma_t[g]};
 
       for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
       {
@@ -3057,7 +3054,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
             scattering[i](row,col) = val;
 
             Vector v{quad->omega(n)};
-            v *= val/sigma_t_star;
+            v *= val/tot;
             scattering_saaf[i].AddElement(v, row, col);
           } // nprime < quad->nd()
         } // n < quad->nd()
@@ -3100,7 +3097,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      const double sigma_t_star{(i==void_id) ? 1.0 : mat.rec.sigma_t[g]};
+      const double tot{mat.rec.sigma_t[g]};
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
 
@@ -3122,7 +3119,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
             fiss[i](row,col) = val*quad->weight(nprime);
 
             Vector v{quad->omega(n)};
-            v /= sigma_t_star;
+            v /= tot;
             v *= val * quad->weight(nprime);
             fiss_saaf[i].AddElement(v, row, col);
           } // nprime < quad->nd()
@@ -4178,7 +4175,6 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
   }
   if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
 
-
   // cleanup
   delete A;
   delete M;
@@ -4189,5 +4185,18 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
   time.start("distribute");
   res(0).Distribute(x);
   time.stop("distribute");
+
+  // check sign of converged flux
+  const double local_max{res(0).Max()};
+  double max;
+  MPI_Allreduce(&local_max, &max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+  const double local_normlinf{res(0).Normlinf()};
+  double normlinf;
+  MPI_Allreduce(&local_normlinf, &normlinf, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+  if ((max < 0.0) || (max < local_normlinf))
+    res(0) *= -1.;
+
   return;
 }
