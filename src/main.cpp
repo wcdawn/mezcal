@@ -351,8 +351,8 @@ int main(int argc, char* argv[])
         case (Solver_choice::saaf_true_amgx_vector):
           saaf_true_amgx_vector(quad.get(), time, inp, mat_lib, res);
           calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
-          /* TODO finish implementation
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+          /* TODO finish implementation
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           */
           break;
