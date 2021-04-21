@@ -1016,7 +1016,7 @@ void spn_slepc_vector(Timer& time, const Input& inp,
 
   SlepcEigenSolver slepc{MPI_COMM_WORLD};
   slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetTol(std::min(inp.tol.phi, inp.tol.k));
   slepc.SetMaxIter(inp.tol.max_outer);
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(A, M);
@@ -1418,7 +1418,7 @@ void spn_slepc_manual(Timer& time, const Input& inp,
 
   SlepcEigenSolver slepc{MPI_COMM_WORLD};
   slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetTol(std::min(inp.tol.phi, inp.tol.k));
   slepc.SetMaxIter(inp.tol.max_outer);
 
   // spectral transformation will not be useful for Generalized Davidson solver
@@ -2648,7 +2648,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
   time.start("slepc setup");
   SlepcEigenSolver slepc{MPI_COMM_WORLD};
   slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetTol(std::min(inp.tol.phi, inp.tol.k));
   slepc.SetMaxIter(inp.tol.max_outer);
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(*A, *M);
@@ -2896,7 +2896,7 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   time.start("slepc setup");
   SlepcEigenSolver slepc{MPI_COMM_WORLD};
   slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(inp.tol.phi * inp.tol.k);
+  slepc.SetTol(std::min(inp.tol.phi, inp.tol.k));
   slepc.SetMaxIter(inp.tol.max_outer);
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(A, M);
