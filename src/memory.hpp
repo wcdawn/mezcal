@@ -26,6 +26,11 @@ public:
   Memory_stats() { update(); }
   Memory_stats(Unit_choice uc) : unit{uc} { update(); }
 
+  ~Memory_stats()
+  {
+    if (run_background) stop_background();
+  }
+
   void update()
   { 
 
