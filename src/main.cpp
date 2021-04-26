@@ -314,7 +314,6 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::slepc_vector):
           spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
-          MFEMFinalizeSlepc();
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
@@ -323,7 +322,6 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::slepc_manual):
           spn_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
-          MFEMFinalizeSlepc();
           break;
         case (Solver_choice::epdo_power_iteration):
           epdo_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
@@ -339,11 +337,9 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::saaf_slepc_vector):
           saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
-          MFEMFinalizeSlepc();
           break;
         case (Solver_choice::saaf_true_slepc_vector):
           saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
-          MFEMFinalizeSlepc();
           calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           temperature_heat_conduction(inp, mat_lib, power, temperature);
@@ -361,7 +357,7 @@ int main(int argc, char* argv[])
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         default:
-          cerr << "Invalid solver choice.\n";
+          std::cerr << "Invalid solver choice.\n";
           MPI_Finalize();
           return 1;
       }
@@ -466,7 +462,6 @@ int main(int argc, char* argv[])
     /* TODO SUM sum << state << ',' << inp.spn_order() << ',' << res.keff << '\n'; */
 
     time.stop();
-
 
   }
 

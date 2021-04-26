@@ -15,6 +15,20 @@
 #include <exception>
 #include <string>
 
+#include "petsc.h"
+
+namespace slepc_amgx
+{
+
+  extern std::unique_ptr<mfem::AmgXSolver> sol;
+  extern mfem::HypreParMatrix* Ahypre;
+
+  PetscErrorCode setup(PC pc);
+  PetscErrorCode apply(PC pc, Vec xin, Vec xout);
+  PetscErrorCode destroy(PC pc);
+
+} // namespace slepc_amgx
+
 template<typename T>
 class SPNWrapper
 {
@@ -202,6 +216,31 @@ class Failed_to_converge : std::exception
 };
 
 double par_norml2(const mfem::Vector& x);
+void flux_sign_fixup(mfem::ParGridFunction& pgf);
+
 void power_iteration_amgx(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res);
+void power_iteration_hypre(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
+
+void slepc_initialize(const Input& inp);
+void slepc_solver_wrapper(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
+void slepc_finalize();
+
+mfem::HypreParMatrix* spn_a_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   mfem::ParFiniteElementSpace* fespace,
+                                   const mfem::Array<int>& ess_bdr);
+mfem::HypreParMatrix* spn_m_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   mfem::ParFiniteElementSpace* fespace,
+                                   const mfem::Array<int>& ess_bdr);
+
+mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   const Quadrature* const quad,
+                                   mfem::ParFiniteElementSpace* fespace);
+mfem::HypreParMatrix* saaf_m_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   const Quadrature* const quad,
+                                   mfem::ParFiniteElementSpace* fespace);
 
 #endif
