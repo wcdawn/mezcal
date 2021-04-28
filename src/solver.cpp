@@ -3699,16 +3699,20 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
     ierr = MatSetBlockSize(M, numfunctions); PCHKERRQ(M, ierr);
   }
 
-  /* TODO fix memory handling
+  constexpr bool slepc_amgx{false};
+  constexpr bool slepc_ksp{true};
+
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
   {
-    delete Ahypre;
+    if (!slepc_amgx)
+    {
+      delete Ahypre;
+      Ahypre = nullptr;
+    }
     delete Mhypre;
-    Ahypre = nullptr;
     Mhypre = nullptr;
   }
-  */
 
   SlepcEigenSolver slepc{MPI_COMM_WORLD};
   slepc.SetNumModes(1); // only fundamental mode
@@ -3717,23 +3721,54 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(A, M);
   
-  PetscErrorCode ierr;
-
-  ST spectral_transform;
-  ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
-
-  KSP petsc_solver;
-  ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
-
   PC preconditioner;
-  ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
-  ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
-  ierr = PCShellSetSetUp(preconditioner, slepc_amgx::setup); PCHKERRQ(slepc, ierr);
-  ierr = PCShellSetApply(preconditioner, slepc_amgx::apply); PCHKERRQ(slepc, ierr);
-  ierr = PCShellSetDestroy(preconditioner, slepc_amgx::destroy); PCHKERRQ(slepc, ierr);
-  slepc_amgx::Ahypre = Ahypre;
-  Ahypre = nullptr;
-  ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
+  if (slepc_amgx)
+  {
+    PetscErrorCode ierr;
+
+    ST spectral_transform;
+    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver;
+    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
+
+    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetSetUp(preconditioner, slepc_amgx::setup); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetApply(preconditioner, slepc_amgx::apply); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetDestroy(preconditioner, slepc_amgx::destroy); PCHKERRQ(slepc, ierr);
+    slepc_amgx::Ahypre = Ahypre;
+    Ahypre = nullptr;
+
+    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
+  }
+  else if (slepc_ksp)
+  {
+    PetscErrorCode ierr;
+
+    ST spectral_transform;
+    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver;
+    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
+
+    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner, PCKSP); PCHKERRQ(slepc, ierr);
+
+    constexpr PetscInt gmres_iter{5};
+
+    KSP petsc_solver_inner;
+    ierr = PCKSPGetKSP(preconditioner, &petsc_solver_inner); PCHKERRQ(slepc, ierr);
+    ierr = KSPSetType(petsc_solver_inner, KSPGMRES); PCHKERRQ(slepc, ierr);
+    ierr = KSPGMRESSetRestart(petsc_solver_inner, gmres_iter); PCHKERRQ(slepc, ierr);
+    ierr = KSPSetTolerances(petsc_solver_inner, 0., 0., 1e6, gmres_iter); PCHKERRQ(slepc, ierr);
+
+    PC preconditioner_inner;
+    ierr = KSPGetPC(petsc_solver_inner, &preconditioner_inner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner_inner, PCGAMG); PCHKERRQ(slepc, ierr);
+
+    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
+  }
 
   /* RESTART
   // set based on the previous state
@@ -3749,7 +3784,11 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   slepc.Solve();
   time.stop(time.solver);
 
-  ierr = PCDestroy(&preconditioner); PCHKERRQ(slepc, ierr);
+  if ((slepc_amgx) || (slepc_ksp))
+  {
+    PetscErrorCode ierr;
+    ierr = PCDestroy(&preconditioner); PCHKERRQ(slepc, ierr);
+  }
 
   delete Ahypre;
   delete Mhypre;
