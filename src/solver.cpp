@@ -43,8 +43,6 @@ PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
 
 double par_norml2(const Vector &x);
 
-Memory_stats mem(Memory_stats::megabyte);
-
 double omega_x;
 double omega_y;
 double omega_z;
@@ -2394,16 +2392,20 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   time.stop(time.matrix_assembly);
 
+  std::unique_ptr<Memory_stats> mem{nullptr};
+
   slepc_initialize(inp);
   if (myid == 0)
   {
-    mem.update_and_print();
-    mem.init_background(1000);
+    mem = std::make_unique<Memory_stats>(Memory_stats::megabyte);
+    mem->update_and_print();
+    mem->init_background(1000);
   }
   slepc_solver_wrapper(Ahypre, Mhypre, inp, time, angular_flux, mat_lib.ngroup()*quad->nd());
   if (myid == 0)
   {
-    mem.stop_background();
+    mem->stop_background();
+    mem.reset();
   }
   slepc_finalize();
 
@@ -3662,7 +3664,6 @@ namespace slepc_amgx
 
   PetscErrorCode apply(PC pc, Vec xin, Vec xout)
   {
-    std::cout << "PC_SHELL_APPLY" << std::endl;
     PetscParVector vin{xin, true};
     PetscParVector vout{xout, true};
     sol->Mult(vin, vout);
