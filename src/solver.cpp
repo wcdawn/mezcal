@@ -3700,7 +3700,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   }
 
   constexpr bool slepc_amgx{false};
-  constexpr bool slepc_ksp{true};
+  constexpr bool slepc_ksp{false};
 
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
