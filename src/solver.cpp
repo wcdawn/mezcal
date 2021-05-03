@@ -2882,7 +2882,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   constexpr int skip_zeros{2};
   const int myid{fespace->GetMyRank()};
 
-  std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
+  std::vector<AmgXSolver> Asol(mat_lib.ngroup());
 
   time.start(time.matrix_assembly);
 
@@ -2937,7 +2937,23 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
     a.Assemble(skip_zeros); // note: no essential bcs in saaf
     a.Finalize(skip_zeros);
-    Amat[g].reset(a.ParallelAssemble());
+    std::unique_ptr<HypreParMatrix> Amat{a.ParallelAssemble()};
+
+    Asol[g].DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+    Asol[g].ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+    if (inp.ndevices > 0)
+    {
+      // use MPITeams
+      Asol[g].InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
+    }
+    else
+    {
+      // use MPI Exclusive
+      Asol[g].InitExclusiveGPU(MPI_COMM_WORLD);
+    }
+
+    Asol[g].SetOperator(*Amat);
   }
 
   } // streaming+collision
@@ -3113,18 +3129,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     }
   }
 
-  // setup preconditioner
-  HypreBoomerAMG amg;
-  amg.SetPrintLevel(inp.hypre_print_level());
-
-  // setup solver
-  CGSolver sol(MPI_COMM_WORLD);
-  sol.SetRelTol(inp.tol.inner_rel);
-  sol.SetAbsTol(inp.tol.inner_abs);
-  sol.SetMaxIter(inp.tol.max_inner);
-  sol.SetPrintLevel(inp.mfem_print_level());
-  sol.SetPreconditioner(amg);
-
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     angular_flux(g) = 1.0;
@@ -3171,6 +3175,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       std::unique_ptr<HypreParVector> vec_dnscatter{lf_dnscatter[g]->ParallelAssemble()};
       time.stop("lf_dnscatter_assemble");
 
+      // sol.SetOperator(*Amat[g]);
+
       double scattering_conv{inp.tol.inner_rel * 1e1 + 1e-6};
       for (int scattering_iter{0}; (scattering_iter < inp.tol.max_inner) &&
         (scattering_conv > inp.tol.inner_rel); ++scattering_iter)
@@ -3181,16 +3187,15 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         std::unique_ptr<HypreParVector> vec_self_scatter{lf_self_scatter[g]->ParallelAssemble()};
         time.stop("lf_self_scatter_assemble");
 
-        HypreParVector b{*Amat[g]};
+        std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
+        HypreParVector b{*x};
         b = *vec_self_scatter;
         b += *vec_dnscatter;
         b += *vec_upscatter[g];
         b += *vec_fission[g];
 
-        sol.SetOperator(*Amat[g]);
         time.start("mult");
-        std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
-        sol.Mult(b, *x);
+        Asol[g].Mult(b, *x);
         angular_flux(g).Distribute(*x);
         ++solve_counter;
         time.stop("mult");
@@ -3210,7 +3215,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           std::cout << "..."
                     << scattering_iter
                     << " g=" << g
-                    << " inner_iter=" << sol.GetNumIterations()
+                    << " inner_iter=" << Asol[g].GetNumIterations()
                     << " conv=" << scattering_conv
                     << '\n';
       } // scattering_iter
@@ -3276,16 +3281,21 @@ void calc_scalar_flux_vector(int g,
                              const Quadrature* const quad, 
                              Result& scalar_flux)
 {
-  ParGridFunction tmp{scalar_flux(g)};
+
+  ParFiniteElementSpace* fespace{angular_flux(g).ParFESpace()};
+
+  MFEM_VERIFY(fespace->GetOrdering() == Ordering::byVDIM,
+    "scalar flux calculation relies on angular flux being ordered by vdim");
+
+  const int ndofs{fespace->GetNDofs()};
+  const int vdim{quad->nd()};
+
   scalar_flux(g) = 0.0;
-  for (int n{0}; n < quad->nd(); ++n)
-  {
-    GridFunctionCoefficient gfc{&angular_flux(g), n+1};
-    ConstantCoefficient weight{quad->weight(n)};
-    ProductCoefficient prod{weight, gfc};
-    tmp.ProjectCoefficient(prod);
-    scalar_flux(g) += tmp;
-  }
+
+  for (int i{0}; i < ndofs; ++i)
+    for (int n{0}; n < quad->nd(); ++n)
+      scalar_flux(g)(i) += angular_flux(g)(n+i*vdim) * quad->weight(n);
+
   return;
 }
 
