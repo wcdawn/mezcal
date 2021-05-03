@@ -168,17 +168,29 @@ vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
 {
   vector<double> numerator(ngroup());
   double denominator{0.0};
+
+  for (double& num : numerator)
+    num = 0.0;
+
   for (int i{0}; i < niso; ++i)
   {
     if (!iso[i].rec.is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
       f_i += iso[i].nden * iso[i].rec.nusf[gprime] * phi_g[gprime];
-    for (int g{0}; g < ngroup(); ++g) numerator[g] += iso[i].rec.chi[g] * f_i;
+    for (int g{0}; g < ngroup(); ++g)
+      numerator[g] += iso[i].rec.chi[g] * f_i;
     denominator += f_i;
   }
+
   if (denominator > 0.0)
-    for (int g{0}; g < ngroup(); ++g) numerator[g] /= denominator;
+  {
+    for (double& num : numerator)
+    {
+      num /= denominator;
+    }
+  }
+
   return numerator;
 }
 

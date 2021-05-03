@@ -179,7 +179,8 @@ void calc_fission_source(const Material_library& mat_lib,
                          mfem::ParGridFunction& fission_source);
 void calc_chi(const Material_library& mat_lib,
               const Result& scalar_flux,
-              std::vector<mfem::ParGridFunction>& chi);
+              std::vector<mfem::ParGridFunction>& chi,
+              bool flux_free_chi=false);
 
 
 void calc_power(const Material_library& mat_lib,

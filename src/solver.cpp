@@ -4448,22 +4448,91 @@ void calc_fission_source(const Material_library& mat_lib,
 
 void calc_chi(const Material_library& mat_lib,
               const Result& scalar_flux,
-              std::vector<ParGridFunction>& chi)
+              std::vector<ParGridFunction>& chi,
+              bool flux_free_chi)
 {
 
-  const ParFiniteElementSpace* fespace = scalar_flux(0).ParFESpace();
-  const ParMesh* pmesh = fespace->GetParMesh();
+  ParFiniteElementSpace* fespace = scalar_flux(0).ParFESpace();
+  ParMesh* pmesh = fespace->GetParMesh();
 
-  // TODO need to implement isotopic chi
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  if (mat_lib.rx_wide_chi)
   {
 
-    Vector chi_vec(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      chi_vec(i) = mat_lib.mat[i].rec.chi[g];
-    PWConstCoefficient chi_func{chi_vec};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      chi[g] = mat_lib.chi[g];
 
-    chi[g].ProjectCoefficient(chi_func);
+  }
+  else if (flux_free_chi)
+  {
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      Vector chi_vec(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+        chi_vec(i) = mat_lib.mat[i].rec.chi[g];
+      PWConstCoefficient chi_func{chi_vec};
+      chi[g].ProjectCoefficient(chi_func);
+    }
+
+  }
+  else // isotopic chi
+  {
+
+    // Need to protect for denominator==0 and this will only happen in some
+    // regions. I think this really has to be a gridfunction coefficient...
+
+    QuadratureSpace qspace{pmesh, fespace->GetOrder(0)+1};
+    std::vector<QuadratureFunction> chi_quad;
+    chi_quad.reserve(mat_lib.ngroup());
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      chi_quad.emplace_back(&qspace);
+      chi_quad[g] = 0.0;
+    }
+
+    int idx{0};
+
+    for (int e{0}; e < qspace.GetNE(); ++e)
+    {
+
+      const IntegrationRule& ir{qspace.GetElementIntRule(e)};
+      const int attribute{pmesh->GetAttribute(e)-1};
+      const Material_record& mat{mat_lib.mat[attribute]};
+
+      const FiniteElement* const fe{fespace->GetFE(e)};
+      Array<int> dofs;
+      fespace->GetElementDofs(e, dofs);
+
+      for (int i{0}; i < ir.GetNPoints(); ++i)
+      {
+
+        const IntegrationPoint& ip{ir.IntPoint(i)};
+        Vector dofval(dofs.Size());
+        fe->CalcShape(ip, dofval);
+
+        std::vector<double> spectrum(mat_lib.ngroup());
+        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        {
+          Vector locvec(dofs.Size());
+          scalar_flux(gprime).GetSubVector(dofs, locvec);
+          spectrum[gprime] = dofval*locvec;
+        }
+
+        const std::vector<double> this_chi{mat.calculate_chi(spectrum)};
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+          chi_quad[g](idx) = this_chi[g];
+
+        ++idx;
+
+      }
+
+    }
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      QuadratureFunctionCoefficient chi_quad_func{chi_quad[g]};
+      chi[g].ProjectCoefficient(chi_quad_func);
+    }
 
   }
 
