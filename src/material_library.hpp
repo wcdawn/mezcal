@@ -91,6 +91,7 @@ public:
 
   int ngroup() const { return G; }
   int nmoment() const { return M; }
+  int nmat() const { return static_cast<int>(mat.size()); } 
 
   void set_nmoment(int m);
 

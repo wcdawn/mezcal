@@ -19,8 +19,8 @@ struct Tolerance_control
   double phi{1e-5};
 
   int max_inner{1000};
-  double inner_rel{1e-12};
-  double inner_abs{1e-24};
+  double inner_rel{1e-8};
+  double inner_abs{1e-10};
 
   int temp_max_outer{100};
   double temp{1.0};

@@ -14,6 +14,7 @@
 
 #include <exception>
 #include <string>
+#include <vector>
 
 #include "petsc.h"
 
@@ -172,6 +173,14 @@ void calc_scalar_flux_vector(int g,
 void calc_scalar_flux_slepc_vector(const Result& angular_flux, 
                                    const Quadrature* const quad,
                                    Result& scalar_flux);
+
+void calc_fission_source(const Material_library& mat_lib,
+                         const Result& scalar_flux,
+                         mfem::ParGridFunction& fission_source);
+void calc_chi(const Material_library& mat_lib,
+              const Result& scalar_flux,
+              std::vector<mfem::ParGridFunction>& chi);
+
 
 void calc_power(const Material_library& mat_lib,
                 const Result& scalar_flux,

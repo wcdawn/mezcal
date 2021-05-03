@@ -29,6 +29,8 @@ CPP_FILES = main.cpp \
 			vector_pwconst_coefficient.cpp \
 			version.cpp \
 			xslibrary.cpp \
+			upscattering_coefficient.cpp \
+			downscattering_coefficient.cpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp
 
@@ -61,6 +63,8 @@ HPP_FILES = analytic.hpp \
 			vector_integrator_wrapper.hpp \
 			vector_pwconst_coefficient.hpp \
 			xslibrary.hpp \
+			upscattering_coefficient.hpp \
+			downscattering_coefficient.hpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp \
 			$(ADDON_DIR)/tensor.hpp \
@@ -153,7 +157,7 @@ xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
 material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp memory.hpp
+solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp memory.hpp upscattering_coefficient.hpp downscattering_coefficient.hpp
 scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 hdf5_access_wrapper.o : hdf5_access_wrapper.hpp
@@ -172,3 +176,5 @@ stability_tau_coefficient.o : $(MFEM_HEADER) stability_tau_coefficient.hpp
 vector_integrator_wrapper.o : $(MFEM_HEADER) vector_integrator_wrapper.hpp
 conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp thermal_conductivity_coefficient.hpp
 thermal_conductivity_coefficient.o : $(MFEM_HEADER) thermal_conductivity_coefficient.hpp material_library.hpp
+upscattering_coefficient.o : $(MFEM_HEADER) material_library.hpp result.hpp
+downscattering_coefficient.o : $(MFEM_HEADER) material_library.hpp result.hpp
