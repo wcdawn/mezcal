@@ -136,7 +136,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 const Input& inp,
                                 const Material_library& mat_lib,
                                 mfem::ParMesh* const pmesh,
-                                mfem::ParFiniteElementSpace* const fespace,
                                 Result& angular_flux,
                                 Result& scalar_flux);
 

@@ -92,6 +92,10 @@ default : all
 
 all : $(EXEC)
 
+link :
+	$(RM) $(EXEC)
+	$(MAKE) $(EXEC)
+
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
 	@$(MAKE) -C $(ADDON_DIR)

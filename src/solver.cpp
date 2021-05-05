@@ -2882,15 +2882,24 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 const Input& inp,
                                 const Material_library& mat_lib,
                                 ParMesh* const pmesh,
-                                ParFiniteElementSpace* const fespace,
                                 Result& angular_flux,
                                 Result& scalar_flux)
 {
 
+  ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
+  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
+
   constexpr int skip_zeros{2};
-  const int myid{fespace->GetMyRank()};
+  const int myid{angular_flux_fespace->GetMyRank()};
 
   std::vector<AmgXSolver> Asol(mat_lib.ngroup());
+
+  /*
+  std::vector<CGSolver> Asol; // note: no preconditioner
+  Asol.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    Asol.emplace_back(MPI_COMM_WORLD);
+  */
 
   time.start(time.matrix_assembly);
 
@@ -2915,7 +2924,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
 
-    ParBilinearForm a{fespace};
+    ParBilinearForm a{angular_flux_fespace};
 
     std::vector<Vector> total(pmesh->attributes.Max());
     std::vector<Tensor<DenseMatrix>> leakage(pmesh->attributes.Max());
@@ -2947,6 +2956,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     a.Finalize(skip_zeros);
     std::unique_ptr<HypreParMatrix> Amat{a.ParallelAssemble()};
 
+
+    /*
+    HypreParMatrix *A{Amat.release()}; // leaking but fuck it
+    Asol[g].SetOperator(*A);
+    Asol[g].SetRelTol(inp.tol.inner_rel);
+    Asol[g].SetAbsTol(inp.tol.inner_abs);
+    Asol[g].SetMaxIter(inp.tol.max_inner);
+    Asol[g].SetPrintLevel(inp.mfem_print_level());
+    */
+
     Asol[g].DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
     Asol[g].ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
 
@@ -2962,6 +2981,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     }
 
     Asol[g].SetOperator(*Amat);
+
   }
 
   } // streaming+collision
@@ -3030,7 +3050,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     self_scatter_saaf_func.emplace_back(self_scatter_phi[g], saaf_func[g]);
 
-  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
   const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
   QuadratureSpace qspace{scalar_flux_fespace->GetParMesh(), integration_order};
 
@@ -3090,7 +3109,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::vector<std::unique_ptr<ParLinearForm>> lf_self_scatter(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    lf_self_scatter[g] = std::make_unique<ParLinearForm>(fespace);
+    lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{self_scatter_func[g]});
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{self_scatter_saaf_func[g]});
   }
@@ -3098,7 +3117,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::vector<std::unique_ptr<ParLinearForm>> lf_dnscatter(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    lf_dnscatter[g] = std::make_unique<ParLinearForm>(fespace);
+    lf_dnscatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
     lf_dnscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{dnscatter_vec_func});
     lf_dnscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{dnscatter_saaf_func[g]});
   }
@@ -3106,7 +3125,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::vector<std::unique_ptr<ParLinearForm>> lf_fiss_upscatter(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    lf_fiss_upscatter[g] = std::make_unique<ParLinearForm>(fespace);
+    lf_fiss_upscatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
     lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{upscatter_vec_func[g]});
     lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{upscatter_saaf_func[g]});
 
@@ -3200,9 +3219,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         time.start("mult");
         Asol[g].Mult(b, *x);
-        angular_flux(g).Distribute(*x);
         ++solve_counter;
         time.stop("mult");
+
+        time.start("distribute");
+        angular_flux(g).Distribute(*x);
+        time.stop("distribute");
 
         time.start("scalarflux");
         ParGridFunction phi_old{scalar_flux(g)};
@@ -3261,8 +3283,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   }
   time.stop(time.solver);
 
-  std::cout << "ITERATIONS FINISHED!!!" << std::endl;
-  std::cout << "solve_counter= " << solve_counter << std::endl;
+  if (myid == 0)
+  {
+    std::cout << "ITERATIONS FINISHED!!!" << std::endl;
+    std::cout << "solve_counter= " << solve_counter << std::endl;
+  }
 
   return;
 }

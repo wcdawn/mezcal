@@ -333,7 +333,7 @@ int main(int argc, char* argv[])
           saaf_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_angle_power_iteration):
-          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, res, scalar_flux);
           break;
         case (Solver_choice::saaf_slepc_vector):
           saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
