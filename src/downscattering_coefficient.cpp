@@ -17,9 +17,6 @@ double DownscatteringCoefficient::Eval(ElementTransformation& T,
   {
     const int gprime{scat_idx[gidx]};
 
-    val += scalar_flux(gprime).GetValue(T, ip)*scat_dat[gidx];
-
-    /*
     if (gprime >= g) // relies on the column indices being sorted
     {
       break;
@@ -30,7 +27,6 @@ double DownscatteringCoefficient::Eval(ElementTransformation& T,
       const double scatter{scat_dat[gidx]};
       val += scatter*flux;
     }
-    */
 
   }
 
