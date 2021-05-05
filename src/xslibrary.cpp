@@ -70,12 +70,15 @@ void XSRecord::evaluate_upscatter()
   {
     const int row_size{sigma_s.RowSize(g)};
     const int* row_columns{sigma_s.GetRowColumns(g)};
-    const auto max_upscatter_group{
-    std::max_element(row_columns, row_columns + row_size)};
-    if (*max_upscatter_group > g)
-      is_upscatter[g] = true;
-    else
-      is_upscatter[g] = false;
+    is_upscatter[g] = false;
+    for (int i{0}; i < row_size; ++i)
+    {
+      if (row_columns[i] > g)
+      {
+        is_upscatter[g] = true;
+        break;
+      }
+    }
   }
 }
 

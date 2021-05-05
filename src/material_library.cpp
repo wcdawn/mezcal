@@ -122,6 +122,8 @@ void Material_record::calculate_macroscopic_xs()
         rec.sigma_r(g,n) += iso[i].nden * iso[i].rec.sigma_r(g,n);
 
     rec.is_fiss = rec.is_fiss || iso[i].rec.is_fiss;
+    for (int g{0}; g < rec.ngroup(); ++g)
+      rec.is_upscatter[g] = rec.is_upscatter[g] || iso[i].rec.is_upscatter[g];
   }
   rec.sigma_s = scat;
   rec.sigma_s.Finalize();
