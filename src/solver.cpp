@@ -2886,7 +2886,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Result& scalar_flux)
 {
 
-  constexpr bool use_gpu{true};
+  constexpr bool use_gpu{false};
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
@@ -2980,11 +2980,17 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
       // note: no preconditioner
 
-      this_sol->SetOperator(*Amat.release()); // leaking but fuck it
+      HypreParMatrix *A{Amat.release()}; // leaking but fuck it
+
+      this_sol->SetOperator(*A);
       this_sol->SetRelTol(inp.tol.inner_rel);
       this_sol->SetAbsTol(inp.tol.inner_abs);
       this_sol->SetMaxIter(inp.tol.max_inner);
       this_sol->SetPrintLevel(inp.mfem_print_level());
+
+      HypreBoomerAMG *amg = new HypreBoomerAMG(*A); // another leak!
+      amg->SetPrintLevel(inp.hypre_print_level());
+      this_sol->SetPreconditioner(*amg);
 
       Asol[g] = std::move(this_sol);
 
