@@ -2886,7 +2886,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Result& scalar_flux)
 {
 
-  constexpr bool use_gpu{false};
+  constexpr bool use_gpu{true};
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
