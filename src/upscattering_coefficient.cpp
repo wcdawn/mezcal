@@ -42,6 +42,8 @@ std::vector<bool> UpscatteringCoefficient::check_if_upscatter_present()
     Array<int> scat_idx;
     mat_lib.mat[i].rec.sigma_s.GetRow(g, scat_idx, scat_dat);
 
+    upscatter_present[i] = false;
+
     for (int gidx{0}; gidx < scat_idx.Size(); ++gidx)
     {
       const int gprime{scat_idx[gidx]};
@@ -51,7 +53,6 @@ std::vector<bool> UpscatteringCoefficient::check_if_upscatter_present()
         break;
       }
     }
-    upscatter_present[i] = false;
   }
 
   return upscatter_present;

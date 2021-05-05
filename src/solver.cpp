@@ -9,8 +9,10 @@
 #include "incoming_flux_coefficient.hpp"
 #include "stability_tau_coefficient.hpp"
 
+#if 0
 #include "upscattering_coefficient.hpp"
 #include "downscattering_coefficient.hpp"
+#endif
 
 #include "vector_integrator_wrapper.hpp"
 #include "../addon/tensor.hpp"
@@ -1909,6 +1911,13 @@ void saaf_power_iteration(const Quadrature* const quad,
   QuadratureFunction fiss_src_old{&qspace};
   fiss_src_old = 1.0;
 
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    scalar_flux(g) = 1.0;
+    for (int n{0}; n < quad->nd(); ++n)
+      angular_flux(n,g) = 1.0;
+  }
+
   for (int iter{0}; (iter < inp.tol.max_outer) && 
       ((phi_conv > inp.tol.phi) || (k_conv > inp.tol.k)) ; ++iter)
   {
@@ -1923,7 +1932,6 @@ void saaf_power_iteration(const Quadrature* const quad,
 
       calc_downscatter(g, scalar_flux, mat_lib, dnscatter_quad_func[g]);
 
-      // TODO this criteria should be in user input
       double scattering_conv{1e6};
       for (int scattering_iter{0};
           (scattering_iter < inp.tol.max_inner) && 
@@ -2964,31 +2972,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   ones = 1.0;
   VectorConstantCoefficient ones_func{ones};
 
-  std::vector<GridFunctionCoefficient> scalar_flux_coeff;
-  scalar_flux_coeff.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    scalar_flux_coeff.emplace_back(&scalar_flux(g));
-
-  std::vector<PWConstCoefficient> self_scatter_xs;
-  self_scatter_xs.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    Vector self_scatter(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      self_scatter[i] = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
-    self_scatter_xs.emplace_back(self_scatter);
-  }
-
-  std::vector<ProductCoefficient> self_scatter_phi;
-  self_scatter_phi.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    self_scatter_phi.emplace_back(scalar_flux_coeff[g], self_scatter_xs[g]);
-
-  std::vector<ScalarVectorProductCoefficient> self_scatter_func;
-  self_scatter_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    self_scatter_func.emplace_back(self_scatter_phi[g], ones_func);
-
   std::vector<std::vector<Tensor<Vector>>> saaf;
   saaf.resize(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -3017,69 +3000,84 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     saaf_func.emplace_back(quad->nd(), saaf[g]);
 
+  std::vector<GridFunctionCoefficient> scalar_flux_coeff;
+  scalar_flux_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scalar_flux_coeff.emplace_back(&scalar_flux(g));
+
+  std::vector<PWConstCoefficient> self_scatter_xs;
+  self_scatter_xs.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    Vector self_scatter(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      self_scatter(i) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+    self_scatter_xs.emplace_back(self_scatter);
+  }
+
+  std::vector<ProductCoefficient> self_scatter_phi;
+  self_scatter_phi.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    self_scatter_phi.emplace_back(scalar_flux_coeff[g], self_scatter_xs[g]);
+
+  std::vector<ScalarVectorProductCoefficient> self_scatter_func;
+  self_scatter_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    self_scatter_func.emplace_back(self_scatter_phi[g], ones_func);
+
   std::vector<ScalarVectorTensorProductCoefficient> self_scatter_saaf_func;
   self_scatter_saaf_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     self_scatter_saaf_func.emplace_back(self_scatter_phi[g], saaf_func[g]);
 
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
-  ParGridFunction fission_source{scalar_flux_fespace};
-  GridFunctionCoefficient fission_source_func{&fission_source};
+  const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
+  QuadratureSpace qspace{scalar_flux_fespace->GetParMesh(), integration_order};
 
-  std::vector<ParGridFunction> chi;
-  std::vector<GridFunctionCoefficient> chi_func;
-  chi.reserve(mat_lib.ngroup());
-  chi_func.reserve(mat_lib.ngroup());
+  std::vector<QuadratureFunction> fiss_quad, upscatter_quad;
+  std::vector<QuadratureFunctionCoefficient> fiss_quad_func, upscatter_quad_func;
+  fiss_quad.reserve(mat_lib.ngroup());
+  upscatter_quad.reserve(mat_lib.ngroup());
+  fiss_quad_func.reserve(mat_lib.ngroup());
+  upscatter_quad_func.reserve(mat_lib.ngroup());
+
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    chi.emplace_back(fespace);
-    chi_func.emplace_back(&chi.back());
+    fiss_quad.emplace_back(&qspace);
+    upscatter_quad.emplace_back(&qspace);
+    fiss_quad_func.emplace_back(fiss_quad.back());
+    upscatter_quad_func.emplace_back(upscatter_quad.back());
   }
 
-  std::vector<ProductCoefficient> chi_fission_source_func;
-  chi_fission_source_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    chi_fission_source_func.emplace_back(chi_func[g], fission_source_func);
+  QuadratureFunction dnscatter_quad{&qspace};
+  QuadratureFunctionCoefficient dnscatter_quad_func{dnscatter_quad};
 
-  std::vector<ScalarVectorProductCoefficient> chi_fission_source_vec_func;
-  chi_fission_source_vec_func.reserve(mat_lib.ngroup());
+  std::vector<ScalarVectorProductCoefficient> fiss_vec_func;
+  fiss_vec_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    chi_fission_source_vec_func.emplace_back(chi_fission_source_func[g], ones_func);
+    fiss_vec_func.emplace_back(fiss_quad_func[g], ones_func);
 
-  std::vector<ScalarVectorTensorProductCoefficient> chi_fission_source_saaf_func;
-  chi_fission_source_saaf_func.reserve(mat_lib.ngroup());
+  std::vector<ScalarVectorTensorProductCoefficient> fiss_saaf_func;
+  fiss_saaf_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    chi_fission_source_saaf_func.emplace_back(chi_fission_source_func[g], saaf_func[g]);
-
-  std::vector<UpscatteringCoefficient> upscatter_func;
-  upscatter_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    upscatter_func.emplace_back(g, mat_lib, scalar_flux);
+    fiss_saaf_func.emplace_back(fiss_quad_func[g], saaf_func[g]);
 
   std::vector<ScalarVectorProductCoefficient> upscatter_vec_func;
   upscatter_vec_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    upscatter_vec_func.emplace_back(upscatter_func[g], ones_func);
+    upscatter_vec_func.emplace_back(upscatter_quad_func[g], ones_func);
 
   std::vector<ScalarVectorTensorProductCoefficient> upscatter_saaf_func;
   upscatter_saaf_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    upscatter_saaf_func.emplace_back(upscatter_func[g], saaf_func[g]);
+    upscatter_saaf_func.emplace_back(upscatter_quad_func[g], saaf_func[g]);
 
-  std::vector<DownscatteringCoefficient> dnscatter_func;
-  dnscatter_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    dnscatter_func.emplace_back(g, mat_lib, scalar_flux);
-
-  std::vector<ScalarVectorProductCoefficient> dnscatter_vec_func;
-  dnscatter_vec_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    dnscatter_vec_func.emplace_back(dnscatter_func[g], ones_func);
+  ScalarVectorProductCoefficient dnscatter_vec_func{dnscatter_quad_func, ones_func};
 
   std::vector<ScalarVectorTensorProductCoefficient> dnscatter_saaf_func;
   dnscatter_saaf_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    dnscatter_saaf_func.emplace_back(dnscatter_func[g], saaf_func[g]);
+    dnscatter_saaf_func.emplace_back(dnscatter_quad_func, saaf_func[g]);
 
   constexpr double benchmark_source_val{1.0};
   Vector benchmark_source_vec(quad->nd());
@@ -3101,40 +3099,53 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     lf_dnscatter[g] = std::make_unique<ParLinearForm>(fespace);
-    lf_dnscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{dnscatter_vec_func[g]});
+    lf_dnscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{dnscatter_vec_func});
     lf_dnscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{dnscatter_saaf_func[g]});
   }
 
-  std::vector<std::unique_ptr<ParLinearForm>> lf_upscatter(mat_lib.ngroup());
+  std::vector<std::unique_ptr<ParLinearForm>> lf_fiss_upscatter(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    lf_upscatter[g] = std::make_unique<ParLinearForm>(fespace);
-    lf_upscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{upscatter_vec_func[g]});
-    lf_upscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{upscatter_saaf_func[g]});
-  }
+    lf_fiss_upscatter[g] = std::make_unique<ParLinearForm>(fespace);
+    lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{upscatter_vec_func[g]});
+    lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{upscatter_saaf_func[g]});
 
-  std::vector<std::unique_ptr<ParLinearForm>> lf_fission(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    lf_fission[g] = std::make_unique<ParLinearForm>(fespace);
     if (inp.ref == Analytic::saaf_benchmark)
     {
-      lf_fission[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{benchmark_source_vec_coeff});
-      lf_fission[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_benchmark_source});
+      lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{benchmark_source_vec_coeff});
+      lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_benchmark_source});
     }
     else
     {
-      lf_fission[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{chi_fission_source_vec_func[g]});
-      lf_fission[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{chi_fission_source_saaf_func[g]});
+      lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{fiss_vec_func[g]});
+      lf_fiss_upscatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{fiss_saaf_func[g]});
     }
+
   }
+
+////////////////////////////////////////////////////////////////////////////////
+  std::vector<std::unique_ptr<ParLinearForm>> fiss(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
+    Vector nusf_vec{pmesh->attributes.Max()};
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      nusf_vec(i) = mat_lib.mat[i].rec.nusf[g];
+    PWConstCoefficient nusf_operator{nusf_vec};
+    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_operator});
+    fiss[g]->Assemble();
+  }
+////////////////////////////////////////////////////////////////////////////////
 
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     angular_flux(g) = 1.0;
     scalar_flux(g) = 1.0;
   }
+  angular_flux.keff = 1.0;
+  scalar_flux.keff = 1.0;
 
+  QuadratureFunction fiss_src_old{&qspace};
   double k_conv{inp.tol.k * 1e1 + 1e-6};
   double phi_conv{inp.tol.phi * 1e1 + 1e-6};
   double keff_old{angular_flux.keff};
@@ -3146,36 +3157,28 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
 
-    time.start("lf_upscatter_assemble");
-    std::vector<std::unique_ptr<HypreParVector>> vec_upscatter(mat_lib.ngroup());
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-      lf_upscatter[g]->Assemble();
-      vec_upscatter[g].reset(lf_upscatter[g]->ParallelAssemble());
-    }
-    time.stop("lf_upscatter_assemble");
+    time.start("lf_fiss_upscatter_fission_assemble");
 
-    time.start("lf_fission_assemble");
-    calc_chi(mat_lib, scalar_flux, chi);
-    calc_fission_source(mat_lib, scalar_flux, fission_source);
-    std::vector<std::unique_ptr<HypreParVector>> vec_fission(mat_lib.ngroup());
+    calc_fiss_upscatter(scalar_flux, mat_lib, fiss_quad, upscatter_quad, inp.flux_free_chi);
+    for (QuadratureFunction& qf : fiss_quad)
+      qf /= angular_flux.keff;
+
+    std::vector<std::unique_ptr<HypreParVector>> vec_fiss_upscatter(mat_lib.ngroup());
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      lf_fission[g]->Assemble();
-      vec_fission[g].reset(lf_fission[g]->ParallelAssemble());
-      (*vec_fission[g]) /= angular_flux.keff;
+      lf_fiss_upscatter[g]->Assemble();
+      vec_fiss_upscatter[g].reset(lf_fiss_upscatter[g]->ParallelAssemble());
     }
-    time.stop("lf_fission_assemble");
+    time.stop("lf_fiss_upscatter_fission_assemble");
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
 
       time.start("lf_dnscatter_assemble");
+      calc_downscatter(g, scalar_flux, mat_lib, dnscatter_quad);
       lf_dnscatter[g]->Assemble();
       std::unique_ptr<HypreParVector> vec_dnscatter{lf_dnscatter[g]->ParallelAssemble()};
       time.stop("lf_dnscatter_assemble");
-
-      // sol.SetOperator(*Amat[g]);
 
       double scattering_conv{inp.tol.inner_rel * 1e1 + 1e-6};
       for (int scattering_iter{0}; (scattering_iter < inp.tol.max_inner) &&
@@ -3187,12 +3190,13 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         std::unique_ptr<HypreParVector> vec_self_scatter{lf_self_scatter[g]->ParallelAssemble()};
         time.stop("lf_self_scatter_assemble");
 
+        time.start("lf_sum");
         std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
         HypreParVector b{*x};
         b = *vec_self_scatter;
         b += *vec_dnscatter;
-        b += *vec_upscatter[g];
-        b += *vec_fission[g];
+        b += *vec_fiss_upscatter[g];
+        time.stop("lf_sum");
 
         time.start("mult");
         Asol[g].Mult(b, *x);
@@ -3200,17 +3204,18 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         ++solve_counter;
         time.stop("mult");
 
-        ParGridFunction phi_old{scalar_flux(g)};
         time.start("scalarflux");
+        ParGridFunction phi_old{scalar_flux(g)};
         calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux);
-        time.stop("scalarflux");
         phi_old -= scalar_flux(g);
+        time.stop("scalarflux");
 
+        time.start("scattering_conv");
         phi_old.HostRead();
-        const double local_scattering_conv{
-          phi_old.Normlinf() / scalar_flux(g).Normlinf()};
-        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, 
-          MPI_MAX, MPI_COMM_WORLD);
+        const double local_scattering_conv{phi_old.Normlinf() / scalar_flux(g).Normlinf()};
+        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        time.stop("scattering_conv");
+
         if (myid == 0)
           std::cout << "..."
                     << scattering_iter
@@ -3218,23 +3223,23 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                     << " inner_iter=" << Asol[g].GetNumIterations()
                     << " conv=" << scattering_conv
                     << '\n';
+
       } // scattering_iter
     } // ngroup
 
-    time.start("fission_source");
-    ParGridFunction fission_source_old{fission_source};
-    calc_fission_source(mat_lib, scalar_flux, fission_source);
-    time.stop("fission_source");
-
     time.start("fisssum");
     double fiss_sum{0.0};
-    const double local_fiss_sum{fission_source.Sum()};
+    double local_fiss_sum{0.0};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      local_fiss_sum += (*fiss[g])(scalar_flux(g)); // LinearForm::operator()
     MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     time.stop("fisssum");
 
     time.start("phiconv");
-    fission_source_old -= fission_source;
-    double local_phi_conv{fission_source_old.Normlinf() / fission_source.Normlinf()};
+    QuadratureFunction fiss_src{&qspace};
+    calc_fiss_src(scalar_flux, mat_lib, fiss_src);
+    fiss_src_old -= fiss_src;
+    const double local_phi_conv{fiss_src_old.Normlinf() / fiss_src.Normlinf()};
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     time.stop("phiconv");
 
@@ -3252,6 +3257,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     // store old values
     keff_old = angular_flux.keff;
     fiss_sum_old = fiss_sum;
+    fiss_src_old = fiss_src;
   }
   time.stop(time.solver);
 
@@ -3366,25 +3372,28 @@ void calc_fiss_upscatter(const Result& scalar_flux,
       const SparseMatrix& scat{rec.sigma_s};
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        Array<int> col_idx;
-        Vector scat_data;
-        scat.GetRow(g, col_idx, scat_data);
-
-        for (int j{0}; j < col_idx.Size(); ++j)
+        if (rec.is_upscatter[g])
         {
-          const int gprime{col_idx[j]};
-          if (gprime > g)
+          Array<int> col_idx;
+          Vector scat_data;
+          scat.GetRow(g, col_idx, scat_data);
+
+          for (int j{0}; j < col_idx.Size(); ++j)
           {
-            if (spectrum[gprime] < 0.0) // for VVER, 95% cache hits
+            const int gprime{col_idx[j]};
+            if (gprime > g)
             {
-              Vector locvec(dofs.Size());
-              scalar_flux(gprime,0).GetSubVector(dofs, locvec);
-              spectrum[gprime] = dofval*locvec;
+              if (spectrum[gprime] < 0.0) // for VVER, 95% cache hits
+              {
+                Vector locvec(dofs.Size());
+                scalar_flux(gprime,0).GetSubVector(dofs, locvec);
+                spectrum[gprime] = dofval*locvec;
+              }
+              upscatter_quad_func[g](idx) += spectrum[gprime]*scat_data(j);
             }
-            upscatter_quad_func[g](idx) += spectrum[gprime]*scat_data(j);
           }
-        }
-      }
+        } // is_upscatter
+      } // for mat_lib.ngroup()
 
       ++idx;
     }
@@ -4425,6 +4434,7 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
 
 }
 
+#if 0
 void calc_fission_source(const Material_library& mat_lib, 
                          const Result& scalar_flux,
                          ParGridFunction& fission_source)
@@ -4462,7 +4472,7 @@ void calc_chi(const Material_library& mat_lib,
               bool flux_free_chi)
 {
 
-  ParFiniteElementSpace* fespace = scalar_flux(0).ParFESpace();
+  ParFiniteElementSpace* fespace = chi[0].ParFESpace();
   ParMesh* pmesh = fespace->GetParMesh();
 
   if (mat_lib.rx_wide_chi)
@@ -4487,9 +4497,6 @@ void calc_chi(const Material_library& mat_lib,
   }
   else // isotopic chi
   {
-
-    // Need to protect for denominator==0 and this will only happen in some
-    // regions. I think this really has to be a gridfunction coefficient...
 
     QuadratureSpace qspace{pmesh, fespace->GetOrder(0)+1};
     std::vector<QuadratureFunction> chi_quad;
@@ -4548,3 +4555,4 @@ void calc_chi(const Material_library& mat_lib,
 
   return;
 }
+#endif
