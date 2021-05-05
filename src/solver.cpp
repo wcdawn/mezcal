@@ -2886,20 +2886,15 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Result& scalar_flux)
 {
 
+  constexpr bool use_gpu{false};
+
   ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
 
   constexpr int skip_zeros{2};
   const int myid{angular_flux_fespace->GetMyRank()};
 
-  std::vector<AmgXSolver> Asol(mat_lib.ngroup());
-
-  /*
-  std::vector<CGSolver> Asol; // note: no preconditioner
-  Asol.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    Asol.emplace_back(MPI_COMM_WORLD);
-  */
+  std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
 
   time.start(time.matrix_assembly);
 
@@ -2956,31 +2951,44 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     a.Finalize(skip_zeros);
     std::unique_ptr<HypreParMatrix> Amat{a.ParallelAssemble()};
 
-
-    /*
-    HypreParMatrix *A{Amat.release()}; // leaking but fuck it
-    Asol[g].SetOperator(*A);
-    Asol[g].SetRelTol(inp.tol.inner_rel);
-    Asol[g].SetAbsTol(inp.tol.inner_abs);
-    Asol[g].SetMaxIter(inp.tol.max_inner);
-    Asol[g].SetPrintLevel(inp.mfem_print_level());
-    */
-
-    Asol[g].DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-    Asol[g].ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-
-    if (inp.ndevices > 0)
+    if (use_gpu)
     {
-      // use MPITeams
-      Asol[g].InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
+
+      std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
+
+      this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+      this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+      if (inp.ndevices > 0)
+      {
+        // use MPITeams
+        this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
+      }
+      else
+      {
+        // use MPI Exclusive
+        this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
+      }
+
+      this_sol->SetOperator(*Amat);
+      Asol[g] = std::move(this_sol);
+
     }
     else
     {
-      // use MPI Exclusive
-      Asol[g].InitExclusiveGPU(MPI_COMM_WORLD);
-    }
 
-    Asol[g].SetOperator(*Amat);
+      std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
+      // note: no preconditioner
+
+      this_sol->SetOperator(*Amat.release()); // leaking but fuck it
+      this_sol->SetRelTol(inp.tol.inner_rel);
+      this_sol->SetAbsTol(inp.tol.inner_abs);
+      this_sol->SetMaxIter(inp.tol.max_inner);
+      this_sol->SetPrintLevel(inp.mfem_print_level());
+
+      Asol[g] = std::move(this_sol);
+
+    }
 
   }
 
@@ -3218,7 +3226,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         time.stop("lf_sum");
 
         time.start("mult");
-        Asol[g].Mult(b, *x);
+        Asol[g]->Mult(b, *x);
         ++solve_counter;
         time.stop("mult");
 
@@ -3242,7 +3250,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           std::cout << "..."
                     << scattering_iter
                     << " g=" << g
-                    << " inner_iter=" << Asol[g].GetNumIterations()
+                    //<< " inner_iter=" << Asol[g].GetNumIterations()
                     << " conv=" << scattering_conv
                     << '\n';
 
