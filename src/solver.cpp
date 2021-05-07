@@ -3272,9 +3272,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     QuadratureFunction fiss_src{fiss_src_old};
     calc_fiss_src(scalar_flux, mat_lib, fiss_src);
     fiss_src_old -= fiss_src;
+    
+    // note: some nodes may contain zero fissile elements depending on decomposition
     const double delta{fiss_src_old.Normlinf()};
     const double norm{fiss_src.Normlinf()};
     const double local_phi_conv{(norm > 0.0) ? delta / norm : 0.0};
+
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     time.stop("phiconv");
 
