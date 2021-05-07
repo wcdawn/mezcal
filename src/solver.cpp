@@ -2517,6 +2517,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
   return;
 }
 
+#if 0
 void saaf_angle_power_iteration_old(const Quadrature* const quad,
                                 Timer& time,
                                 const Input& inp,
@@ -2746,9 +2747,7 @@ void saaf_angle_power_iteration_old(const Quadrature* const quad,
   std::vector<std::unique_ptr<ParLinearForm>> fiss_src_form(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    fiss_src_form[g] = std::make_unique<ParLinearForm>(
-      static_cast<ParFiniteElementSpace*>(scalar_flux(g).FESpace())
-      );
+    fiss_src_form[g] = std::make_unique<ParLinearForm>(scalar_flux(g).ParFESpace());
 
     Vector nusf(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -2830,8 +2829,7 @@ void saaf_angle_power_iteration_old(const Quadrature* const quad,
         phi_old.HostRead();
         const double local_scattering_conv{
           phi_old.Normlinf() / scalar_flux(g).Normlinf()};
-        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, 
-          MPI_MAX, MPI_COMM_WORLD);
+        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
         if (myid == 0)
           std::cout << "..."
                     << scattering_iter
@@ -2876,6 +2874,7 @@ void saaf_angle_power_iteration_old(const Quadrature* const quad,
 
   return;
 }
+#endif
 
 void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Timer& time,
@@ -2978,7 +2977,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     {
 
       std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
-      // note: no preconditioner
 
       HypreParMatrix *A{Amat.release()}; // leaking but fuck it
 
@@ -3179,6 +3177,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   scalar_flux.keff = 1.0;
 
   QuadratureFunction fiss_src_old{&qspace};
+  fiss_src_old = 1.0;
   double k_conv{inp.tol.k * 1e1 + 1e-6};
   double phi_conv{inp.tol.phi * 1e1 + 1e-6};
   double keff_old{angular_flux.keff};
@@ -3191,11 +3190,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   {
 
     time.start("lf_fiss_upscatter_fission_assemble");
-
     calc_fiss_upscatter(scalar_flux, mat_lib, fiss_quad, upscatter_quad, inp.flux_free_chi);
     for (QuadratureFunction& qf : fiss_quad)
       qf /= angular_flux.keff;
-
     std::vector<std::unique_ptr<HypreParVector>> vec_fiss_upscatter(mat_lib.ngroup());
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
@@ -3272,10 +3269,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     time.stop("fisssum");
 
     time.start("phiconv");
-    QuadratureFunction fiss_src{&qspace};
+    QuadratureFunction fiss_src{fiss_src_old};
     calc_fiss_src(scalar_flux, mat_lib, fiss_src);
     fiss_src_old -= fiss_src;
-    const double local_phi_conv{fiss_src_old.Normlinf() / fiss_src.Normlinf()};
+    const double delta{fiss_src_old.Normlinf()};
+    const double norm{fiss_src.Normlinf()};
+    const double local_phi_conv{(norm > 0.0) ? delta / norm : 0.0};
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     time.stop("phiconv");
 
@@ -3294,6 +3293,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     keff_old = angular_flux.keff;
     fiss_sum_old = fiss_sum;
     fiss_src_old = fiss_src;
+
   }
   time.stop(time.solver);
 
@@ -3351,8 +3351,8 @@ void calc_fiss_upscatter(const Result& scalar_flux,
                          const bool flux_free_chi)
 {
   const QuadratureSpace* const qspace{fiss_quad_func[0].GetSpace()};
-  const Mesh* const mesh{qspace->GetMesh()};
-  const FiniteElementSpace* const fespace{scalar_flux(0,0).FESpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
 
   for (QuadratureFunction& qf : fiss_quad_func)
     qf = 0.0;
@@ -3449,8 +3449,8 @@ void calc_downscatter(const int g,
   dnscatter_quad_func = 0.0;
 
   const QuadratureSpace* const qspace{dnscatter_quad_func.GetSpace()};
-  const Mesh* const mesh{qspace->GetMesh()};
-  const FiniteElementSpace* const fespace{scalar_flux(0,0).FESpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
 
   int idx{0};
 
@@ -3505,8 +3505,8 @@ void calc_spn_next(const Result& flux,
 {
 
   const QuadratureSpace* const qspace{spn_next_quad_func(0,0).GetSpace()};
-  const Mesh* const mesh{qspace->GetMesh()};
-  const FiniteElementSpace* const fespace{flux(0,0).FESpace()};
+  const ParFiniteElementSpace* const fespace{flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
   const int dim{mesh->Dimension()};
 
   for (int n{0}; n < spn_next_quad_func.nmoment(); ++n)
@@ -3567,8 +3567,8 @@ void calc_spn_prev(const int g, const int n,
   if (n == 0) return;
 
   const QuadratureSpace* const qspace{spn_prev_quad_func.GetSpace()};
-  const Mesh* const mesh{qspace->GetMesh()};
-  const FiniteElementSpace* const fespace{flux(0,0).FESpace()};
+  const ParFiniteElementSpace* const fespace{flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
   const double xmult_prev{(4.0*n*n - 2.0*n) / (16.0*n*n - 1.0)};
   const int dim{mesh->Dimension()};
 
@@ -3602,13 +3602,13 @@ void calc_spn_prev(const int g, const int n,
 }
 
 void calc_fiss_src(const Result& scalar_flux, 
-                      const Material_library& mat_lib,
-                      QuadratureFunction& fiss_src)
+                   const Material_library& mat_lib,
+                   QuadratureFunction& fiss_src)
 {
 
   const QuadratureSpace* const qspace{fiss_src.GetSpace()};
-  const Mesh* const mesh{qspace->GetMesh()};
-  const FiniteElementSpace* const fespace{scalar_flux(0,0).FESpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
 
   fiss_src = 0.0;
 
@@ -3621,7 +3621,11 @@ void calc_fiss_src(const Result& scalar_flux,
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec};
 
-    if (!rec.is_fiss) continue;
+    if (!rec.is_fiss)
+    {
+      idx += ir.GetNPoints();
+      continue;
+    }
 
     const std::vector<double>& nusf{rec.nusf};
 
@@ -3646,6 +3650,7 @@ void calc_fiss_src(const Result& scalar_flux,
 
       ++idx;
     }
+
   }
 
   return;
