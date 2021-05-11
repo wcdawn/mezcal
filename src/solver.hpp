@@ -198,6 +198,10 @@ void calc_downscatter(const int g,
                       const Result& scalar_flux,
                       const Material_library& mat_lib,
                       mfem::QuadratureFunction& dnscatter_quad_func);
+void calc_selfscatter(const int g, 
+                      const Result& scalar_flux,
+                      const Material_library& mat_lib,
+                      mfem::QuadratureFunction& selfscatter_quad_func);
 void calc_fiss_src(const Result& scalar_flux, 
                    const Material_library& mat_lib,
                    mfem::QuadratureFunction& fiss_src);
