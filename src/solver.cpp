@@ -2956,7 +2956,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
 
       this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-      //this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+      this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
 
       if (inp.ndevices > 0)
       {
@@ -2967,7 +2967,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       {
         // use MPI Exclusive
         this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
-        std::cout << "HERE" << std::endl;
       }
 
       this_sol->SetOperator(*Amat);
@@ -2989,6 +2988,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
       HypreBoomerAMG *amg = new HypreBoomerAMG(*A); // another leak!
       amg->SetPrintLevel(inp.hypre_print_level());
+      HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
       this_sol->SetPreconditioner(*amg);
 
       Asol[g] = std::move(this_sol);
@@ -3137,8 +3137,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       time.stop("lf_dnscatter_assemble");
 
       double scattering_conv{inp.tol.inner_rel * 1e1 + 1e-6};
-      for (int scattering_iter{0}; (scattering_iter < inp.tol.max_inner) &&
-        (scattering_conv > inp.tol.inner_rel); ++scattering_iter)
+      for (int scattering_iter{0}; (scattering_iter < inp.tol.max_scatter) &&
+        (scattering_conv > inp.tol.scatter); ++scattering_iter)
       {
 
         calc_selfscatter(g, scalar_flux, mat_lib, selfscatter_quad);
@@ -3152,7 +3152,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         time.start("lf_sum");
         std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
-        //*b += *vec_dnscatter;
         time.stop("lf_sum");
 
         time.start("mult");

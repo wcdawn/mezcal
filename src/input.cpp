@@ -200,6 +200,14 @@ void Input::read_state()
     {
       ifs >> tol.temp_inner_abs;
     }
+    else if (card == "max_scatter")
+    {
+      ifs >> tol.max_scatter;
+    }
+    else if (card == "scatter_tol")
+    {
+      ifs >> tol.scatter;
+    }
     else if (card == "solver")
     {
       ifs >> solver_str;

@@ -22,6 +22,9 @@ struct Tolerance_control
   double inner_rel{1e-8};
   double inner_abs{1e-10};
 
+  int max_scatter{500};
+  double scatter{1e-6};
+
   int temp_max_outer{100};
   double temp{1.0};
   int temp_max_inner{1000};
