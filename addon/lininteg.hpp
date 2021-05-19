@@ -14,16 +14,20 @@ class VectorDomainLFGradIntegrator : public LinearFormIntegrator
 {
 private:
   Vector shape;
-  VectorTensorCoefficient* VTQ;
+  VectorTensorCoefficient *VTQ{nullptr};
+  VectorCoefficient *VQ{nullptr};
   DenseMatrix dshape;
   const int vdim;
 public:
   VectorDomainLFGradIntegrator(VectorTensorCoefficient& vtq)
     : VTQ(&vtq), vdim{vtq.GetVDim()}
   {}
+  VectorDomainLFGradIntegrator(VectorCoefficient& vq)
+     : VQ(&vq), vdim(vq.GetVDim())
+  {}
    virtual void AssembleRHSElementVect(const FiniteElement &el,
                                        ElementTransformation &Tr,
-                                       Vector &elvect);
+                                       Vector &elvect) override;
    using LinearFormIntegrator::AssembleRHSElementVect;
 };
 
@@ -49,10 +53,10 @@ public:
   {}
    virtual void AssembleRHSElementVect(const FiniteElement &el,
                                        ElementTransformation &Tr,
-                                       Vector &elvect);
+                                       Vector &elvect) override;
    virtual void AssembleRHSElementVect(const FiniteElement &el,
                                        FaceElementTransformations &Tr,
-                                       Vector &elvect);
+                                       Vector &elvect) override;
 };
 
 } // namespace mfem

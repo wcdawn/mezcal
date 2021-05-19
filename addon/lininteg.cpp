@@ -24,9 +24,6 @@ void VectorDomainLFGradIntegrator::AssembleRHSElementVect(
       ir = &IntRules.Get(el.GetGeomType(), intorder);
    }
 
-   std::vector<Vector> vec_data;
-   Array<int> row_idx, col_idx;
-
    for (int i = 0; i < ir->GetNPoints(); i++)
    {
       const IntegrationPoint &ip = ir->IntPoint(i);
@@ -34,20 +31,44 @@ void VectorDomainLFGradIntegrator::AssembleRHSElementVect(
       Tr.SetIntPoint(&ip);
       el.CalcPhysDShape(Tr, dshape);
 
-      VTQ->Eval(vec_data, row_idx, col_idx, Tr, ip);
-
-      for (int idx{0}; idx < row_idx.Size(); ++idx)
+      if (VTQ)
       {
-         MFEM_ASSERT(row_idx[idx] == col_idx[idx], 
-            "row_idx & col_idx must be the same for tensors in VectorDomainLFGradIntegrator");
-         vec_data[idx] *= ip.weight * Tr.Weight();
-         dshape.Mult(vec_data[idx], pelvect);
-         for (int j{0}; j < dof; ++j)
+         std::vector<Vector> vec_data;
+         Array<int> row_idx, col_idx;
+         VTQ->Eval(vec_data, row_idx, col_idx, Tr, ip);
+         for (int idx{0}; idx < row_idx.Size(); ++idx)
          {
-            elvect(j+dof*row_idx[idx]) += pelvect(j);
+            MFEM_ASSERT(row_idx[idx] == col_idx[idx], 
+               "row_idx & col_idx must be the same for tensors in VectorDomainLFGradIntegrator");
+            vec_data[idx] *= ip.weight * Tr.Weight();
+            dshape.Mult(vec_data[idx], pelvect);
+            for (int j{0}; j < dof; ++j)
+            {
+               elvect(j+dof*row_idx[idx]) += pelvect(j);
+            }
          }
       }
-
+      else if (VQ)
+      {
+         Vector x(vdim);
+         VQ->Eval(x, Tr, ip);
+         for (int idx{0}; idx < vdim/spaceDim; ++idx)
+         {
+            Vector part_x(spaceDim);
+            for (int jdx{0}; jdx < spaceDim; ++jdx)
+               part_x(jdx) = x(idx*spaceDim+jdx);
+            part_x *= ip.weight * Tr.Weight();
+            dshape.Mult(part_x, pelvect);
+            for (int j{0}; j < dof; ++j)
+            {
+               elvect(j+dof*idx) += pelvect(j);
+            }
+         }
+      }
+      else
+      {
+         MFEM_ABORT("undefined coefficient for some reason");
+      }
    }
 }
 

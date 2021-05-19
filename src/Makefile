@@ -34,10 +34,6 @@ CPP_FILES = main.cpp \
 			$(ADDON_DIR)/bilininteg.cpp \
 			$(ADDON_DIR)/lininteg.cpp
 
-ifeq ($(MACH),ARCHBUILD)
-CU_FILES = solver_amgx.cu
-endif
-
 HPP_FILES = analytic.hpp \
 			conduction.hpp \
 			delaunay.hpp \
@@ -70,11 +66,7 @@ HPP_FILES = analytic.hpp \
 			$(ADDON_DIR)/tensor.hpp \
 			$(ADDON_DIR)/mfem_addon.hpp
 
-ifeq ($(MACH),ARCHBUILD)
-H_FILES = solver_amgx.h
-endif
-
-OBJ = $(CPP_FILES:.cpp=.o) $(CU_FILES:.cu=.o)
+OBJ = $(CPP_FILES:.cpp=.o)
 
 EXEC = micro.x
 
@@ -104,9 +96,6 @@ $(EXEC) : $(OBJ)
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<
-
-%.o : %.cu
-	$(NVCC) -O3 $(INCLUDE) $(MPI_INCLUDE) -c $<
 
 version:
 	$(RM) version.hpp
@@ -147,7 +136,7 @@ clean :
 	$(RM) $(OBJ) $(EXEC) version.cpp version.hpp
 	$(MAKE) -C $(ADDON_DIR) clean
 
-format : $(CPP_FILES) $(HPP_FILES) $(CU_FILES) $(H_FILES)
+format : $(CPP_FILES) $(HPP_FILES)
 	@clang-format -i --verbose $^
 
 addon :

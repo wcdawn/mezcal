@@ -19,6 +19,10 @@ enum class Solver_choice
   saaf_slepc_vector,
   saaf_true_slepc_vector,
   saaf_true_amgx_vector,
+  saaf_split_slepc_vector,
+  saaf_split_power_iteration,
+  saaf_true_slepc_diffusion_vector,
+  saaf_true_slepc_transport_vector,
   conduction_linear, // TODO move this into "analytic"
   conduction_radial // TODO move this into "analytic"
 };

@@ -30,6 +30,71 @@ namespace slepc_amgx
 
 } // namespace slepc_amgx
 
+namespace slepc_diffusion
+{
+
+  extern std::unique_ptr<mfem::Solver> sol;
+  extern std::unique_ptr<mfem::HypreParMatrix> Alo;
+
+  extern std::unique_ptr<mfem::HypreBoomerAMG> amg;
+
+  extern const Input* inp;
+  extern const Material_library* mat_lib;
+  extern mfem::ParGridFunction *angular_flux;
+  extern mfem::ParGridFunction *scalar_flux;
+
+  PetscErrorCode setup(PC pc);
+  PetscErrorCode apply(PC pc, Vec xin, Vec xout);
+  PetscErrorCode destroy(PC pc);
+
+} // namespace slepc_diffusion
+
+namespace slepc_transport
+{
+
+  extern std::unique_ptr<mfem::Solver> sol;
+  extern std::unique_ptr<mfem::HypreParMatrix> Alo;
+
+  extern std::unique_ptr<mfem::HypreBoomerAMG> amg;
+
+  extern const Input *inp;
+  extern const Material_library *mat_lib;
+  extern const Quadrature *q_lo;
+  extern const Quadrature *q_hi;
+  extern mfem::ParFiniteElementSpace *fespace_lo;
+
+  extern int fine_per_coarse;
+
+  PetscErrorCode setup(PC pc);
+  PetscErrorCode apply(PC pc, Vec xin, Vec xout);
+  PetscErrorCode destroy(PC pc);
+
+} // namespace slepc_transport
+
+namespace slepc_split
+{
+
+  extern std::unique_ptr<mfem::Solver> sol;
+  extern std::unique_ptr<mfem::HypreBoomerAMG> amg;
+  extern std::unique_ptr<mfem::HypreParMatrix> Alc_hypre;
+
+  extern const Input *inp;
+  extern const Material_library *mat_lib;
+  extern const Quadrature *quad;
+
+  extern Result *angular_flux;
+  extern Result *scalar_flux;
+
+  // TODO I stopped keeping up. There are *a lot* more pointers floating around
+  // that either need to be listed here or gotten rid of.
+  extern std::unique_ptr<mfem::ParLinearForm> scat_src;
+
+  PetscErrorCode setup(PC pc);
+  PetscErrorCode apply(PC pc, Vec xin, Vec xout);
+  PetscErrorCode destroy(PC pc);
+
+} // namespace slepc_split
+
 template<typename T>
 class SPNWrapper
 {
@@ -102,7 +167,6 @@ void spn_amgx_vector(Timer& time, const Input& inp,
                      mfem::ParFiniteElementSpace* const fespace,
                      Result& res);
 
-
 void spn_slepc_manual(Timer& time, const Input& inp,
                               Material_library& mat_lib,
                               const mfem::Array<int>& ess_bdr,
@@ -159,6 +223,32 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
                            const Material_library& mat_lib,
                            Result& angular_flux);
 
+void saaf_split_slepc_vector(const Quadrature* const quad,
+                             Timer& time,
+                             const Input& inp,
+                             const Material_library& mat_lib,
+                             Result& angular_flux,
+                             Result& scalar_flux);
+void saaf_split_power_iteration(const Quadrature* const quad,
+                                Timer& time,
+                                const Input& inp,
+                                const Material_library& mat_lib,
+                                Result& angular_flux,
+                                Result& scalar_flux);
+
+void saaf_true_slepc_diffusion_vector(const Quadrature* const quad,
+                                      Timer& time,
+                                      const Input& inp,
+                                      Material_library& mat_lib,
+                                      Result& angular_flux,
+                                      Result& scalar_flux);
+
+void saaf_true_slepc_transport_vector(const Quadrature* const quad,
+                                      Timer& time,
+                                      const Input& inp,
+                                      const Material_library& mat_lib,
+                                      Result& angular_flux);
+
 void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations);
 
 void calc_scalar_flux(int g,
@@ -171,18 +261,8 @@ void calc_scalar_flux_vector(int g,
                              Result& scalar_flux);
 void calc_scalar_flux_slepc_vector(const Result& angular_flux, 
                                    const Quadrature* const quad,
+                                   const Material_library& mat_lib,
                                    Result& scalar_flux);
-
-#if 0
-void calc_fission_source(const Material_library& mat_lib,
-                         const Result& scalar_flux,
-                         mfem::ParGridFunction& fission_source);
-void calc_chi(const Material_library& mat_lib,
-              const Result& scalar_flux,
-              std::vector<mfem::ParGridFunction>& chi,
-              bool flux_free_chi=false);
-#endif
-
 
 void calc_power(const Material_library& mat_lib,
                 const Result& scalar_flux,
@@ -214,6 +294,12 @@ void calc_spn_prev(const int g, const int n,
                    const Material_library& mat_lib,
                    mfem::QuadratureFunction& spn_prev_quad_func);
 
+void calc_all_scatter(const Result& scalar_flux,
+                      const Material_library& mat_lib,
+                      const Quadrature* quad,
+                      mfem::QuadratureFunction& scat_quad,
+                      mfem::QuadratureFunction& scat_saaf_quad);
+
 class Failed_to_converge : std::exception
 {
   public:
@@ -231,7 +317,7 @@ class Failed_to_converge : std::exception
 };
 
 double par_norml2(const mfem::Vector& x);
-void flux_sign_fixup(mfem::ParGridFunction& pgf);
+void flux_sign_fixup(mfem::Vector& pgf);
 
 void power_iteration_amgx(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res);
 void power_iteration_hypre(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);

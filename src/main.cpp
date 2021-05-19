@@ -165,6 +165,10 @@ int main(int argc, char* argv[])
     (inp.sol == Solver_choice::saaf_angle_power_iteration) ||
     (inp.sol == Solver_choice::saaf_slepc_vector) ||
     (inp.sol == Solver_choice::saaf_true_slepc_vector) || 
+    (inp.sol == Solver_choice::saaf_split_slepc_vector) || 
+    (inp.sol == Solver_choice::saaf_split_power_iteration) || 
+    (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) || 
+    (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) || 
     (inp.sol == Solver_choice::saaf_true_amgx_vector))};
 
   std::unique_ptr<Quadrature> quad;
@@ -201,6 +205,10 @@ int main(int argc, char* argv[])
       break;
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::saaf_split_slepc_vector):
+    case (Solver_choice::saaf_split_power_iteration):
+    case (Solver_choice::saaf_true_slepc_diffusion_vector):
+    case (Solver_choice::saaf_true_slepc_transport_vector):
     case (Solver_choice::saaf_true_amgx_vector):
       vdim = mat_lib.ngroup()*quad->nd();
       break;
@@ -212,16 +220,23 @@ int main(int argc, char* argv[])
       break;
   }
 
+  const int scalar_flux_vdim{
+    (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ? mat_lib.ngroup() : 1};
+
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  ParFiniteElementSpace scalar_flux_fespace{&pmesh, fec};
+  ParFiniteElementSpace scalar_flux_fespace{&pmesh, fec, scalar_flux_vdim, Ordering::byVDIM};
 
   long long dof{fespace.GlobalVSize()};
   switch (inp.sol)
   {
     case (Solver_choice::slepc_vector):
+    case (Solver_choice::amgx_vector):
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
-    case (Solver_choice::amgx_vector):
+    case (Solver_choice::saaf_split_slepc_vector):
+    case (Solver_choice::saaf_split_power_iteration):
+    case (Solver_choice::saaf_true_slepc_diffusion_vector):
+    case (Solver_choice::saaf_true_slepc_transport_vector):
     case (Solver_choice::saaf_true_amgx_vector):
       break;
     case (Solver_choice::saaf_angle_power_iteration):
@@ -247,6 +262,8 @@ int main(int argc, char* argv[])
     case (Solver_choice::slepc_vector):
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::saaf_split_slepc_vector):
+    case (Solver_choice::saaf_split_power_iteration):
     case (Solver_choice::amgx_vector):
     case (Solver_choice::saaf_true_amgx_vector):
       flux_length = 1;
@@ -262,6 +279,8 @@ int main(int argc, char* argv[])
     case (Solver_choice::slepc_vector):
     case (Solver_choice::saaf_slepc_vector):
     case (Solver_choice::saaf_true_slepc_vector):
+    case (Solver_choice::saaf_split_slepc_vector):
+    case (Solver_choice::saaf_split_power_iteration):
     case (Solver_choice::saaf_angle_power_iteration):
     case (Solver_choice::amgx_vector):
     case (Solver_choice::saaf_true_amgx_vector):
@@ -277,8 +296,11 @@ int main(int argc, char* argv[])
       break;
   }
 
+  const int scalar_flux_length{
+    (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ? 1 : mat_lib.ngroup()};
+
   Result res{&fespace, flux_length, moment_angle_length};
-  Result scalar_flux{&scalar_flux_fespace, mat_lib.ngroup()};
+  Result scalar_flux{&scalar_flux_fespace, scalar_flux_length};
   ParGridFunction power{&scalar_flux_fespace};
   ParGridFunction temperature{&scalar_flux_fespace};
 
@@ -340,17 +362,33 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::saaf_true_slepc_vector):
           saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
-          calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
+          calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
+        case (Solver_choice::saaf_true_slepc_diffusion_vector):
+          saaf_true_slepc_diffusion_vector(quad.get(), time, inp, mat_lib, res, scalar_flux);
+          break;
+        case (Solver_choice::saaf_true_slepc_transport_vector):
+          //saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
+          saaf_true_slepc_transport_vector(quad.get(), time, inp, mat_lib, res);
+          calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
+          break;
         case (Solver_choice::saaf_true_amgx_vector):
           saaf_true_amgx_vector(quad.get(), time, inp, mat_lib, res);
-          calc_scalar_flux_slepc_vector(res, quad.get(), scalar_flux);
+          calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           /* TODO finish implementation
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           */
+          break;
+        case (Solver_choice::saaf_split_slepc_vector):
+          saaf_split_slepc_vector(quad.get(), time, inp, mat_lib, res, scalar_flux);
+          calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
+          break;
+        case (Solver_choice::saaf_split_power_iteration):
+          saaf_split_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
+          calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           break;
         case (Solver_choice::conduction_radial):
         case (Solver_choice::conduction_linear):
@@ -406,14 +444,21 @@ int main(int argc, char* argv[])
     }
 
     if ((inp.sol == Solver_choice::slepc_vector) || 
+        (inp.sol == Solver_choice::amgx_vector) || 
         (inp.sol == Solver_choice::saaf_slepc_vector) || 
         (inp.sol == Solver_choice::saaf_true_slepc_vector) ||
-        (inp.sol == Solver_choice::amgx_vector) || 
+        (inp.sol == Solver_choice::saaf_split_slepc_vector) ||
+        (inp.sol == Solver_choice::saaf_split_power_iteration) ||
+        (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ||
+        (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) ||
         (inp.sol == Solver_choice::saaf_true_amgx_vector))
     {
-      output.RegisterField("phi", &res(0));
-      if ((inp.sol == Solver_choice::saaf_true_slepc_vector) || 
-          (inp.sol == Solver_choice::slepc_vector) |\
+      output.RegisterField("psi", &res(0));
+      if ((inp.sol == Solver_choice::slepc_vector) ||
+          (inp.sol == Solver_choice::saaf_true_slepc_vector) || 
+          (inp.sol == Solver_choice::saaf_split_slepc_vector) || 
+          (inp.sol == Solver_choice::saaf_split_power_iteration) || 
+          (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) || 
           (inp.sol == Solver_choice::saaf_true_amgx_vector))
       {
         for (int g{0}; g < scalar_flux.ngroup(); ++g)
@@ -427,6 +472,10 @@ int main(int argc, char* argv[])
         }
         output.RegisterField("power", &power);
         output.RegisterField("temperature", &temperature);
+      }
+      else if (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector)
+      {
+        output.RegisterField("scalar_flux", &scalar_flux(0));
       }
     }
     else
