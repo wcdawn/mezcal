@@ -4700,8 +4700,8 @@ namespace slepc_amgx
   std::unique_ptr<AmgXSolver> sol{nullptr};
   HypreParMatrix *Ahypre{nullptr};
 
-  constexpr bool verbose{true};
-  constexpr int ndevices{0}; // TODO this should come from user input
+  bool verbose{true};
+  int ndevices{0};
 
   PetscErrorCode setup(PC pc)
   {
@@ -4798,6 +4798,8 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
     ierr = PCShellSetApply(preconditioner, slepc_amgx::apply); PCHKERRQ(slepc, ierr);
     ierr = PCShellSetDestroy(preconditioner, slepc_amgx::destroy); PCHKERRQ(slepc, ierr);
     slepc_amgx::Ahypre = Ahypre;
+    slepc_amgx::verbose = inp.verbose;
+    slepc_amgx::ndevices = inp.ndevices;
     Ahypre = nullptr;
 
     ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
