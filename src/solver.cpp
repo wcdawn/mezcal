@@ -3513,13 +3513,13 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         amg->SetPrintLevel(inp.hypre_print_level());
         HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
 
-        std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
+        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+        this_sol->SetPrintLevel(inp.hypre_print_level());
         this_sol->SetOperator(*A);
-        this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
-        this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+        this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        this_sol->SetPrintLevel(inp.mfem_print_level());
         this_sol->SetPreconditioner(*amg);
+        HYPRE_PCGSetAbsoluteTol(*this_sol, inp.tol.inner_abs);
 
         Asol[g] = std::move(this_sol);
 
@@ -3561,7 +3561,20 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
       if (use_gpu)
       {
-        MFEM_ABORT("gpu linear solver not yet implemented for this solver function");
+
+        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
+        this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+        this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+        if (inp.ndevices > 0)
+          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
+        else
+          this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
+  
+
+        this_sol->SetOperator(*Dmat);
+        Dsol[g] = std::move(this_sol);
+
       }
       else
       {
@@ -3571,13 +3584,13 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         amg->SetPrintLevel(inp.hypre_print_level());
         HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
 
-        std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
-        this_sol->SetPrintLevel(inp.mfem_print_level());
-        this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
-        this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+        this_sol->SetPrintLevel(inp.hypre_print_level());
+        this_sol->SetOperator(*D);
+        this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetMaxIter(inp.tol.max_inner);
         this_sol->SetPreconditioner(*amg);
-        this_sol->SetOperator(*D);
+        HYPRE_PCGSetAbsoluteTol(*this_sol, inp.tol.inner_abs);
 
         Dsol[g] = std::move(this_sol);
 
@@ -3764,7 +3777,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       dnscatter_quad += upscatter_quad[g];
       time.stop("lf_dnscatter_assemble");
 
-      double scattering_conv{inp.tol.inner_rel * 1e1 + 1e-6};
+      double scattering_conv{inp.tol.scatter * 1e1 + 1e-6};
       for (int scattering_iter{0}; (scattering_iter < inp.tol.max_scatter) &&
         (scattering_conv > inp.tol.scatter); ++scattering_iter)
       {
