@@ -2405,6 +2405,10 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   HypreParMatrix *Ahypre{saaf_a_matrix(inp, mat_lib, quad, fespace)};
   HypreParMatrix *Mhypre{saaf_m_matrix(inp, mat_lib, quad, fespace)};
 
+  slepc_hypre::inp = &inp;
+  slepc_hypre::mat_lib = &mat_lib;
+  slepc_hypre::quad = quad;
+
   time.stop(time.matrix_assembly);
 
   std::unique_ptr<Memory_stats> mem{nullptr};
@@ -4753,6 +4757,55 @@ namespace slepc_amgx
 
 } // namespace slepc_amgx
 
+namespace slepc_hypre
+{
+
+  std::unique_ptr<Solver> sol{nullptr};
+  std::unique_ptr<HypreBoomerAMG> amg{nullptr};
+  const HypreParMatrix *Ahypre{nullptr};
+
+  const Input *inp{nullptr};
+  const Material_library *mat_lib{nullptr};
+  const Quadrature *quad{nullptr};
+
+  PetscErrorCode setup(PC pc)
+  {
+
+    amg = std::make_unique<HypreBoomerAMG>(*Ahypre);
+    amg->SetPrintLevel(inp->hypre_print_level());
+    HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib->ngroup()*quad->nd());
+
+    std::unique_ptr<HypreGMRES> gmres{std::make_unique<HypreGMRES>(*Ahypre)};
+    gmres->SetPreconditioner(*amg);
+    gmres->SetPrintLevel(9);
+    gmres->SetMaxIter(inp->tol.max_inner);
+    gmres->SetTol(inp->tol.inner_rel);
+    gmres->SetAbsTol(inp->tol.inner_abs);
+    gmres->SetKDim(50); // Default...
+    sol = std::move(gmres);
+
+    return 0;
+  }
+
+  PetscErrorCode apply(PC pc, Vec xin, Vec xout)
+  {
+    const PetscParVector vin{xin, true};
+    PetscParVector vout{xout, true};
+    sol->Mult(vin, vout);
+    return 0;
+  }
+
+  PetscErrorCode destroy(PC pc)
+  {
+    sol.reset();
+    amg.reset();
+    delete Ahypre;
+    Ahypre = nullptr;
+    return 0;
+  }
+
+} // namespace slepc_hypre
+
 void slepc_solver_wrapper(HypreParMatrix* Ahypre,
                           HypreParMatrix* Mhypre,
                           const Input& inp,
@@ -4760,10 +4813,11 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
                           Result& res,
                           int numfunctions)
 {
+
   constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
 
-  PetscParMatrix A{Ahypre, petsc_format};
-  PetscParMatrix M{Mhypre, petsc_format};
+  const PetscParMatrix A{Ahypre, petsc_format};
+  const PetscParMatrix M{Mhypre, petsc_format};
 
   /* This seems incompatible with the GMRES setup...
   if (numfunctions > 1)
@@ -4775,12 +4829,13 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   */
 
   constexpr bool slepc_amgx{false};
-  constexpr bool slepc_ksp{true};
+  constexpr bool slepc_ksp{false};
+  constexpr bool slepc_hypre{true};
 
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
   {
-    if (!slepc_amgx)
+    if ((!slepc_amgx) && (!slepc_hypre))
     {
       delete Ahypre;
       Ahypre = nullptr;
@@ -4796,10 +4851,10 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
   slepc.SetOperators(A, M);
   
+  PetscErrorCode ierr;
   PC preconditioner;
   if (slepc_amgx)
   {
-    PetscErrorCode ierr;
 
     ST spectral_transform;
     ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
@@ -4821,7 +4876,6 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   }
   else if (slepc_ksp)
   {
-    PetscErrorCode ierr;
 
     ST spectral_transform;
     ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
@@ -4845,6 +4899,27 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
 
     ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
   }
+  else if (slepc_hypre)
+  {
+
+    ST spectral_transform;
+    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver;
+    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
+
+    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetSetUp(preconditioner, slepc_hypre::setup); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetApply(preconditioner, slepc_hypre::apply); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetDestroy(preconditioner, slepc_hypre::destroy); PCHKERRQ(slepc, ierr);
+
+    slepc_hypre::Ahypre = Ahypre;
+    Ahypre = nullptr;
+
+    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
+
+  }
 
   /* RESTART
   // set based on the previous state
@@ -4860,9 +4935,8 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   slepc.Solve();
   time.stop(time.solver);
 
-  if (slepc_amgx)
+  if ((slepc_amgx) || (slepc_hypre))
   {
-    PetscErrorCode ierr;
     ierr = PCDestroy(&preconditioner); PCHKERRQ(slepc, ierr);
   }
 

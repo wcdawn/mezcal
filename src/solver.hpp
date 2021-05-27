@@ -30,6 +30,22 @@ namespace slepc_amgx
 
 } // namespace slepc_amgx
 
+namespace slepc_hypre
+{
+  extern std::unique_ptr<mfem::Solver> sol;
+  extern std::unique_ptr<mfem::HypreBoomerAMG> amg;
+  extern const mfem::HypreParMatrix *Ahypre;
+
+  extern const Input *inp;
+  extern const Material_library *mat_lib;
+  extern const Quadrature *quad;
+
+  PetscErrorCode setup(PC pc);
+  PetscErrorCode apply(PC pc, Vec xin, Vec xout);
+  PetscErrorCode destroy(PC pc);
+
+} // namespace slepc_hypre
+
 namespace slepc_diffusion
 {
 
