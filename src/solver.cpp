@@ -4736,7 +4736,7 @@ namespace slepc_amgx
 
   PetscErrorCode apply(PC pc, Vec xin, Vec xout)
   {
-    PetscParVector vin{xin, true};
+    const PetscParVector vin{xin, true};
     PetscParVector vout{xout, true};
     sol->Mult(vin, vout);
     return PetscErrorCode{0};
@@ -4765,15 +4765,17 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   PetscParMatrix A{Ahypre, petsc_format};
   PetscParMatrix M{Mhypre, petsc_format};
 
+  /* This seems incompatible with the GMRES setup...
   if (numfunctions > 1)
   {
     PetscErrorCode ierr;
     ierr = MatSetBlockSize(A, numfunctions); PCHKERRQ(A, ierr);
     ierr = MatSetBlockSize(M, numfunctions); PCHKERRQ(M, ierr);
   }
+  */
 
   constexpr bool slepc_amgx{false};
-  constexpr bool slepc_ksp{false};
+  constexpr bool slepc_ksp{true};
 
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
@@ -4830,17 +4832,16 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
     ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
     ierr = PCSetType(preconditioner, PCKSP); PCHKERRQ(slepc, ierr);
 
-    constexpr PetscInt gmres_iter{5};
-
     KSP petsc_solver_inner;
     ierr = PCKSPGetKSP(preconditioner, &petsc_solver_inner); PCHKERRQ(slepc, ierr);
     ierr = KSPSetType(petsc_solver_inner, KSPGMRES); PCHKERRQ(slepc, ierr);
-    ierr = KSPGMRESSetRestart(petsc_solver_inner, gmres_iter); PCHKERRQ(slepc, ierr);
-    ierr = KSPSetTolerances(petsc_solver_inner, 0., 0., 1e6, gmres_iter); PCHKERRQ(slepc, ierr);
+    ierr = KSPGMRESSetRestart(petsc_solver_inner, inp.tol.max_inner); PCHKERRQ(slepc, ierr); // (no restarting rn)
+    ierr = KSPSetTolerances(petsc_solver_inner, inp.tol.inner_rel, inp.tol.inner_abs, 1e6, inp.tol.max_inner); PCHKERRQ(slepc, ierr);
 
     PC preconditioner_inner;
     ierr = KSPGetPC(petsc_solver_inner, &preconditioner_inner); PCHKERRQ(slepc, ierr);
     ierr = PCSetType(preconditioner_inner, PCGAMG); PCHKERRQ(slepc, ierr);
+    ierr = PCGAMGSetSymGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
 
     ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
   }
@@ -4859,7 +4860,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   slepc.Solve();
   time.stop(time.solver);
 
-  if ((slepc_amgx) || (slepc_ksp))
+  if (slepc_amgx)
   {
     PetscErrorCode ierr;
     ierr = PCDestroy(&preconditioner); PCHKERRQ(slepc, ierr);
