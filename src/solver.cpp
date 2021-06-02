@@ -2457,7 +2457,6 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
   Ahypre.reset(saaf_a_matrix(inp, mat_lib, quad, fespace));
   Mhypre.reset(saaf_m_matrix(inp, mat_lib, quad, fespace));
 
-
   time.stop(time.matrix_assembly);
 
   if (inp.ref == Analytic::saaf_benchmark)
@@ -4949,8 +4948,13 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
     res.keff = 1.0 / res.keff;
     Vector tmp(res(0).ParFESpace()->GetTrueVSize());
     slepc.GetEigenvector(0, tmp);
-
     res(0).Distribute(tmp);
+  }
+  else
+  {
+    // if the solution failed to converge, do something so that the
+    // power/temperature solver doesn't completely bomb
+    res(0) = 1.0;
   }
 
   flux_sign_fixup(res(0));

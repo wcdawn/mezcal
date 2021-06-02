@@ -69,7 +69,6 @@ int main(int argc, char* argv[])
   if (!args.Good())
   {
     if (myid == 0) args.PrintUsage(cout);
-    MPI_Finalize();
     return 1;
   }
 
@@ -370,7 +369,6 @@ int main(int argc, char* argv[])
           saaf_true_slepc_diffusion_vector(quad.get(), time, inp, mat_lib, res, scalar_flux);
           break;
         case (Solver_choice::saaf_true_slepc_transport_vector):
-          //saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
           saaf_true_slepc_transport_vector(quad.get(), time, inp, mat_lib, res);
           calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           break;
@@ -396,7 +394,6 @@ int main(int argc, char* argv[])
           break;
         default:
           std::cerr << "Invalid solver choice.\n";
-          MPI_Finalize();
           return 1;
       }
     }

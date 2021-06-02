@@ -172,22 +172,19 @@ void temperature_heat_conduction(const Input& inp,
   HypreBoomerAMG amg;
   amg.SetPrintLevel(inp.hypre_print_level());
 
-  CGSolver cg(MPI_COMM_WORLD);
-  cg.SetRelTol(inp.tol.temp_inner_rel);
-  cg.SetAbsTol(inp.tol.temp_inner_abs);
-  cg.SetMaxIter(inp.tol.temp_max_inner);
-  cg.SetPrintLevel(inp.mfem_print_level());
+  HyprePCG cg(MPI_COMM_WORLD);
   cg.SetPreconditioner(amg);
-
-  OperatorPtr A;
-  Vector B, X;
-
-  ParGridFunction temperature_old{temperature};
+  cg.SetTol(inp.tol.temp_inner_rel);
+  //cg.SetAbsTol(inp.tol.temp_inner_abs); // TODO implement with new wrapper function i wrote
+  cg.SetMaxIter(inp.tol.temp_max_inner);
+  cg.SetPrintLevel(inp.hypre_print_level());
 
   double temp_conv{inp.tol.temp*1e2+1.0};
   for (int iter{0}; (iter < inp.tol.temp_max_outer) &&
       (temp_conv > inp.tol.temp); ++iter)
   {
+
+    ParGridFunction temperature_old{temperature};
 
     a.Update();
     a.Assemble();
@@ -195,7 +192,11 @@ void temperature_heat_conduction(const Input& inp,
     
     b.Assemble(); // necessary for bcs
 
+    OperatorPtr A;
+    Vector B, X;
+
     a.FormLinearSystem(ess_tdof_list, temperature, b, A, X, B);
+    amg.SetOperator(*A);
     cg.SetOperator(*A);
     cg.Mult(B, X);
     a.RecoverFEMSolution(X, b, temperature);
@@ -205,11 +206,9 @@ void temperature_heat_conduction(const Input& inp,
     const double local_temp_conv{temperature_old.Normlinf()};
     MPI_Allreduce(&local_temp_conv, &temp_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    //if ((inp.verbose) && (parfespace->GetMyRank() == 0))
     if (parfespace->GetMyRank() == 0)
       std::cout << "temperature_iter=" << iter << " temp_conv=" << temp_conv << std::endl;
 
-    temperature_old = temperature;
   }
 
   switch (inp.sol)
