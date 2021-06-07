@@ -13,7 +13,7 @@ double SAAFVoidTauCoefficient::Eval(ElementTransformation &T,
   const int attribute{T.Attribute-1};
   const double sigma_t{mat_lib.mat[attribute].rec.sigma_t[g]};
 
-  constexpr bool max_vertex_distance{true};
+  constexpr bool use_max_vertex_distance{true};
 
   // evaluate using cacheing
   double h{0.0};
@@ -31,7 +31,7 @@ double SAAFVoidTauCoefficient::Eval(ElementTransformation &T,
   return h;
 
   constexpr bool debug{true};
-  if (c*h*sigma_t >= squigma) return (debug) ? 0.0 : 1.0/(c*sigma_t); // unmodified
+  if (h*sigma_t >= squigma) return (debug) ? 0.0 : 1.0/sigma_t; // unmodified
   ++modified;
   return (debug) ? 1.0 : h/squigma; // modified
 

@@ -14,7 +14,7 @@ public:
 
   SAAFVoidTauCoefficient(mfem::ParMesh *pm, const Material_library &mat_lib_lib,
                          int group, double squigma_in=0.5)
-    : pmesh{pm}, mat_lib{mat_lib_lib}, g{group}, squigma{squigma_in}, c{c_in}
+    : pmesh{pm}, mat_lib{mat_lib_lib}, g{group}, squigma{squigma_in}
   {
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   }
@@ -42,7 +42,6 @@ private:
   const int g;
 
   const double squigma;
-  const double c;
 
   int myid;
   int modified{0};
