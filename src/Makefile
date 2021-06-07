@@ -16,8 +16,10 @@ CPP_FILES = main.cpp \
 			level_symmetric_quadrature.cpp \
 			material_library.cpp \
 			matrix_pwconst_coefficient.cpp \
+			output.cpp \
 			quadrature.cpp \
 			result.cpp \
+			saaf_void_tau_coefficient.cpp \
 			scattering_coefficient.cpp \
 			solver.cpp \
 			solver_choice.cpp \
@@ -47,8 +49,10 @@ HPP_FILES = analytic.hpp \
 			material_library.hpp \
 			matrix_pwconst_coefficient.hpp \
 			memory.hpp \
+			output.hpp \
 			quadrature.hpp \
 			result.hpp \
+			saaf_void_tau_coefficient.hpp \
 			scattering_coefficient.hpp \
 			solver.hpp \
 			solver_choice.hpp \
@@ -144,7 +148,7 @@ addon :
 
 # Listing Order:
 # <object file> : $(MFEM_HEADER) <my header> <other headers>
-main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp timer.hpp xslibrary.hpp quadrature.hpp legendre_chebyschev_quadrature.hpp level_symmetric_quadrature.hpp
+main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp timer.hpp xslibrary.hpp quadrature.hpp legendre_chebyschev_quadrature.hpp level_symmetric_quadrature.hpp output.hpp
 analytic.o : $(MFEM_HEADER) analytic.hpp result.hpp xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
@@ -169,5 +173,7 @@ stability_tau_coefficient.o : $(MFEM_HEADER) stability_tau_coefficient.hpp
 vector_integrator_wrapper.o : $(MFEM_HEADER) vector_integrator_wrapper.hpp
 conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp thermal_conductivity_coefficient.hpp
 thermal_conductivity_coefficient.o : $(MFEM_HEADER) thermal_conductivity_coefficient.hpp material_library.hpp
-upscattering_coefficient.o : $(MFEM_HEADER) material_library.hpp result.hpp
-downscattering_coefficient.o : $(MFEM_HEADER) material_library.hpp result.hpp
+upscattering_coefficient.o : $(MFEM_HEADER) upscattering_coefficient.hpp material_library.hpp result.hpp
+downscattering_coefficient.o : $(MFEM_HEADER) downscattering_coefficient.hpp material_library.hpp result.hpp
+output.o : $(MFEM_HEADER) output.hpp input.hpp material_library.hpp
+saaf_void_tau_coefficient.o : $(MFEM_HEADER) saaf_void_tau_coefficient.hpp material_library.hpp

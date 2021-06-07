@@ -252,6 +252,21 @@ void saaf_split_power_iteration(const Quadrature* const quad,
                                 Result& angular_flux,
                                 Result& scalar_flux);
 
+/*
+void saaf_split_slepc_vector(const Quadrature* const quad,
+                             Timer& time,
+                             const Input& inp,
+                             const Material_library& mat_lib,
+                             Result& angular_flux,
+                             Result& scalar_flux);
+*/
+void saaf_self_power_iteration(const Quadrature* const quad,
+                               Timer& time,
+                               const Input& inp,
+                               const Material_library& mat_lib,
+                               Result& angular_flux,
+                               Result& scalar_flux);
+
 void saaf_true_slepc_diffusion_vector(const Quadrature* const quad,
                                       Timer& time,
                                       const Input& inp,
@@ -295,7 +310,7 @@ void calc_downscatter(const int g,
                       const Material_library& mat_lib,
                       mfem::QuadratureFunction& dnscatter_quad_func);
 void calc_selfscatter(const int g, 
-                      const Result& scalar_flux,
+                      const mfem::ParGridFunction &scalar_flux,
                       const Material_library& mat_lib,
                       mfem::QuadratureFunction& selfscatter_quad_func);
 void calc_fiss_src(const Result& scalar_flux, 
@@ -314,7 +329,8 @@ void calc_all_scatter(const Result& scalar_flux,
                       const Material_library& mat_lib,
                       const Quadrature* quad,
                       mfem::QuadratureFunction& scat_quad,
-                      mfem::QuadratureFunction& scat_saaf_quad);
+                      mfem::QuadratureFunction& scat_saaf_quad,
+                      bool include_self_scatter = true);
 
 class Failed_to_converge : std::exception
 {
@@ -361,3 +377,15 @@ mfem::HypreParMatrix* saaf_m_matrix(const Input &inp,
                                    mfem::ParFiniteElementSpace* fespace);
 
 #endif
+
+void dg_spn_power_iteration(Input &inp,
+                            const Material_library &mat_lib,
+                            mfem::ParMesh *pmesh);
+void dg_transport_power_iteration(Input &inp,
+                                  const Material_library &mat_lib,
+                                  const Quadrature *quad,
+                                  mfem::ParMesh *pmesh);
+
+void dg_calc_scalar_flux(std::vector<std::unique_ptr<mfem::ParGridFunction>> &angular_flux,
+                         const Quadrature *quad,
+                         mfem::ParGridFunction &scalar_flux);

@@ -15,6 +15,8 @@
 #include "level_symmetric_quadrature.hpp"
 #include "legendre_chebyschev_quadrature.hpp"
 
+#include "output.hpp"
+
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -166,6 +168,7 @@ int main(int argc, char* argv[])
     (inp.sol == Solver_choice::saaf_true_slepc_vector) || 
     (inp.sol == Solver_choice::saaf_split_slepc_vector) || 
     (inp.sol == Solver_choice::saaf_split_power_iteration) || 
+    (inp.sol == Solver_choice::saaf_self_power_iteration) || 
     (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) || 
     (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) || 
     (inp.sol == Solver_choice::saaf_true_amgx_vector))};
@@ -206,6 +209,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::saaf_split_slepc_vector):
     case (Solver_choice::saaf_split_power_iteration):
+    case (Solver_choice::saaf_self_power_iteration):
     case (Solver_choice::saaf_true_slepc_diffusion_vector):
     case (Solver_choice::saaf_true_slepc_transport_vector):
     case (Solver_choice::saaf_true_amgx_vector):
@@ -234,6 +238,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::saaf_split_slepc_vector):
     case (Solver_choice::saaf_split_power_iteration):
+    case (Solver_choice::saaf_self_power_iteration):
     case (Solver_choice::saaf_true_slepc_diffusion_vector):
     case (Solver_choice::saaf_true_slepc_transport_vector):
     case (Solver_choice::saaf_true_amgx_vector):
@@ -263,6 +268,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::saaf_split_slepc_vector):
     case (Solver_choice::saaf_split_power_iteration):
+    case (Solver_choice::saaf_self_power_iteration):
     case (Solver_choice::amgx_vector):
     case (Solver_choice::saaf_true_amgx_vector):
       flux_length = 1;
@@ -280,6 +286,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_vector):
     case (Solver_choice::saaf_split_slepc_vector):
     case (Solver_choice::saaf_split_power_iteration):
+    case (Solver_choice::saaf_self_power_iteration):
     case (Solver_choice::saaf_angle_power_iteration):
     case (Solver_choice::amgx_vector):
     case (Solver_choice::saaf_true_amgx_vector):
@@ -388,6 +395,16 @@ int main(int argc, char* argv[])
           saaf_split_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
           calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           break;
+        case (Solver_choice::saaf_self_power_iteration):
+          saaf_self_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
+          calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
+          break;
+        case (Solver_choice::dg_spn_power_iteration):
+          dg_spn_power_iteration(inp, mat_lib, &pmesh);
+          break;
+        case (Solver_choice::dg_transport_power_iteration):
+          dg_transport_power_iteration(inp, mat_lib, quad.get(), &pmesh);
+          break;
         case (Solver_choice::conduction_radial):
         case (Solver_choice::conduction_linear):
           temperature_heat_conduction(inp, mat_lib, power, temperature);
@@ -446,6 +463,7 @@ int main(int argc, char* argv[])
         (inp.sol == Solver_choice::saaf_true_slepc_vector) ||
         (inp.sol == Solver_choice::saaf_split_slepc_vector) ||
         (inp.sol == Solver_choice::saaf_split_power_iteration) ||
+        (inp.sol == Solver_choice::saaf_self_power_iteration) ||
         (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ||
         (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) ||
         (inp.sol == Solver_choice::saaf_true_amgx_vector))
@@ -455,6 +473,7 @@ int main(int argc, char* argv[])
           (inp.sol == Solver_choice::saaf_true_slepc_vector) || 
           (inp.sol == Solver_choice::saaf_split_slepc_vector) || 
           (inp.sol == Solver_choice::saaf_split_power_iteration) || 
+          (inp.sol == Solver_choice::saaf_self_power_iteration) || 
           (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) || 
           (inp.sol == Solver_choice::saaf_true_amgx_vector))
       {
@@ -510,6 +529,8 @@ int main(int argc, char* argv[])
     time.stop();
 
   }
+
+  total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs");
 
   if (myid == 0) time.Print(cout);
 

@@ -21,7 +21,7 @@ private:
 
   mfem::Mesh* const mesh;
 
-  int g;
+  const int g;
 
   const Material_library& mat_lib;
 
