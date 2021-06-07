@@ -3772,14 +3772,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       ParBilinearForm d{scalar_flux_fespace};
       d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
       d.AddDomainIntegrator(new MassIntegrator{removal_func});
-      d.Assemble(skip_zeros);
+      d.Assemble(1);
 
       // all bcs essential to match the scalar flux
       Array<int> ess_bdr(pmesh->bdr_attributes.Max());
       ess_bdr = 1;
       d.EliminateEssentialBCDiag(ess_bdr, 1.0);
 
-      d.Finalize(skip_zeros);
+      d.Finalize(1);
       std::unique_ptr<HypreParMatrix> Dmat(d.ParallelAssemble());
 
 
@@ -4819,7 +4819,6 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{1}; // TODO
 
   ParBilinearForm diffusion_bilinear{fespace};
 
@@ -4883,6 +4882,10 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
   MatrixPWConstCoefficient removal_func{removal};
   diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
 
+  bool all_essential{true};
+  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
+    all_essential = (ess_bdr[i] == 0);
+  const int skip_zeros{(all_essential) ? 2 : 1};
   diffusion_bilinear.Assemble(skip_zeros);
   diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
   diffusion_bilinear.Finalize(skip_zeros);
@@ -4897,7 +4900,6 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{1}; // TODO
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -4923,6 +4925,10 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
   MatrixPWConstCoefficient fission_func{fission};
   fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
 
+  bool all_essential{true};
+  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
+    all_essential = (ess_bdr[i] == 0);
+  const int skip_zeros{(all_essential) ? 2 : 1};
   fission_bilinear.Assemble(skip_zeros);
   fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
   fission_bilinear.Finalize(skip_zeros);
