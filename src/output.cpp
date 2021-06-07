@@ -35,9 +35,10 @@ void total_xs_plot(ParMesh *pmesh,
     PWConstCoefficient tot_func{tot_vec};
     tot_pgf[g].ProjectCoefficient(tot_func);
 
-    //constexpr double squigma = 1e-1; // default=0.5
-    //SAAFVoidTauCoefficient saaf_void_func{pmesh, mat_lib, g, squigma};
-    SAAFVoidTauCoefficient saaf_void_func{pmesh, mat_lib, g};
+    // a good value is probably closer to 1e-3
+    constexpr double squigma = 4.5e-2; // default=0.5
+    SAAFVoidTauCoefficient saaf_void_func{pmesh, mat_lib, g, squigma};
+    //SAAFVoidTauCoefficient saaf_void_func{pmesh, mat_lib, g};
     void_pgf[g].ProjectCoefficient(saaf_void_func);
 
     std::ostringstream record_name;

@@ -28,7 +28,9 @@ double SAAFVoidTauCoefficient::Eval(ElementTransformation &T,
     element_h.insert({T.ElementNo, h});
   }
 
-  return h;
+  // TODO
+  // this is for plotting and determining an acceptable value for squigma
+  return h*sigma_t;
 
   constexpr bool debug{true};
   if (h*sigma_t >= squigma) return (debug) ? 0.0 : 1.0/sigma_t; // unmodified

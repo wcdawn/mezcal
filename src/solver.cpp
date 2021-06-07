@@ -879,13 +879,13 @@ void spn_slepc_vector(Timer& time, const Input& inp,
 
   time.start(time.matrix_assembly);
 
-  HypreParMatrix *Ahypre{spn_a_matrix(inp, mat_lib, fespace, ess_bdr)};
-  HypreParMatrix *Mhypre{spn_m_matrix(inp, mat_lib, fespace, ess_bdr)};
+  std::unique_ptr<HypreParMatrix> Ahypre{spn_a_matrix(inp, mat_lib, fespace, ess_bdr)};
+  std::unique_ptr<HypreParMatrix> Mhypre{spn_m_matrix(inp, mat_lib, fespace, ess_bdr)};
 
   time.stop(time.matrix_assembly);
 
   slepc_initialize(inp);
-  slepc_solver_wrapper(Ahypre, Mhypre, inp, time, res, mat_lib.ngroup()*inp.spn_eq());
+  slepc_solver_wrapper(Ahypre.release(), Mhypre.release(), inp, time, res, mat_lib.ngroup()*inp.spn_eq());
   slepc_finalize();
 
   scalar_flux.keff = res.keff;
@@ -4819,7 +4819,7 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{2};
+  const int skip_zeros{1}; // TODO
 
   ParBilinearForm diffusion_bilinear{fespace};
 
@@ -4897,7 +4897,7 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{2};
+  const int skip_zeros{1}; // TODO
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)

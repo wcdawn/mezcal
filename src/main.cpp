@@ -530,7 +530,7 @@ int main(int argc, char* argv[])
 
   }
 
-  total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs");
+  //total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs"); // TODO
 
   if (myid == 0) time.Print(cout);
 
