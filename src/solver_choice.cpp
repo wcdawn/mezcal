@@ -26,6 +26,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
     case (Solver_choice::saaf_self_power_iteration): return "saaf_self_power_iteration";
     case (Solver_choice::dg_spn_power_iteration): return "dg_spn_power_iteration";
     case (Solver_choice::dg_transport_power_iteration): return "dg_transport_power_iteration";
+    case (Solver_choice::spn_partial_assembly_power_iteration): return "spn_partial_assembly_power_iteration";
     case (Solver_choice::conduction_linear): return "conduction_linear";
     case (Solver_choice::conduction_radial): return "conduction_radial";
     default: return "invalid";
@@ -54,6 +55,7 @@ Solver_choice solver_choice_str_to_enum(const string& solver)
   if (solver == "saaf_self_power_iteration") return Solver_choice::saaf_self_power_iteration;
   if (solver == "dg_spn_power_iteration") return Solver_choice::dg_spn_power_iteration;
   if (solver == "dg_transport_power_iteration") return Solver_choice::dg_transport_power_iteration;
+  if (solver == "spn_partial_assembly_power_iteration") return Solver_choice::spn_partial_assembly_power_iteration;
   if (solver == "conduction_linear") return Solver_choice::conduction_linear;
   if (solver == "conduction_radial") return Solver_choice::conduction_radial;
   return Solver_choice::invalid;

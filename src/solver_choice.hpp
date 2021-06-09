@@ -26,6 +26,7 @@ enum class Solver_choice
   saaf_true_slepc_transport_vector,
   dg_spn_power_iteration,
   dg_transport_power_iteration,
+  spn_partial_assembly_power_iteration,
   conduction_linear, // TODO move this into "analytic"
   conduction_radial // TODO move this into "analytic"
 };

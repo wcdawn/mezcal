@@ -405,6 +405,9 @@ int main(int argc, char* argv[])
         case (Solver_choice::dg_transport_power_iteration):
           dg_transport_power_iteration(inp, mat_lib, quad.get(), &pmesh);
           break;
+        case (Solver_choice::spn_partial_assembly_power_iteration):
+          spn_partial_assembly_power_iteration(inp, mat_lib, ess_bdr, res);
+          break;
         case (Solver_choice::conduction_radial):
         case (Solver_choice::conduction_linear):
           temperature_heat_conduction(inp, mat_lib, power, temperature);

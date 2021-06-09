@@ -920,8 +920,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
 
   time.stop(time.matrix_assembly);
 
-  power_iteration_amgx(Ahypre, Mhypre, inp, time, res);
-  //power_iteration_hypre(Ahypre, Mhypre, inp, time, res, mat_lib.ngroup()*inp.spn_eq());
+  power_iteration_amgx(Ahypre, Mhypre, inp, time, res, mat_lib.ngroup()*inp.spn_eq());
 
   return;
 }
@@ -2528,7 +2527,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
   }
   else
   {
-    power_iteration_amgx(Ahypre.release(), Mhypre.release(), inp, time, angular_flux);
+    power_iteration_amgx(Ahypre.release(), Mhypre.release(), inp, time, angular_flux, mat_lib.ngroup()*quad->nd());
   }
 
   return;
@@ -3772,14 +3771,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       ParBilinearForm d{scalar_flux_fespace};
       d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
       d.AddDomainIntegrator(new MassIntegrator{removal_func});
-      d.Assemble(skip_zeros);
+      d.Assemble(1);
 
       // all bcs essential to match the scalar flux
       Array<int> ess_bdr(pmesh->bdr_attributes.Max());
       ess_bdr = 1;
       d.EliminateEssentialBCDiag(ess_bdr, 1.0);
 
-      d.Finalize(skip_zeros);
+      d.Finalize(1);
       std::unique_ptr<HypreParMatrix> Dmat(d.ParallelAssemble());
 
 
@@ -4581,43 +4580,68 @@ double par_norml2(const Vector &x)
   return std::sqrt(norm);
 }
 
-void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res)
+void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions)
 {
 
-  constexpr bool compute_residual{false};
   const int myid{res(0).ParFESpace()->GetMyRank()};
   const MPI_Comm mycomm{res(0).ParFESpace()->GetComm()};
 
-  if (myid == 0) std::cout << "AMGX_SETUP_BEGIN" << std::endl;
-  time.start("amgx_setup");
-  AmgXSolver Aamgx;
-  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-  Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+  constexpr bool use_amgx{false};
+  constexpr bool compute_residual{false};
 
-  if (myid == 0) std::cout << "AMGX_MPI_SETTING_BEGIN" << std::endl;
-  if (inp.ndevices > 0)
+  std::unique_ptr<Solver> sol, prec;
+
+  if (use_amgx)
   {
-    // use MPITeams
-    Aamgx.InitMPITeams(mycomm, inp.ndevices);
+
+    if (myid == 0) std::cout << "AMGX_SETUP_BEGIN" << std::endl;
+    time.start("amgx_setup");
+    std::unique_ptr<AmgXSolver> Aamgx{std::make_unique<AmgXSolver>()};
+    Aamgx->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+    Aamgx->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+    if (myid == 0) std::cout << "AMGX_MPI_SETTING_BEGIN" << std::endl;
+    if (inp.ndevices > 0)
+      Aamgx->InitMPITeams(mycomm, inp.ndevices); // use MPITeams
+    else
+      Aamgx->InitExclusiveGPU(mycomm); // use MPI exclusive
+    if (myid == 0) std::cout << "AMGX_MPI_SETTING_END" << std::endl;
+
+    if (myid == 0) std::cout << "AMGX_SET_OPERATOR_BEGIN" << std::endl;
+    Aamgx->SetOperator(*A);
+    if (!compute_residual)
+    {
+      delete A;
+      A = nullptr;
+    }
+    if (myid == 0) std::cout << "AMGX_SET_OPERATOR_END" << std::endl;
+
+    time.stop("amgx_setup");
+    if (myid == 0) std::cout << "AMGX_SETUP_END" << std::endl;
+
+    sol = std::move(Aamgx);
+
   }
   else
   {
-    // use MPI Exclusive
-    Aamgx.InitExclusiveGPU(mycomm);
-  }
-  if (myid == 0) std::cout << "AMGX_MPI_SETTING_END" << std::endl;
 
-  if (myid == 0) std::cout << "AMGX_SET_OPERATOR_BEGIN" << std::endl;
-  Aamgx.SetOperator(*A);
-  if (!compute_residual) 
-  {
-    delete A;
-    A = nullptr;
-  }
-  if (myid == 0) std::cout << "AMGX_SET_OPERATOR_END" << std::endl;
+    std::unique_ptr<HypreGMRES> gmres{std::make_unique<HypreGMRES>(*A)};
+    gmres->SetPrintLevel((inp.verbose) ? 9 : 0);
+    gmres->SetMaxIter(inp.tol.max_inner);
+    gmres->SetTol(inp.tol.inner_rel);
+    gmres->SetAbsTol(inp.tol.inner_abs);
+    gmres->SetKDim(50); // default, should come from user input
 
-  time.stop("amgx_setup");
-  if (myid == 0) std::cout << "AMGX_SETUP_END" << std::endl;
+    std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*A)};
+    amg->SetPrintLevel(inp.hypre_print_level());
+    if (numfunctions > 1)
+      HYPRE_BoomerAMGSetNumFunctions(*amg, numfunctions);
+    gmres->SetPreconditioner(*amg);
+
+    sol = std::move(gmres);
+    prec = std::move(amg);
+
+  }
 
   if (myid == 0) std::cout << "RANDOMIZE_BEGIN" << std::endl;
   HypreParVector x{*M};
@@ -4666,7 +4690,7 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
     if (myid == 0) std::cout << "AMGX_SOLVE_BEGIN" << std::endl;
     time.start("amgx_solve");
     // x = A^-1 * b
-    Aamgx.Mult(b, x);
+    sol->Mult(b, x);
     time.stop("amgx_solve");
     if (myid == 0) std::cout << "AMGX_SOLVE_END" << std::endl;
 
@@ -4702,7 +4726,6 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
     }
 
     if (myid == 0) std::cout << "iter=" << iter
-                             << " inner=" << Aamgx.GetNumIterations()
                              << " k=" << k 
                              << " dk=" << k_conv 
                              << " dx=" << x_conv 
@@ -4714,7 +4737,6 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
   // cleanup
   delete A;
   delete M;
-  Aamgx.Finalize();
 
   // store solution
   res.keff = k;
@@ -4743,75 +4765,6 @@ void flux_sign_fixup(Vector& pgf)
   return;
 }
 
-void power_iteration_hypre(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions)
-{
-  
-  const int myid{res(0).ParFESpace()->GetMyRank()};
-
-  HypreBoomerAMG amg{*A};
-  if (numfunctions > 1)
-    amg.SetSystemsOptions(numfunctions);
-  amg.SetPrintLevel(inp.hypre_print_level());
-
-  HypreGMRES sol{*A};
-  sol.SetPreconditioner(amg);
-  sol.SetPrintLevel(inp.hypre_print_level());
-  sol.SetTol(inp.tol.inner_rel);
-  sol.SetAbsTol(inp.tol.inner_abs);
-  sol.SetMaxIter(inp.tol.max_inner);
-  sol.SetKDim(1000); // TODO probably from input file
-
-  HypreParVector x{*A};
-  x.Randomize(730);
-
-  double k{1.0};
-  double k_conv{inp.tol.k*1e2+1.0};
-  double x_conv{inp.tol.phi+1e2+1.0};
-  for (int iter{0}; (iter < inp.tol.max_outer) && 
-    ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
-  {
-    const double k_old{k};
-    HypreParVector x_old{x};
-    x_old.UseDevice(true);
-    x_old = x;
-
-    HypreParVector v{x};
-    v.UseDevice(true);
-    v = x;
-    v /= par_norml2(x);
-
-    HypreParVector b{v};
-    b.UseDevice(true);
-    M->Mult(v, b, 1.0, 1.0); // make sure we use the proper (overloaded) function signature
-
-    sol.Mult(b, x);
-
-    const double local_k{v*x};
-    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-    // convergence criteria
-    k_conv = std::abs(k - k_old);
-    x_old -= x;
-    x_conv = par_norml2(x_old);
-
-    if (myid == 0) std::cout << "iter=" << iter
-                             << " k=" << k 
-                             << " dk=" << k_conv 
-                             << " dx=" << x_conv 
-                             << std::endl;
-
-  }
-  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
-
-  res.keff = k;
-  time.start("distribute");
-  res(0).Distribute(x);
-  time.stop("distribute");
-  flux_sign_fixup(res(0));
-
-  return;
-}
-
 HypreParMatrix* spn_a_matrix(const Input &inp,
                              const Material_library &mat_lib,
                              ParFiniteElementSpace* fespace,
@@ -4819,7 +4772,6 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{1}; // TODO
 
   ParBilinearForm diffusion_bilinear{fespace};
 
@@ -4883,6 +4835,10 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
   MatrixPWConstCoefficient removal_func{removal};
   diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
 
+  bool all_essential{true};
+  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
+    all_essential = (ess_bdr[i] == 0);
+  const int skip_zeros{(all_essential) ? 2 : 1};
   diffusion_bilinear.Assemble(skip_zeros);
   diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
   diffusion_bilinear.Finalize(skip_zeros);
@@ -4897,7 +4853,6 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{1}; // TODO
 
   std::vector<DenseMatrix> fission(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
@@ -4923,6 +4878,10 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
   MatrixPWConstCoefficient fission_func{fission};
   fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
 
+  bool all_essential{true};
+  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
+    all_essential = (ess_bdr[i] == 0);
+  const int skip_zeros{(all_essential) ? 2 : 1};
   fission_bilinear.Assemble(skip_zeros);
   fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
   fission_bilinear.Finalize(skip_zeros);
@@ -5981,6 +5940,153 @@ void dg_calc_scalar_flux(std::vector<std::unique_ptr<ParGridFunction>> &angular_
     *(angular_flux[n]) *= quad->weight(n);
     scalar_flux += *(angular_flux[n]);
     *(angular_flux[n]) /= quad->weight(n);
+  }
+
+  return;
+}
+
+void spn_partial_assembly_power_iteration(const Input &inp,
+                                          const Material_library &mat_lib,
+                                          mfem::Array<int> &ess_bdr,
+                                          Result &scalar_flux)
+{
+
+  ParFiniteElementSpace *fespace = scalar_flux(0).ParFESpace();
+  ParMesh *pmesh = fespace->GetParMesh();
+  MFEM_VERIFY(UsesTensorBasis(*fespace),
+      "AssemblyLevel::PARTIAL requries tensor basis finite elements"
+      " (e.g. quads in 2d)");
+
+  const int myid{fespace->GetMyRank()};
+
+  std::vector<PWConstCoefficient> diffusion_func;
+  diffusion_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    Vector diffusion_vec(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      diffusion_vec(i) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
+    diffusion_func.emplace_back(diffusion_vec);
+  }
+
+  std::vector<PWConstCoefficient> removal_func;
+  removal_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    Vector removal_vec(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      removal_vec(i) = mat_lib.mat[i].rec.sigma_r(g,0);
+    removal_func.emplace_back(removal_vec);
+  }
+
+  std::vector<std::unique_ptr<ParBilinearForm>> a(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    a[g] = std::make_unique<ParBilinearForm>(fespace);
+    a[g]->SetAssemblyLevel(AssemblyLevel::PARTIAL); // TODO consider ELEMENT
+    a[g]->AddDomainIntegrator(new DiffusionIntegrator{diffusion_func[g]});
+    a[g]->AddDomainIntegrator(new MassIntegrator{removal_func[g]});
+    a[g]->Assemble();
+  }
+
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  const int integration_order{fespace->GetOrder(0)+1};
+  QuadratureSpace qspace{pmesh, integration_order};
+
+  std::vector<QuadratureFunction> fiss_quad, upscatter_quad;
+  fiss_quad.reserve(mat_lib.ngroup());
+  upscatter_quad.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss_quad.emplace_back(&qspace);
+    upscatter_quad.emplace_back(&qspace);
+  }
+
+  QuadratureFunction dnscatter_quad{&qspace};
+  QuadratureFunctionCoefficient dnscatter_quad_func{dnscatter_quad};
+
+  std::vector<std::unique_ptr<ParLinearForm>> b(mat_lib.ngroup());
+  ConstantCoefficient one{1.0};
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    b[g] = std::make_unique<ParLinearForm>(fespace);
+    b[g]->AddDomainIntegrator(new DomainLFIntegrator{dnscatter_quad_func});
+  }
+
+  QuadratureFunction fiss_src_quad{&qspace};
+
+  ConstantCoefficient zero{0.0};
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    scalar_flux(g) = 1.0;
+    scalar_flux(g).ProjectBdrCoefficient(zero, ess_bdr);
+  }
+
+  CGSolver cg{MPI_COMM_WORLD};
+  cg.SetPrintLevel(inp.mfem_print_level());
+  cg.SetMaxIter(inp.tol.max_inner);
+  cg.SetRelTol(inp.tol.inner_rel);
+  cg.SetAbsTol(inp.tol.inner_abs);
+
+  scalar_flux.keff = 1.0;
+  double k_conv{inp.tol.k*1e2+1.0};
+  double phi_conv{inp.tol.phi*1e2+1.0};
+  double fiss_src{1.0};
+  for (int iter{0}; (iter < inp.tol.max_outer)
+                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
+  {
+
+    const double fiss_src_old{fiss_src};
+    ParGridFunction flux_old{scalar_flux(0)};
+
+    calc_fiss_upscatter(scalar_flux, mat_lib, fiss_quad, upscatter_quad, inp.flux_free_chi);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      fiss_quad[g] /= scalar_flux.keff;
+      upscatter_quad[g] += fiss_quad[g];
+    }
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      calc_downscatter(g, scalar_flux, mat_lib, dnscatter_quad);
+      dnscatter_quad += upscatter_quad[g];
+
+      b[g]->Assemble();
+
+      OperatorPtr A;
+      Vector B, X;
+
+
+      a[g]->FormLinearSystem(ess_tdof_list, scalar_flux(g), *(b[g]), A, X, B);
+
+      OperatorJacobiSmoother prec{*(a[g]), ess_tdof_list};
+      cg.SetPreconditioner(prec);
+
+      cg.SetOperator(*A);
+      cg.Mult(B, X);
+      a[g]->RecoverFEMSolution(X, *(b[g]), scalar_flux(g));
+
+    }
+
+    const double kold{scalar_flux.keff};
+    calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
+    fiss_src = par_norml2(fiss_src_quad);
+    scalar_flux.keff *= fiss_src/fiss_src_old;
+
+    k_conv = std::abs(scalar_flux.keff - kold);
+    flux_old -= scalar_flux(0);
+    phi_conv = par_norml2(flux_old);
+
+    if (myid == 0)
+      std::cout << "iter=" << iter
+                << " keff=" << scalar_flux.keff
+                << " dk=" << k_conv
+                << " dphi=" << phi_conv
+                << std::endl;
+
   }
 
   return;
