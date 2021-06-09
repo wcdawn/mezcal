@@ -920,8 +920,7 @@ void spn_amgx_vector(Timer& time, const Input& inp,
 
   time.stop(time.matrix_assembly);
 
-  power_iteration_amgx(Ahypre, Mhypre, inp, time, res);
-  //power_iteration_hypre(Ahypre, Mhypre, inp, time, res, mat_lib.ngroup()*inp.spn_eq());
+  power_iteration_amgx(Ahypre, Mhypre, inp, time, res, mat_lib.ngroup()*inp.spn_eq());
 
   return;
 }
@@ -2528,7 +2527,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
   }
   else
   {
-    power_iteration_amgx(Ahypre.release(), Mhypre.release(), inp, time, angular_flux);
+    power_iteration_amgx(Ahypre.release(), Mhypre.release(), inp, time, angular_flux, mat_lib.ngroup()*quad->nd());
   }
 
   return;
@@ -4581,43 +4580,68 @@ double par_norml2(const Vector &x)
   return std::sqrt(norm);
 }
 
-void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res)
+void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions)
 {
 
-  constexpr bool compute_residual{false};
   const int myid{res(0).ParFESpace()->GetMyRank()};
   const MPI_Comm mycomm{res(0).ParFESpace()->GetComm()};
 
-  if (myid == 0) std::cout << "AMGX_SETUP_BEGIN" << std::endl;
-  time.start("amgx_setup");
-  AmgXSolver Aamgx;
-  Aamgx.DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-  Aamgx.ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+  constexpr bool use_amgx{false};
+  constexpr bool compute_residual{false};
 
-  if (myid == 0) std::cout << "AMGX_MPI_SETTING_BEGIN" << std::endl;
-  if (inp.ndevices > 0)
+  std::unique_ptr<Solver> sol, prec;
+
+  if (use_amgx)
   {
-    // use MPITeams
-    Aamgx.InitMPITeams(mycomm, inp.ndevices);
+
+    if (myid == 0) std::cout << "AMGX_SETUP_BEGIN" << std::endl;
+    time.start("amgx_setup");
+    std::unique_ptr<AmgXSolver> Aamgx{std::make_unique<AmgXSolver>()};
+    Aamgx->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+    Aamgx->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+    if (myid == 0) std::cout << "AMGX_MPI_SETTING_BEGIN" << std::endl;
+    if (inp.ndevices > 0)
+      Aamgx->InitMPITeams(mycomm, inp.ndevices); // use MPITeams
+    else
+      Aamgx->InitExclusiveGPU(mycomm); // use MPI exclusive
+    if (myid == 0) std::cout << "AMGX_MPI_SETTING_END" << std::endl;
+
+    if (myid == 0) std::cout << "AMGX_SET_OPERATOR_BEGIN" << std::endl;
+    Aamgx->SetOperator(*A);
+    if (!compute_residual)
+    {
+      delete A;
+      A = nullptr;
+    }
+    if (myid == 0) std::cout << "AMGX_SET_OPERATOR_END" << std::endl;
+
+    time.stop("amgx_setup");
+    if (myid == 0) std::cout << "AMGX_SETUP_END" << std::endl;
+
+    sol = std::move(Aamgx);
+
   }
   else
   {
-    // use MPI Exclusive
-    Aamgx.InitExclusiveGPU(mycomm);
-  }
-  if (myid == 0) std::cout << "AMGX_MPI_SETTING_END" << std::endl;
 
-  if (myid == 0) std::cout << "AMGX_SET_OPERATOR_BEGIN" << std::endl;
-  Aamgx.SetOperator(*A);
-  if (!compute_residual) 
-  {
-    delete A;
-    A = nullptr;
-  }
-  if (myid == 0) std::cout << "AMGX_SET_OPERATOR_END" << std::endl;
+    std::unique_ptr<HypreGMRES> gmres{std::make_unique<HypreGMRES>(*A)};
+    gmres->SetPrintLevel((inp.verbose) ? 9 : 0);
+    gmres->SetMaxIter(inp.tol.max_inner);
+    gmres->SetTol(inp.tol.inner_rel);
+    gmres->SetAbsTol(inp.tol.inner_abs);
+    gmres->SetKDim(50); // default, should come from user input
 
-  time.stop("amgx_setup");
-  if (myid == 0) std::cout << "AMGX_SETUP_END" << std::endl;
+    std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*A)};
+    amg->SetPrintLevel(inp.hypre_print_level());
+    if (numfunctions > 1)
+      HYPRE_BoomerAMGSetNumFunctions(*amg, numfunctions);
+    gmres->SetPreconditioner(*amg);
+
+    sol = std::move(gmres);
+    prec = std::move(amg);
+
+  }
 
   if (myid == 0) std::cout << "RANDOMIZE_BEGIN" << std::endl;
   HypreParVector x{*M};
@@ -4666,7 +4690,7 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
     if (myid == 0) std::cout << "AMGX_SOLVE_BEGIN" << std::endl;
     time.start("amgx_solve");
     // x = A^-1 * b
-    Aamgx.Mult(b, x);
+    sol->Mult(b, x);
     time.stop("amgx_solve");
     if (myid == 0) std::cout << "AMGX_SOLVE_END" << std::endl;
 
@@ -4702,7 +4726,6 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
     }
 
     if (myid == 0) std::cout << "iter=" << iter
-                             << " inner=" << Aamgx.GetNumIterations()
                              << " k=" << k 
                              << " dk=" << k_conv 
                              << " dx=" << x_conv 
@@ -4714,7 +4737,6 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
   // cleanup
   delete A;
   delete M;
-  Aamgx.Finalize();
 
   // store solution
   res.keff = k;
@@ -4739,75 +4761,6 @@ void flux_sign_fixup(Vector& pgf)
 
   if ((max < 0.0) || (max < local_normlinf))
     pgf *= -1.0;
-
-  return;
-}
-
-void power_iteration_hypre(HypreParMatrix* A, HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions)
-{
-  
-  const int myid{res(0).ParFESpace()->GetMyRank()};
-
-  HypreBoomerAMG amg{*A};
-  if (numfunctions > 1)
-    amg.SetSystemsOptions(numfunctions);
-  amg.SetPrintLevel(inp.hypre_print_level());
-
-  HypreGMRES sol{*A};
-  sol.SetPreconditioner(amg);
-  sol.SetPrintLevel(inp.hypre_print_level());
-  sol.SetTol(inp.tol.inner_rel);
-  sol.SetAbsTol(inp.tol.inner_abs);
-  sol.SetMaxIter(inp.tol.max_inner);
-  sol.SetKDim(1000); // TODO probably from input file
-
-  HypreParVector x{*A};
-  x.Randomize(730);
-
-  double k{1.0};
-  double k_conv{inp.tol.k*1e2+1.0};
-  double x_conv{inp.tol.phi+1e2+1.0};
-  for (int iter{0}; (iter < inp.tol.max_outer) && 
-    ((k_conv > inp.tol.k) || (x_conv > inp.tol.phi)); ++iter)
-  {
-    const double k_old{k};
-    HypreParVector x_old{x};
-    x_old.UseDevice(true);
-    x_old = x;
-
-    HypreParVector v{x};
-    v.UseDevice(true);
-    v = x;
-    v /= par_norml2(x);
-
-    HypreParVector b{v};
-    b.UseDevice(true);
-    M->Mult(v, b, 1.0, 1.0); // make sure we use the proper (overloaded) function signature
-
-    sol.Mult(b, x);
-
-    const double local_k{v*x};
-    MPI_Allreduce(&local_k, &k, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-    // convergence criteria
-    k_conv = std::abs(k - k_old);
-    x_old -= x;
-    x_conv = par_norml2(x_old);
-
-    if (myid == 0) std::cout << "iter=" << iter
-                             << " k=" << k 
-                             << " dk=" << k_conv 
-                             << " dx=" << x_conv 
-                             << std::endl;
-
-  }
-  if (myid == 0) std::cout << "ITERATIONS_FINISHED!!!" << std::endl;
-
-  res.keff = k;
-  time.start("distribute");
-  res(0).Distribute(x);
-  time.stop("distribute");
-  flux_sign_fixup(res(0));
 
   return;
 }
