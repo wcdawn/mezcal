@@ -343,7 +343,7 @@ int main(int argc, char* argv[])
         case (Solver_choice::slepc_vector):
           spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
-          temperature_heat_conduction(inp, mat_lib, power, temperature);
+          //temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         case (Solver_choice::amgx_vector):
           spn_amgx_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
@@ -370,7 +370,7 @@ int main(int argc, char* argv[])
           saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
           calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
-          temperature_heat_conduction(inp, mat_lib, power, temperature);
+          //temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         case (Solver_choice::saaf_true_slepc_diffusion_vector):
           saaf_true_slepc_diffusion_vector(quad.get(), time, inp, mat_lib, res, scalar_flux);
