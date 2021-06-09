@@ -376,8 +376,6 @@ mfem::HypreParMatrix* saaf_m_matrix(const Input &inp,
                                    const Quadrature* const quad,
                                    mfem::ParFiniteElementSpace* fespace);
 
-#endif
-
 void dg_spn_power_iteration(Input &inp,
                             const Material_library &mat_lib,
                             mfem::ParMesh *pmesh);
@@ -389,3 +387,10 @@ void dg_transport_power_iteration(Input &inp,
 void dg_calc_scalar_flux(std::vector<std::unique_ptr<mfem::ParGridFunction>> &angular_flux,
                          const Quadrature *quad,
                          mfem::ParGridFunction &scalar_flux);
+
+void spn_partial_assembly_power_iteration(const Input &inp,
+                                          const Material_library &mat_lib,
+                                          mfem::Array<int> &ess_bdr,
+                                          Result &scalar_flux);
+
+#endif
