@@ -352,7 +352,6 @@ double par_norml2(const mfem::Vector& x);
 void flux_sign_fixup(mfem::Vector& pgf);
 
 void power_iteration_amgx(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
-void power_iteration_hypre(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
 
 void slepc_initialize(const Input& inp);
 void slepc_solver_wrapper(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
