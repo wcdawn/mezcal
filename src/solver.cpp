@@ -3650,6 +3650,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
   std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
 
+  std::vector<std::unique_ptr<HypreParMatrix>> mat_sto;
+  std::vector<std::unique_ptr<HypreSolver>> prec;
+
   time.start(time.matrix_assembly);
 
   { // streaming+collision
@@ -3713,15 +3716,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
 
         if (inp.ndevices > 0)
-        {
-          // use MPITeams
-          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
-        }
+          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
         else
-        {
-          // use MPI Exclusive
-          this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
-        }
+          this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
 
         this_sol->SetOperator(*Amat);
         Asol[g] = std::move(this_sol);
@@ -3730,19 +3727,20 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        HypreParMatrix *A{Amat.release()}; // leaking but fuck it
+        mat_sto.push_back(std::move(Amat)); // need to preserve this
 
-        HypreBoomerAMG *amg = new HypreBoomerAMG(*A); // another leak!
+        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*mat_sto.back())};
         amg->SetPrintLevel(inp.hypre_print_level());
         HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
+        prec.push_back(std::move(amg));
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
         this_sol->SetPrintLevel(inp.hypre_print_level());
-        this_sol->SetOperator(*A);
+        this_sol->SetOperator(*mat_sto.back());
         this_sol->SetTol(inp.tol.inner_rel);
+        this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        this_sol->SetPreconditioner(*amg);
-        HYPRE_PCGSetAbsoluteTol(*this_sol, inp.tol.inner_abs);
+        this_sol->SetPreconditioner(*prec.back());
 
         Asol[g] = std::move(this_sol);
 
@@ -3801,19 +3799,21 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       }
       else
       {
-        HypreParMatrix *D{Dmat.release()}; // warning: leak
 
-        HypreBoomerAMG *amg = new HypreBoomerAMG(*D);
+        mat_sto.push_back(std::move(Dmat));
+
+        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*mat_sto.back())};
         amg->SetPrintLevel(inp.hypre_print_level());
         HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
+        prec.push_back(std::move(amg));
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
         this_sol->SetPrintLevel(inp.hypre_print_level());
-        this_sol->SetOperator(*D);
+        this_sol->SetOperator(*mat_sto.back());
         this_sol->SetTol(inp.tol.inner_rel);
+        this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        this_sol->SetPreconditioner(*amg);
-        HYPRE_PCGSetAbsoluteTol(*this_sol, inp.tol.inner_abs);
+        this_sol->SetPreconditioner(*prec.back());
 
         Dsol[g] = std::move(this_sol);
 
@@ -4940,7 +4940,7 @@ namespace slepc_hypre
 {
 
   std::unique_ptr<Solver> sol{nullptr};
-  std::unique_ptr<HypreBoomerAMG> amg{nullptr};
+  std::unique_ptr<HypreSolver> prec{nullptr};
   const HypreParMatrix *Ahypre{nullptr};
 
   const Input *inp{nullptr};
@@ -4950,12 +4950,20 @@ namespace slepc_hypre
   PetscErrorCode setup(PC pc)
   {
 
-    amg = std::make_unique<HypreBoomerAMG>(*Ahypre);
+    std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Ahypre)};
     amg->SetPrintLevel(inp->hypre_print_level());
     HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib->ngroup()*quad->nd());
+    HYPRE_BoomerAMGSetAggNumLevels(*amg, 5);
+    prec = std::move(amg);
+
+    /*
+    std::unique_ptr<HypreEuclid> euclid{std::make_unique<HypreEuclid>(*Ahypre)};
+    HYPRE_EuclidSetLevel(*euclid, 4);
+    prec = std::move(euclid);
+    */
 
     std::unique_ptr<HypreGMRES> gmres{std::make_unique<HypreGMRES>(*Ahypre)};
-    gmres->SetPreconditioner(*amg);
+    gmres->SetPreconditioner(*prec);
     gmres->SetPrintLevel(9);
     gmres->SetMaxIter(inp->tol.max_inner);
     gmres->SetTol(inp->tol.inner_rel);
@@ -4977,7 +4985,7 @@ namespace slepc_hypre
   PetscErrorCode destroy(PC pc)
   {
     sol.reset();
-    amg.reset();
+    prec.reset();
     delete Ahypre;
     Ahypre = nullptr;
     return 0;
@@ -5009,7 +5017,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
 
   constexpr bool slepc_amgx{false};
   constexpr bool slepc_ksp{false};
-  constexpr bool slepc_hypre{false};
+  constexpr bool slepc_hypre{true};
 
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
