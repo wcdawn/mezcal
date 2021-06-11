@@ -3804,7 +3804,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*mat_sto.back())};
         amg->SetPrintLevel(inp.hypre_print_level());
-        HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
         prec.push_back(std::move(amg));
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
@@ -4953,7 +4952,7 @@ namespace slepc_hypre
     std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Ahypre)};
     amg->SetPrintLevel(inp->hypre_print_level());
     HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib->ngroup()*quad->nd());
-    HYPRE_BoomerAMGSetAggNumLevels(*amg, 5);
+    HYPRE_BoomerAMGSetAggNumLevels(*amg, 2);
     prec = std::move(amg);
 
     /*
