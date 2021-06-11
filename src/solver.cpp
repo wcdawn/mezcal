@@ -3944,20 +3944,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////
-  std::vector<std::unique_ptr<ParLinearForm>> fiss(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    fiss[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
-    Vector nusf_vec{pmesh->attributes.Max()};
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      nusf_vec(i) = mat_lib.mat[i].rec.nusf[g];
-    PWConstCoefficient nusf_operator{nusf_vec};
-    fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_operator});
-    fiss[g]->Assemble();
-  }
-////////////////////////////////////////////////////////////////////////////////
-
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     angular_flux(g) = 1.0;
@@ -3966,8 +3952,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   angular_flux.keff = 1.0;
   scalar_flux.keff = 1.0;
 
-  QuadratureFunction fiss_src_old{&qspace};
-  fiss_src_old = 1.0;
+  QuadratureFunction fiss_src_quad_old{&qspace};
+  fiss_src_quad_old = 1.0;
   double k_conv{inp.tol.k * 1e1 + 1e-6};
   double phi_conv{inp.tol.phi * 1e1 + 1e-6};
   double keff_old{angular_flux.keff};
@@ -4011,14 +3997,19 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         lf_self_scatter[g]->Assemble();
         std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
 
+        time.start("Amult");
         std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
         Asol[g]->Mult(*b, *x);
         angular_flux(g).Distribute(*x);
+        time.stop("Amult");
 
         calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux); // (k+1/2)
 
         if (use_dsa)
         {
+
+          time.start("Dmult");
+
           lf_dsa[g]->Assemble();
           std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
           std::unique_ptr<HypreParVector> dphi{scalar_flux(g).ParallelAssemble()};
@@ -4028,6 +4019,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           pgf_dphi.Distribute(*dphi);
 
           scalar_flux(g) += pgf_dphi;
+
+          time.stop("Dmult");
+
         }
 
         ++solve_counter;
@@ -4048,21 +4042,21 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     } // ngroup
 
     time.start("fisssum");
+    QuadratureFunction fiss_src_quad{&qspace};
+    calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
     double fiss_sum{0.0};
     double local_fiss_sum{0.0};
     for (int g{0}; g < mat_lib.ngroup(); ++g)
-      local_fiss_sum += (*fiss[g])(scalar_flux(g)); // LinearForm::operator()
+      local_fiss_sum += fiss_src_quad.Sum();
     MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     time.stop("fisssum");
 
     time.start("phiconv");
-    QuadratureFunction fiss_src{fiss_src_old};
-    calc_fiss_src(scalar_flux, mat_lib, fiss_src);
-    fiss_src_old -= fiss_src;
+    fiss_src_quad_old -= fiss_src_quad;
     
     // note: some nodes may contain zero fissile elements depending on decomposition
-    const double delta{fiss_src_old.Normlinf()};
-    const double norm{fiss_src.Normlinf()};
+    const double delta{fiss_src_quad_old.Normlinf()};
+    const double norm{fiss_src_quad.Normlinf()};
     const double local_phi_conv{(norm > 0.0) ? delta / norm : 0.0};
 
     MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -4082,7 +4076,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     // store old values
     keff_old = angular_flux.keff;
     fiss_sum_old = fiss_sum;
-    fiss_src_old = fiss_src;
+    fiss_src_quad_old = fiss_src_quad;
 
   }
   time.stop(time.solver);
