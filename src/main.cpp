@@ -164,6 +164,7 @@ int main(int argc, char* argv[])
     (inp.sol == Solver_choice::sfent_power_iteration) ||
     (inp.sol == Solver_choice::saaf_power_iteration) ||
     (inp.sol == Solver_choice::saaf_angle_power_iteration) ||
+    (inp.sol == Solver_choice::saaf_angle_jacobi_power_iteration) ||
     (inp.sol == Solver_choice::saaf_slepc_vector) ||
     (inp.sol == Solver_choice::saaf_true_slepc_vector) || 
     (inp.sol == Solver_choice::saaf_split_slepc_vector) || 
@@ -213,6 +214,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_diffusion_vector):
     case (Solver_choice::saaf_true_slepc_transport_vector):
     case (Solver_choice::saaf_true_amgx_vector):
+    case (Solver_choice::saaf_angle_jacobi_power_iteration):
       vdim = mat_lib.ngroup()*quad->nd();
       break;
     case (Solver_choice::saaf_angle_power_iteration):
@@ -223,8 +225,16 @@ int main(int argc, char* argv[])
       break;
   }
 
-  const int scalar_flux_vdim{
-    (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ? mat_lib.ngroup() : 1};
+  int scalar_flux_vdim{1};
+  switch (inp.sol)
+  {
+    case (Solver_choice::saaf_true_slepc_diffusion_vector):
+    case (Solver_choice::saaf_angle_jacobi_power_iteration):
+      scalar_flux_vdim = mat_lib.ngroup();
+      break;
+    default:
+      break;
+  }
 
   ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
   ParFiniteElementSpace scalar_flux_fespace{&pmesh, fec, scalar_flux_vdim, Ordering::byVDIM};
@@ -242,6 +252,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_true_slepc_diffusion_vector):
     case (Solver_choice::saaf_true_slepc_transport_vector):
     case (Solver_choice::saaf_true_amgx_vector):
+    case (Solver_choice::saaf_angle_jacobi_power_iteration):
       break;
     case (Solver_choice::saaf_angle_power_iteration):
       dof *= mat_lib.ngroup();
@@ -288,6 +299,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_split_power_iteration):
     case (Solver_choice::saaf_self_power_iteration):
     case (Solver_choice::saaf_angle_power_iteration):
+    case (Solver_choice::saaf_angle_jacobi_power_iteration):
     case (Solver_choice::amgx_vector):
     case (Solver_choice::saaf_true_amgx_vector):
       moment_angle_length = 1;
@@ -302,8 +314,16 @@ int main(int argc, char* argv[])
       break;
   }
 
-  const int scalar_flux_length{
-    (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ? 1 : mat_lib.ngroup()};
+  int scalar_flux_length{mat_lib.ngroup()};
+  switch (inp.sol)
+  {
+    case (Solver_choice::saaf_true_slepc_diffusion_vector):
+    case (Solver_choice::saaf_angle_jacobi_power_iteration):
+      scalar_flux_length = 1;
+      break;
+    default:
+      break;
+  }
 
   Result res{&fespace, flux_length, moment_angle_length};
   Result scalar_flux{&scalar_flux_fespace, scalar_flux_length};
@@ -361,7 +381,10 @@ int main(int argc, char* argv[])
           saaf_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_angle_power_iteration):
-          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, res, scalar_flux);
+          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
+          break;
+        case (Solver_choice::saaf_angle_jacobi_power_iteration):
+          saaf_angle_jacobi_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
           break;
         case (Solver_choice::saaf_slepc_vector):
           saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
@@ -469,7 +492,8 @@ int main(int argc, char* argv[])
         (inp.sol == Solver_choice::saaf_self_power_iteration) ||
         (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ||
         (inp.sol == Solver_choice::saaf_true_slepc_transport_vector) ||
-        (inp.sol == Solver_choice::saaf_true_amgx_vector))
+        (inp.sol == Solver_choice::saaf_true_amgx_vector) ||
+        (inp.sol == Solver_choice::saaf_angle_jacobi_power_iteration))
     {
       output.RegisterField("psi", &res(0));
       if ((inp.sol == Solver_choice::slepc_vector) ||
@@ -492,7 +516,8 @@ int main(int argc, char* argv[])
         output.RegisterField("power", &power);
         output.RegisterField("temperature", &temperature);
       }
-      else if (inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector)
+      else if ((inp.sol == Solver_choice::saaf_true_slepc_diffusion_vector) ||
+               (inp.sol == Solver_choice::saaf_angle_jacobi_power_iteration))
       {
         output.RegisterField("scalar_flux", &scalar_flux(0));
       }

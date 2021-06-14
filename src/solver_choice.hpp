@@ -16,6 +16,7 @@ enum class Solver_choice
   sfent_power_iteration,
   saaf_power_iteration,
   saaf_angle_power_iteration,
+  saaf_angle_jacobi_power_iteration,
   saaf_slepc_vector,
   saaf_true_slepc_vector,
   saaf_true_amgx_vector,

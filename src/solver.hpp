@@ -215,9 +215,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Timer& time,
                                 const Input& inp,
                                 const Material_library& mat_lib,
-                                mfem::ParMesh* const pmesh,
                                 Result& angular_flux,
                                 Result& scalar_flux);
+void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
+                                       Timer& time,
+                                       const Input& inp,
+                                       const Material_library& mat_lib,
+                                       Result& angular_flux,
+                                       Result& scalar_flux);
 
 void saaf_slepc_vector(const Quadrature* const quad,
                        Timer& time,
@@ -391,5 +396,25 @@ void spn_partial_assembly_power_iteration(const Input &inp,
                                           const Material_library &mat_lib,
                                           mfem::Array<int> &ess_bdr,
                                           Result &scalar_flux);
+
+void calc_src(const Material_library &mat_lib,
+              const Quadrature* const quad,
+              const mfem::ParGridFunction &scalar_flux,
+              const double keff,
+              mfem::QuadratureFunction &src_quad,
+              mfem::QuadratureFunction &saaf_src_quad,
+              bool flux_free_chi=false);
+void calc_self_scatter(const Material_library &mat_lib,
+                       const Quadrature* const quad,
+                       const mfem::ParGridFunction &scalar_flux,
+                       mfem::QuadratureFunction &self_scatter_quad,
+                       mfem::QuadratureFunction &saaf_self_scatter_quad);
+void calc_scalar_flux_vector_vector(const mfem::ParGridFunction &angular_flux,
+                                    const Material_library &mat_lib,
+                                    const Quadrature* const quad,
+                                    mfem::ParGridFunction &scalar_flux);
+void calc_fiss_src_vector(const mfem::ParGridFunction &scalar_flux,
+                          const Material_library &mat_lib,
+                          mfem::QuadratureFunction &fiss_src);
 
 #endif
