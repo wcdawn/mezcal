@@ -13,7 +13,8 @@ namespace mfem
 class VectorConvectionIntegrator : public BilinearFormIntegrator
 {
 protected:
-   const VectorTensorCoefficient* VTQ;
+   VectorTensorCoefficient *VTQ{nullptr};
+   VectorCoefficient *VQ{nullptr};
    const int vdim;
    const double alpha;
 private:
@@ -23,6 +24,9 @@ public:
    VectorConvectionIntegrator(VectorTensorCoefficient& vtq, double a=1.0)
       : VTQ{&vtq}, vdim{vtq.GetVDim()}, alpha{a}
    {}
+   VectorConvectionIntegrator(VectorCoefficient& vq, double a=1.0)
+      : VQ{&vq}, vdim{vq.GetVDim()}, alpha{a}
+   {}
    virtual void AssembleElementMatrix(const FiniteElement &,
                                       ElementTransformation &,
                                       DenseMatrix &) override;
@@ -31,7 +35,8 @@ public:
 class VectorDGTraceIntegrator : public BilinearFormIntegrator
 {
 protected:
-   const VectorTensorCoefficient* VTQ;
+   VectorTensorCoefficient *VTQ{nullptr};
+   VectorCoefficient *VQ{nullptr};
    const int vdim;
    const double alpha, beta;
 private:
@@ -43,6 +48,12 @@ public:
    {}
    VectorDGTraceIntegrator(VectorTensorCoefficient& vtq, double a, double b)
       : VTQ{&vtq}, vdim{vtq.GetVDim()}, alpha{a}, beta{b}
+   {}
+   VectorDGTraceIntegrator(VectorCoefficient &vq, double a)
+      : VQ{&vq}, vdim{vq.GetVDim()}, alpha{a}, beta{0.5*alpha}
+   {}
+   VectorDGTraceIntegrator(VectorCoefficient &vq, double a, double b)
+      : VQ{&vq}, vdim{vq.GetVDim()}, alpha{a}, beta{b}
    {}
    using BilinearFormIntegrator::AssembleFaceMatrix;
    virtual void AssembleFaceMatrix(const FiniteElement& el1,

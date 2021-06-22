@@ -9,6 +9,8 @@
 #include "incoming_flux_coefficient.hpp"
 #include "stability_tau_coefficient.hpp"
 #include "vector_product_coefficient.hpp"
+#include "nda_boundary_factor_coefficient.hpp"
+#include "nda_diffusion_coefficient.hpp"
 
 #include "quadrature.hpp"
 #include "level_symmetric_quadrature.hpp"
@@ -4011,12 +4013,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
           time.start("Dmult");
 
+          ParGridFunction pgf_dphi{scalar_flux(g)};
+          ConstantCoefficient zero{0.0};
+          pgf_dphi.ProjectBdrCoefficient(zero, pmesh->attributes); // all
+
           lf_dsa[g]->Assemble();
           std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
-          std::unique_ptr<HypreParVector> dphi{scalar_flux(g).ParallelAssemble()};
+          std::unique_ptr<HypreParVector> dphi{pgf_dphi.ParallelAssemble()};
           Dsol[g]->Mult(*f, *dphi);
-
-          ParGridFunction pgf_dphi{scalar_flux_fespace};
           pgf_dphi.Distribute(*dphi);
 
           scalar_flux(g) += pgf_dphi;
@@ -5320,7 +5324,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
 
   constexpr bool slepc_amgx{false};
   constexpr bool slepc_ksp{false};
-  constexpr bool slepc_hypre{true};
+  constexpr bool slepc_hypre{false};
 
   if ((petsc_format != Operator::PETSC_MATHYPRE) && 
       (petsc_format != Operator::PETSC_MATSHELL))
@@ -6409,7 +6413,8 @@ void calc_src(const Material_library &mat_lib,
               const double keff,
               QuadratureFunction &src_quad,
               QuadratureFunction &saaf_src_quad,
-              bool flux_free_chi)
+              bool flux_free_chi,
+              bool include_self_scatter)
 {
 
   src_quad = 0.0;
@@ -6467,7 +6472,7 @@ void calc_src(const Material_library &mat_lib,
         {
 
           const int gprime{col_idx[gidx]};
-          if (gprime != g) // do not include self scatter
+          if ((include_self_scatter) || (gprime != g)) // do not include self scatter
           {
             for (int n{0}; n < quad->nd(); ++n)
               val(n+g*quad->nd()) += spectrum(gprime)*scat_data(gidx);
@@ -6624,6 +6629,342 @@ void calc_fiss_src_vector(const ParGridFunction &scalar_flux,
 
   }
 
+
+  return;
+}
+
+void saaf_angle_nda_slepc(const Quadrature* const quad,
+                          Timer &time,
+                          const Input &inp,
+                          const Material_library &mat_lib,
+                          Result &angular_flux_res,
+                          Result &scalar_flux_res)
+{
+
+  ParGridFunction &angular_flux{angular_flux_res(0)};
+  ParGridFunction &scalar_flux{scalar_flux_res(0)};
+
+  ParFiniteElementSpace *angular_flux_fespace = angular_flux.ParFESpace();
+  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux.ParFESpace();
+  ParMesh *pmesh = angular_flux_fespace->GetParMesh();
+
+  const int myid{angular_flux_fespace->GetMyRank()};
+
+  std::unique_ptr<HypreParMatrix> A;
+  std::unique_ptr<Solver> Asol;
+  std::unique_ptr<HypreSolver> Aprec;
+
+  std::unique_ptr<HypreParMatrix> D;
+  std::unique_ptr<HypreParMatrix> D_fission;
+
+  { // A operator
+
+    std::vector<DenseMatrix> omega_mat(quad->nd());
+    for (int n{0}; n < quad->nd(); ++n)
+    {
+      omega_mat[n].SetSize(quad->dim());
+      MultVVt(quad->omega(n), omega_mat[n]);
+    }
+
+    Tensor<Vector> omega;
+    omega.reserve(quad->nd()*mat_lib.ngroup());
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      for (int n{0}; n < quad->nd(); ++n)
+        omega.AddElement(quad->omega(n), n+g*quad->nd());
+    VectorTensorConstantCoefficient omega_func{quad->nd()*mat_lib.ngroup(), omega};
+
+    std::vector<Tensor<DenseMatrix>> leakage(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+    {
+      leakage[i].reserve(quad->nd()*mat_lib.ngroup());
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int idx{n+g*quad->nd()};
+          omega_mat[n] *= 1.0/tot;
+          leakage[i].AddElement(omega_mat[n], idx);
+          omega_mat[n] *= tot;
+        }
+      }
+    }
+    MatrixTensorPWConstCoefficient leakage_func{quad->nd()*mat_lib.ngroup(), leakage};
+
+    std::vector<Vector> total(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+    {
+      total[i].SetSize(quad->nd()*mat_lib.ngroup());
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int idx{n+g*quad->nd()};
+          total[i](idx) = tot;
+        }
+      }
+    }
+    VectorPWConstCoefficient total_func{total};
+
+    ParBilinearForm a{angular_flux_fespace};
+    a.AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
+    a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
+    a.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
+
+    a.Assemble(2);
+    a.Finalize(2);
+    A.reset(a.ParallelAssemble());
+
+    std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*A)};
+    amg->SetPrintLevel(inp.hypre_print_level());
+    HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib.ngroup()*quad->nd());
+    Aprec = std::move(amg);
+
+    std::unique_ptr<HyprePCG> cg{std::make_unique<HyprePCG>(*A)};
+    cg->SetPrintLevel(2);
+    cg->SetTol(inp.tol.inner_rel);
+    cg->SetAbsTol(inp.tol.inner_abs);
+    cg->SetMaxIter(inp.tol.max_inner);
+    cg->SetPreconditioner(*Aprec);
+    Asol = std::move(cg);
+
+  } // A operator
+
+  const int integration_order{10};
+  QuadratureSpace qspace{pmesh, integration_order};
+
+  QuadratureFunction src_quad{&qspace, quad->nd()*mat_lib.ngroup()};
+  QuadratureFunction saaf_src_quad{&qspace, quad->dim()*quad->nd()*mat_lib.ngroup()};
+  VectorQuadratureFunctionCoefficient src_quad_func{src_quad};
+  VectorQuadratureFunctionCoefficient saaf_src_quad_func{saaf_src_quad};
+
+  ParLinearForm b{angular_flux_fespace};
+  b.AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func});
+  b.AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func});
+
+  // NDA operator
+
+  std::vector<Vector> diffusion(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    diffusion[i].SetSize(mat_lib.ngroup());
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      diffusion[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_t[g]);
+  }
+  VectorPWConstCoefficient diffusion_func{diffusion};
+
+  std::vector<DenseMatrix> removal(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    const XSRecord &rec{mat_lib.mat[i].rec};
+
+    removal[i].SetSize(mat_lib.ngroup());
+    rec.sigma_s.ToDenseMatrix(removal[i]);
+    removal[i].Neg();
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+      removal[i](g,g) += rec.sigma_t[g];
+
+  }
+  MatrixPWConstCoefficient removal_func{removal};
+
+  std::unique_ptr<ParFiniteElementSpace> current_fespace{
+    std::make_unique<ParFiniteElementSpace>(pmesh,
+    angular_flux_fespace->FEColl(), pmesh->Dimension()*mat_lib.ngroup(),
+    Ordering::byVDIM)};
+  ParGridFunction current{current_fespace.get()};
+
+  // the diffusion coefficient is also called the drift velocity
+  NDADiffusionCoefficient nda_diffusion_func{scalar_flux, current, angular_flux, quad, mat_lib};
+  NDABoundaryFactorCoefficient nda_boundary_factor_func{scalar_flux, current, angular_flux, quad, mat_lib};
+
+  ParBilinearForm d{scalar_flux_fespace};
+  d.AddDomainIntegrator(new VectorDiffusionIntegrator{diffusion_func});
+  d.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+  d.AddDomainIntegrator(new TransposeIntegrator{
+    new VectorConvectionIntegrator{nda_diffusion_func, -1.0}});
+  d.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{nda_boundary_factor_func, 2.0, 0.0});
+
+  { // NDA fission terms
+
+    std::vector<DenseMatrix> fission(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+    {
+      fission[i].SetSize(mat_lib.ngroup());
+      const Material_record& mat{mat_lib.mat[i]};
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        {
+          for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+          {
+            const Material_isotope& isotope{mat.iso[iso_idx]};
+            const XSRecord& record{isotope.rec};
+            const double nden{isotope.nden};
+            fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
+          }
+        }
+      }
+    }
+    MatrixPWConstCoefficient fission_func{fission};
+
+    ParBilinearForm d_fission{scalar_flux_fespace};
+    d_fission.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
+    d_fission.Assemble(2);
+    d_fission.Finalize(2);
+    D_fission.reset(d_fission.ParallelAssemble()); // this will only be assembled once
+
+  } // NDA fission terms
+
+  constexpr Operator::Type petsc_format{Operator::PETSC_MATHYPRE};
+
+  MFEMInitializeSlepc(nullptr, nullptr, "slepcrc", nullptr);
+
+  std::unique_ptr<const PetscParMatrix> D_fission_petsc{
+    std::make_unique<PetscParMatrix>(D_fission.get(), petsc_format)};
+
+  std::unique_ptr<SlepcEigenSolver> slepc{std::make_unique<SlepcEigenSolver>(MPI_COMM_WORLD)};
+  slepc->SetNumModes(1); // only fundamental mode
+  //slepc->SetTol(std::min(inp.tol.k, inp.tol.phi)); // needs to be tight
+  slepc->SetTol(1e-12); // needs to be tight
+  slepc->SetMaxIter(100);
+  slepc->SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+
+  angular_flux = 1.0;
+  scalar_flux = 1.0;
+
+  double keff{1.0};
+  double k_conv{inp.tol.k*1e2+1.0};
+  double phi_conv{inp.tol.phi*1e2+1.0};
+  for (int iter{0}; (iter < inp.tol.max_outer)
+                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
+  {
+
+    const double kold{keff};
+
+    // transport sweep
+    calc_src(mat_lib, quad, scalar_flux, keff, src_quad, saaf_src_quad, inp.flux_free_chi, true); // include self scatter
+    b.Assemble();
+    std::unique_ptr<HypreParVector> bvec{b.ParallelAssemble()};
+    std::unique_ptr<HypreParVector> xvec{angular_flux.ParallelAssemble()};
+    Asol->Mult(*bvec, *xvec);
+    angular_flux.Distribute(*xvec);
+
+    calc_scalar_flux_vector_vector(angular_flux, mat_lib, quad, scalar_flux);
+    calc_current_vector_vector(angular_flux, mat_lib, quad, current);
+
+    // reconstruct NDA operator
+    d.Update();
+    d.Assemble(2);
+    d.Finalize(2);
+    D.reset(d.ParallelAssemble());
+
+    /*
+    d_fission.Update();
+    d_fission.Assemble(2);
+    d_fission.Finalize(2);
+    D_fission.reset(d_fission.ParallelAssemble());
+    power_iteration_amgx(D.release(), D_fission.release(), inp, time, scalar_flux_res, mat_lib.ngroup());
+    */
+
+    const std::unique_ptr<const PetscParMatrix> D_petsc{
+      std::make_unique<PetscParMatrix>(D.get(), petsc_format)};
+    slepc->SetOperators(*D_petsc, *D_fission_petsc);
+    slepc->Solve();
+
+    MFEM_VERIFY(slepc->GetNumConverged() >= 1,
+      " inner slepc nda failed to converge. cannot continue.");
+
+    slepc->GetEigenvalue(0, keff);
+    keff = 1.0/keff;
+    Vector tmp(scalar_flux_fespace->GetTrueVSize());
+    slepc->GetEigenvector(0, tmp);
+    scalar_flux.Distribute(tmp);
+    flux_sign_fixup(scalar_flux);
+
+    k_conv = std::abs(keff - kold);
+    phi_conv = 0.0; // TODO implement
+
+    if (myid == 0)
+      std::cout << iter 
+        << " keff=" << keff
+        << " dk=" << k_conv 
+        << " dphi=" << phi_conv 
+        << std::endl;
+
+  }
+
+  slepc.reset();
+  D_fission_petsc.reset();
+
+  MFEMFinalizeSlepc();
+
+  {
+
+    ParGridFunction drift_velocity{current};
+    drift_velocity.ProjectCoefficient(nda_diffusion_func);
+
+    ParGridFunction boundary_factor{current};
+    boundary_factor = 0.0;
+    boundary_factor.ProjectBdrCoefficient(nda_boundary_factor_func, pmesh->bdr_attributes);
+
+    ParaViewDataCollection output("debug_output", pmesh);
+
+    output.RegisterField("current", &current);
+    output.RegisterField("scalar_flux", &scalar_flux);
+    output.RegisterField("drift_velocity", &drift_velocity);
+    output.RegisterField("boundary_factor", &boundary_factor);
+
+    ParFiniteElementSpace tmp_fespace{pmesh, scalar_flux_fespace->FEColl()};
+    ParFiniteElementSpace der_fespace{pmesh, scalar_flux_fespace->FEColl(), pmesh->Dimension(), Ordering::byVDIM};
+    std::vector<ParGridFunction> grad_scalar_flux;
+    grad_scalar_flux.reserve(mat_lib.ngroup());
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      GridFunctionCoefficient gfc{&scalar_flux, g+1};
+      ParGridFunction tmp{&tmp_fespace};
+      tmp.ProjectCoefficient(gfc);
+
+      GradientGridFunctionCoefficient ggfc{&tmp};
+      grad_scalar_flux.emplace_back(&der_fespace);
+      grad_scalar_flux.back().ProjectCoefficient(ggfc);
+
+      const std::string field_name{"grad_scalar_flux_g" + std::to_string(g)};
+      output.RegisterField(field_name, &grad_scalar_flux.back());
+    }
+
+    output.Save();
+
+  }
+
+  return;
+}
+
+void calc_current_vector_vector(const ParGridFunction &angular_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                ParGridFunction &current)
+{
+
+  current = 0.0;
+  const int size{current.Size() / (quad->dim()*mat_lib.ngroup())}; // integer division
+  for (int i{0}; i < size; ++i)
+  {
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir{quad->omega(n)};
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          current(d + g*quad->dim() + i*quad->dim()*mat_lib.ngroup()) +=
+            dir(d) * quad->weight(n) *
+            angular_flux(n + g*quad->nd() + i*quad->nd()*mat_lib.ngroup());
+        }
+      }
+    }
+  }
 
   return;
 }

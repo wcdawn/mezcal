@@ -16,6 +16,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
     case (Solver_choice::sfent_power_iteration): return "sfent_power_iteration";
     case (Solver_choice::saaf_power_iteration): return "saaf_power_iteration";
     case (Solver_choice::saaf_angle_power_iteration): return "saaf_angle_power_iteration";
+    case (Solver_choice::saaf_angle_nda_slepc): return "saaf_angle_nda_slepc";
     case (Solver_choice::saaf_angle_jacobi_power_iteration): return "saaf_angle_jacobi_power_iteration";
     case (Solver_choice::saaf_slepc_vector): return "saaf_slepc_vector";
     case (Solver_choice::saaf_true_slepc_vector): return "saaf_true_slepc_vector";
@@ -46,6 +47,7 @@ Solver_choice solver_choice_str_to_enum(const string& solver)
   if (solver == "sfent_power_iteration") return Solver_choice::sfent_power_iteration;
   if (solver == "saaf_power_iteration") return Solver_choice::saaf_power_iteration;
   if (solver == "saaf_angle_power_iteration") return Solver_choice::saaf_angle_power_iteration;
+  if (solver == "saaf_angle_nda_slepc") return Solver_choice::saaf_angle_nda_slepc;
   if (solver == "saaf_angle_jacobi_power_iteration") return Solver_choice::saaf_angle_jacobi_power_iteration;
   if (solver == "saaf_slepc_vector") return Solver_choice::saaf_slepc_vector;
   if (solver == "saaf_true_slepc_vector") return Solver_choice::saaf_true_slepc_vector;

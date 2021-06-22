@@ -403,7 +403,8 @@ void calc_src(const Material_library &mat_lib,
               const double keff,
               mfem::QuadratureFunction &src_quad,
               mfem::QuadratureFunction &saaf_src_quad,
-              bool flux_free_chi=false);
+              bool flux_free_chi=false,
+              bool include_self_scatter=false);
 void calc_self_scatter(const Material_library &mat_lib,
                        const Quadrature* const quad,
                        const mfem::ParGridFunction &scalar_flux,
@@ -416,5 +417,16 @@ void calc_scalar_flux_vector_vector(const mfem::ParGridFunction &angular_flux,
 void calc_fiss_src_vector(const mfem::ParGridFunction &scalar_flux,
                           const Material_library &mat_lib,
                           mfem::QuadratureFunction &fiss_src);
+
+void saaf_angle_nda_slepc(const Quadrature* const quad,
+                          Timer &time,
+                          const Input &inp,
+                          const Material_library &mat_lib,
+                          Result &angular_flux,
+                          Result &scalar_flux);
+void calc_current_vector_vector(const mfem::ParGridFunction &angular_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                mfem::ParGridFunction &current);
 
 #endif

@@ -16,6 +16,8 @@ CPP_FILES = main.cpp \
 			level_symmetric_quadrature.cpp \
 			material_library.cpp \
 			matrix_pwconst_coefficient.cpp \
+			nda_boundary_factor_coefficient.cpp \
+			nda_diffusion_coefficient.cpp \
 			output.cpp \
 			quadrature.cpp \
 			result.cpp \
@@ -50,6 +52,8 @@ HPP_FILES = analytic.hpp \
 			material_library.hpp \
 			matrix_pwconst_coefficient.hpp \
 			memory.hpp \
+			nda_boundary_factor_coefficient.hpp \
+			nda_diffusion_coefficient.hpp \
 			output.hpp \
 			quadrature.hpp \
 			result.hpp \
@@ -156,7 +160,7 @@ xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
 material_library.o : $(MFEM_HEADER) material_library.hpp xslibrary.hpp
 matrix_pwconst_coefficient.o : $(MFEM_HEADER) matrix_pwconst_coefficient.hpp
-solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp memory.hpp upscattering_coefficient.hpp downscattering_coefficient.hpp vector_product_coefficient.hpp
+solver.o : $(MFEM_HEADER) solver.hpp input.hpp spn_source_coefficient.hpp fission_coefficient.hpp material_library.hpp scattering_coefficient.hpp timer.hpp xslibrary.hpp result.hpp quadrature.hpp vector_integrator_wrapper.hpp tensor.hpp memory.hpp upscattering_coefficient.hpp downscattering_coefficient.hpp vector_product_coefficient.hpp nda_boundary_factor_coefficient.hpp nda_diffusion_coefficient.hpp
 scattering_coefficient.o : $(MFEM_HEADER) scattering_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 fission_coefficient.o : $(MFEM_HEADER) fission_coefficient.hpp material_library.hpp xslibrary.hpp result.hpp
 hdf5_access_wrapper.o : hdf5_access_wrapper.hpp
@@ -180,3 +184,5 @@ downscattering_coefficient.o : $(MFEM_HEADER) downscattering_coefficient.hpp mat
 output.o : $(MFEM_HEADER) output.hpp input.hpp material_library.hpp saaf_void_tau_coefficient.hpp
 saaf_void_tau_coefficient.o : $(MFEM_HEADER) saaf_void_tau_coefficient.hpp material_library.hpp
 vector_product_coefficient.o : $(MFEM_HEADER) vector_product_coefficient.hpp
+nda_boundary_factor_coefficient.o : $(MFEM_HEADER) nda_boundary_factor_coefficient.hpp quadrature.hpp material_library.hpp
+nda_diffusion_coefficient.o : $(MFEM_HEADER) nda_diffusion_coefficient.hpp quadrature.hpp material_library.hpp

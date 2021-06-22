@@ -10,8 +10,9 @@ namespace mfem
 void VectorConvectionIntegrator::AssembleElementMatrix(
    const FiniteElement &el, ElementTransformation &Trans, DenseMatrix &elmat)
 {
-   int nd = el.GetDof();
-   int dim = el.GetDim();
+   const int nd = el.GetDof();
+   const int dim = el.GetDim();
+   const int spaceDim = Trans.GetSpaceDim();
 
    elmat.SetSize(nd*vdim);
    pelmat.SetSize(nd);
@@ -28,9 +29,6 @@ void VectorConvectionIntegrator::AssembleElementMatrix(
       ir = &IntRules.Get(el.GetGeomType(), order);
    }
 
-   std::vector<Vector> vec_data;
-   mfem::Array<int> row_idx, col_idx;
-
    elmat = 0.0;
    for (int i = 0; i < ir->GetNPoints(); i++)
    {
@@ -41,16 +39,41 @@ void VectorConvectionIntegrator::AssembleElementMatrix(
       Trans.SetIntPoint(&ip);
       CalcAdjugate(Trans.Jacobian(), adjJ);
 
-      VTQ->Eval(vec_data, row_idx, col_idx, Trans, ip);
-
-      for (int idx = 0; idx < row_idx.Size(); ++idx)
+      if (VTQ)
       {
-        vec_data[idx] *= alpha * ip.weight;
-        adjJ.Mult(vec_data[idx], vec2);
-        dshape.Mult(vec2, BdFidxT);
-        pelmat = 0.0;
-        AddMultVWt(shape, BdFidxT, pelmat);
-        elmat.AddMatrix(pelmat, row_idx[idx]*nd, col_idx[idx]*nd);
+         std::vector<Vector> vec_data;
+         mfem::Array<int> row_idx, col_idx;
+         VTQ->Eval(vec_data, row_idx, col_idx, Trans, ip);
+         for (int idx = 0; idx < row_idx.Size(); ++idx)
+         {
+            vec_data[idx] *= alpha * ip.weight;
+            adjJ.Mult(vec_data[idx], vec2);
+            dshape.Mult(vec2, BdFidxT);
+            pelmat = 0.0;
+            AddMultVWt(shape, BdFidxT, pelmat);
+            elmat.AddMatrix(pelmat, row_idx[idx]*nd, col_idx[idx]*nd);
+         }
+      }
+      else if (VQ)
+      {
+         Vector x(vdim);
+         VQ->Eval(x, Trans, ip);
+         for (int idx{0}; idx < vdim/spaceDim; ++idx)
+         {
+            Vector part_x(spaceDim);
+            for (int jdx{0}; jdx < spaceDim; ++jdx)
+               part_x(jdx) = x(jdx+idx*spaceDim);
+            part_x *= alpha * ip.weight;
+            adjJ.Mult(part_x, vec2);
+            dshape.Mult(vec2, BdFidxT);
+            pelmat = 0.0;
+            AddMultVWt(shape, BdFidxT, pelmat);
+            elmat.AddMatrix(pelmat, idx*nd, idx*nd);
+         }
+      }
+      else
+      {
+         MFEM_ABORT("undefined coefficient for some reason");
       }
 
    }
@@ -68,6 +91,8 @@ void VectorDGTraceIntegrator::AssembleFaceMatrix(const FiniteElement& el1,
    dim = el1.GetDim();
    ndof1 = el1.GetDof();
    Vector nor(dim);
+
+   const int spaceDim{Trans.GetSpaceDim()};
 
    if (Trans.Elem2No >= 0)
    {
@@ -103,9 +128,6 @@ void VectorDGTraceIntegrator::AssembleFaceMatrix(const FiniteElement& el1,
       ir = &IntRules.Get(Trans.GetGeometryType(), order);
    }
 
-   std::vector<Vector> vu;
-   Array<int> row_idx, col_idx;
-
    for (int p = 0; p < ir->GetNPoints(); p++)
    {
       const IntegrationPoint &ip = ir->IntPoint(p);
@@ -129,68 +151,150 @@ void VectorDGTraceIntegrator::AssembleFaceMatrix(const FiniteElement& el1,
          CalcOrtho(Trans.Jacobian(), nor);
       }
 
-      VTQ->Eval(vu, row_idx, col_idx, *Trans.Elem1, eip1);
-      for (int idx = 0; idx < row_idx.Size(); ++idx)
+      if (VTQ)
       {
-         un = vu[idx] * nor;
-         a = 0.5 * alpha * un;
-         b = beta * fabs(un);
 
-         // note: if |alpha/2|==|beta| then |a|==|b|, i.e. (a==b) or (a==-b)
-         //       and therefore two blocks in the element matrix contribution
-         //       (from the current quadrature point) are 0
-         w = ip.weight * (a+b);
-         if (w != 0.0)
+         std::vector<Vector> vu;
+         Array<int> row_idx, col_idx;
+         VTQ->Eval(vu, row_idx, col_idx, *Trans.Elem1, eip1);
+         for (int idx = 0; idx < row_idx.Size(); ++idx)
          {
-            for (int i = 0; i < ndof1; i++)
-            {
-               const int row{i+row_idx[idx]*(ndof1+ndof2)};
-               for (int j = 0; j < ndof1; j++)
-               {
-                  const int col{j+col_idx[idx]*(ndof1+ndof2)};
-                  elmat(row, col) += w * shape1(i) * shape1(j);
-               }
-            }
-         }
+            un = vu[idx] * nor;
+            a = 0.5 * alpha * un;
+            b = beta * fabs(un);
 
-         if (ndof2)
-         {
-            el2.CalcShape(eip2, shape2);
-
+            // note: if |alpha/2|==|beta| then |a|==|b|, i.e. (a==b) or (a==-b)
+            //       and therefore two blocks in the element matrix contribution
+            //       (from the current quadrature point) are 0
+            w = ip.weight * (a+b);
             if (w != 0.0)
             {
-               for (int i = 0; i < ndof2; i++)
+               for (int i = 0; i < ndof1; i++)
                {
-                  const int row{ndof1+i+row_idx[idx]*(ndof1+ndof2)};
+                  const int row{i+row_idx[idx]*(ndof1+ndof2)};
                   for (int j = 0; j < ndof1; j++)
                   {
                      const int col{j+col_idx[idx]*(ndof1+ndof2)};
-                     elmat(row, col) -= w * shape2(i) * shape1(j);
+                     elmat(row, col) += w * shape1(i) * shape1(j);
                   }
                }
             }
 
-            w = ip.weight * (b-a);
+            if (ndof2)
+            {
+               el2.CalcShape(eip2, shape2);
+
+               if (w != 0.0)
+               {
+                  for (int i = 0; i < ndof2; i++)
+                  {
+                     const int row{ndof1+i+row_idx[idx]*(ndof1+ndof2)};
+                     for (int j = 0; j < ndof1; j++)
+                     {
+                        const int col{j+col_idx[idx]*(ndof1+ndof2)};
+                        elmat(row, col) -= w * shape2(i) * shape1(j);
+                     }
+                  }
+               }
+
+               w = ip.weight * (b-a);
+               if (w != 0.0)
+               {
+                  for (int i = 0; i < ndof2; i++)
+                  {
+                     for (int j = 0; j < ndof2; j++)
+                     {
+                        elmat(ndof1+i, ndof1+j) += w * shape2(i) * shape2(j);
+                     }
+                  }
+
+                  for (int i = 0; i < ndof1; i++)
+                  {
+                     for (int j = 0; j < ndof2; j++)
+                     {
+                        elmat(i, ndof1+j) -= w * shape1(i) * shape2(j);
+                     }
+                  }
+               }
+            } // ndof2
+         } // VTQ
+
+      }
+      else if (VQ)
+      {
+
+         Vector x(vdim);
+         VQ->Eval(x, *Trans.Elem1, eip1);
+         for (int idx = 0; idx < vdim/spaceDim; ++idx)
+         {
+            Vector part_x(spaceDim);
+            for (int jdx{0}; jdx < spaceDim; ++jdx)
+               part_x(jdx) = x(jdx+idx*spaceDim);
+            un = part_x * nor;
+            a = 0.5 * alpha * un;
+            b = beta * fabs(un);
+
+            // note: if |alpha/2|==|beta| then |a|==|b|, i.e. (a==b) or (a==-b)
+            //       and therefore two blocks in the element matrix contribution
+            //       (from the current quadrature point) are 0
+            w = ip.weight * (a+b);
             if (w != 0.0)
             {
-               for (int i = 0; i < ndof2; i++)
-               {
-                  for (int j = 0; j < ndof2; j++)
-                  {
-                     elmat(ndof1+i, ndof1+j) += w * shape2(i) * shape2(j);
-                  }
-               }
-
                for (int i = 0; i < ndof1; i++)
                {
-                  for (int j = 0; j < ndof2; j++)
+                  const int row{i+idx*(ndof1+ndof2)};
+                  for (int j = 0; j < ndof1; j++)
                   {
-                     elmat(i, ndof1+j) -= w * shape1(i) * shape2(j);
+                     const int col{j+idx*(ndof1+ndof2)};
+                     elmat(row, col) += w * shape1(i) * shape1(j);
                   }
                }
             }
-         } // ndof2
-      } // VTQ
+
+            if (ndof2)
+            {
+               el2.CalcShape(eip2, shape2);
+
+               if (w != 0.0)
+               {
+                  for (int i = 0; i < ndof2; i++)
+                  {
+                     const int row{ndof1+i+idx*(ndof1+ndof2)};
+                     for (int j = 0; j < ndof1; j++)
+                     {
+                        const int col{j+idx*(ndof1+ndof2)};
+                        elmat(row, col) -= w * shape2(i) * shape1(j);
+                     }
+                  }
+               }
+
+               w = ip.weight * (b-a);
+               if (w != 0.0)
+               {
+                  for (int i = 0; i < ndof2; i++)
+                  {
+                     for (int j = 0; j < ndof2; j++)
+                     {
+                        elmat(ndof1+i, ndof1+j) += w * shape2(i) * shape2(j);
+                     }
+                  }
+
+                  for (int i = 0; i < ndof1; i++)
+                  {
+                     for (int j = 0; j < ndof2; j++)
+                     {
+                        elmat(i, ndof1+j) -= w * shape1(i) * shape2(j);
+                     }
+                  }
+               }
+            } // ndof2
+         }
+
+      }
+      else
+      {
+         MFEM_ABORT("undefined coefficient for some reason");
+      }
 
 
    }

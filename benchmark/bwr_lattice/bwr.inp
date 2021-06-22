@@ -15,13 +15,12 @@ name C20 C20 1.0
 
 [STATE]
 
-solver saaf_true_amgx_vector
+#solver saaf_power_iteration
+solver saaf_angle_power_iteration
+#solver saaf_angle_jacobi_power_iteration
+#solver saaf_angle_nda_slepc
 quadrature level_symmetric
-quad_order 2
-
-#### solver saaf_power_iteration
-#### quadrature level_symmetric
-#### quad_order 8
+quad_order 4
 
 inner_abs_tol 0.0
 #inner_rel_tol 1e-6
