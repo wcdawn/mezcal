@@ -292,11 +292,11 @@ void spn_power_iteration(Timer& time, const Input& inp,
   amg.SetPrintLevel(inp.hypre_print_level());
 
   // setup solver
-  CGSolver cg(MPI_COMM_WORLD);
-  cg.SetRelTol(inp.tol.inner_rel);
+  HyprePCG cg(MPI_COMM_WORLD);
+  cg.SetTol(inp.tol.inner_rel);
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
-  cg.SetPrintLevel(inp.mfem_print_level());
+  cg.SetPrintLevel(inp.hypre_print_level());
   cg.SetPreconditioner(amg);
 
   // get the process id so that only the root process writes to terminal
@@ -515,6 +515,7 @@ void spn_power_iteration(Timer& time, const Input& inp,
 
         // form, solve, and recover the linear system
         a(g,n)->FormLinearSystem(ess_tdof_list, res(g,n), *b(g,n), A, X, B);
+        amg.SetOperator(*A);
         cg.SetOperator(*A);
         time.start("Mult");
         cg.Mult(B, X); // solve
@@ -847,10 +848,11 @@ void diffusion_fixed_src(Timer& time, const Input& inp,
   a.FormLinearSystem(ess_tdof_list, res(0), b, A, X, B);
 
   HypreBoomerAMG amg;
+  amg.SetOperator(*A);
   amg.SetPrintLevel(inp.hypre_print_level());
 
-  CGSolver cg(MPI_COMM_WORLD);
-  cg.SetRelTol(inp.tol.inner_rel);
+  HyprePCG cg(MPI_COMM_WORLD);
+  cg.SetTol(inp.tol.inner_rel);
   cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetMaxIter(inp.tol.max_inner);
   cg.SetPrintLevel(inp.mfem_print_level());
@@ -1274,10 +1276,10 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
   amg.SetPrintLevel(inp.hypre_print_level());
 
   // setup solver
-  GMRESSolver sol(MPI_COMM_WORLD);
+  HypreGMRES sol(MPI_COMM_WORLD);
   // TODO
   // sol.SetKDim(100); // need more but makes more slower
-  sol.SetRelTol(inp.tol.inner_rel);
+  sol.SetTol(inp.tol.inner_rel);
   sol.SetAbsTol(inp.tol.inner_abs);
   sol.SetMaxIter(inp.tol.max_inner);
   sol.SetPrintLevel(inp.mfem_print_level());
@@ -1335,6 +1337,7 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
         Vector B, X;
 
         a(g,n)->FormLinearSystem(ess_tdof_list, angular_flux(g,n), *b(g,n), A, X, B);
+        amg.SetOperator(*A);
         sol.SetOperator(*A);
         sol.Mult(B, X);
         a(g,n)->RecoverFEMSolution(X, *b(g,n), angular_flux(g,n));
@@ -1566,11 +1569,11 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
   amg.SetPrintLevel(inp.hypre_print_level());
 
   // setup linear solver
-  GMRESSolver gmres(MPI_COMM_WORLD);
-  gmres.SetRelTol(inp.tol.inner_rel);
+  HypreGMRES gmres(MPI_COMM_WORLD);
+  gmres.SetTol(inp.tol.inner_rel);
   gmres.SetAbsTol(inp.tol.inner_abs);
   gmres.SetMaxIter(inp.tol.max_inner);
-  gmres.SetPrintLevel(inp.mfem_print_level());
+  gmres.SetPrintLevel(inp.hypre_print_level());
   gmres.SetPreconditioner(amg);
   gmres.SetKDim(10000); // number of iterations to perform between restarts, default=50
   
@@ -1653,6 +1656,7 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
         Vector X;
 
         a(g,n)->FormLinearSystem(ess_tdof_list, angular_flux(g,n), *b(g,n), A, X, B);
+        amg.SetOperator(*A);
         gmres.SetOperator(*A);
         gmres.Mult(B, X);
         a(g,n)->RecoverFEMSolution(X, *b(g,n), angular_flux(g,n));
@@ -1891,11 +1895,11 @@ void saaf_power_iteration(const Quadrature* const quad,
   amg.SetPrintLevel(inp.hypre_print_level());
 
   // setup solver
-  CGSolver sol(MPI_COMM_WORLD);
-  sol.SetRelTol(inp.tol.inner_rel);
+  HyprePCG sol(MPI_COMM_WORLD);
+  sol.SetTol(inp.tol.inner_rel);
   sol.SetAbsTol(inp.tol.inner_abs);
   sol.SetMaxIter(inp.tol.max_inner);
-  sol.SetPrintLevel(inp.mfem_print_level());
+  sol.SetPrintLevel(inp.hypre_print_level());
   sol.SetPreconditioner(amg);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1963,6 +1967,7 @@ void saaf_power_iteration(const Quadrature* const quad,
           Vector B, X;
 
           a(g,n)->FormLinearSystem(ess_tdof_list, angular_flux(g,n), *b(g,n), A, X, B);
+          amg.SetOperator(*A);
           sol.SetOperator(*A);
           sol.Mult(B, X);
           a(g,n)->RecoverFEMSolution(X, *b(g,n), angular_flux(g,n));
@@ -2566,12 +2571,11 @@ namespace slepc_split
     amg->SetPrintLevel(inp->hypre_print_level());
     HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib->ngroup()*quad->nd());
 
-    std::unique_ptr<CGSolver> cg{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
-    cg->SetPrintLevel(inp->mfem_print_level());
-    cg->SetOperator(*Alc_hypre);
+    std::unique_ptr<HyprePCG> cg{std::make_unique<HyprePCG>(*Alc_hypre)};
+    cg->SetPrintLevel(inp->hypre_print_level());
     cg->SetMaxIter(inp->tol.max_inner);
-    cg->SetRelTol(std::sqrt(inp->tol.inner_rel));
-    cg->SetAbsTol(std::sqrt(inp->tol.inner_abs));
+    cg->SetTol(inp->tol.inner_rel);
+    cg->SetAbsTol(inp->tol.inner_abs);
     cg->SetPreconditioner(*amg);
 
     sol = std::move(cg);
@@ -2889,12 +2893,11 @@ void saaf_split_power_iteration(const Quadrature* const quad,
   amg.SetPrintLevel(inp.hypre_print_level());
   HYPRE_BoomerAMGSetNumFunctions(amg, mat_lib.ngroup()*quad->nd());
 
-  CGSolver cg{MPI_COMM_WORLD};
-  cg.SetPrintLevel(inp.mfem_print_level());
-  cg.SetOperator(*Alc_hypre);
+  HyprePCG cg{*Alc_hypre};
+  cg.SetPrintLevel(inp.hypre_print_level());
   cg.SetMaxIter(inp.tol.max_inner);
-  cg.SetRelTol(std::sqrt(inp.tol.inner_rel));
-  cg.SetAbsTol(std::sqrt(inp.tol.inner_abs));
+  cg.SetTol(inp.tol.inner_rel);
+  cg.SetAbsTol(inp.tol.inner_abs);
   cg.SetPreconditioner(amg);
 
   Solver *sol{&cg};
@@ -3234,6 +3237,7 @@ namespace slepc_diffusion
     gmres->SetTol(inp->tol.inner_rel);
     gmres->SetAbsTol(inp->tol.inner_abs);
     gmres->SetKDim(50); // Default. Consider setting from user input.
+    gmres->SetPreconditioner(*amg);
 
     sol = std::move(gmres);
     return PetscErrorCode{0};
@@ -3436,6 +3440,7 @@ namespace slepc_transport
     gmres->SetTol(inp->tol.inner_rel);
     gmres->SetAbsTol(inp->tol.inner_abs);
     gmres->SetKDim(500); // Default. Consider setting from user input.
+    gmres->SetPreconditioner(*amg);
 
     fine_per_coarse = q_hi->nd() / q_lo->nd();
 
