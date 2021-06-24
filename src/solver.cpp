@@ -7204,21 +7204,16 @@ void calc_selfscatter_vector(const int g,
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec};
 
-    const FiniteElement* const fe{fespace->GetFE(e)};
-    Array<int> dofs;
-    fespace->GetElementDofs(e, dofs);
-
     for (int i{0}; i < ir.GetNPoints(); ++i)
     {
 
       const IntegrationPoint ip{ir.IntPoint(i)};
-      Vector dofval(dofs.Size());
-      fe->CalcShape(ip, dofval);
 
       // get all xs at this point
       // this will eventually be temperautre dependent
       const double scat{rec.sigma_s.Elem(g,g)};
       const double tot{rec.sigma_t[g]};
+
       const double val{scat*scalar_flux.GetValue(e, ip)};
 
       for (int n{0}; n < quad->nd(); ++n)
