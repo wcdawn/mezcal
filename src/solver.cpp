@@ -3836,84 +3836,39 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   time.stop(time.matrix_assembly);
 
-  Vector ones(quad->nd());
-  ones = 1.0;
-  VectorConstantCoefficient ones_func{ones};
-
-  std::vector<std::vector<Tensor<Vector>>> saaf;
-  saaf.resize(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    saaf[g].resize(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      saaf[g][i].reserve(quad->nd());
-  }
-
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-    {
-      const double tot{mat_lib.mat[i].rec.sigma_t[g]};
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        Vector tmp{quad->omega(n)};
-        tmp *= 1.0/tot;
-        saaf[g][i].AddElement(tmp, n);
-      }
-    }
-  }
-  
-  std::vector<VectorTensorPWConstCoefficient> saaf_func;
-  saaf_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    saaf_func.emplace_back(quad->nd(), saaf[g]);
-
   const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
   QuadratureSpace qspace{scalar_flux_fespace->GetParMesh(), integration_order};
 
-  std::vector<QuadratureFunction> fiss_quad, upscatter_quad;
-  fiss_quad.reserve(mat_lib.ngroup());
-  upscatter_quad.reserve(mat_lib.ngroup());
-
+  std::vector<QuadratureFunction> fiss_upscatter_quad, saaf_fiss_upscatter_quad;
+  fiss_upscatter_quad.reserve(mat_lib.ngroup());
+  saaf_fiss_upscatter_quad.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    fiss_quad.emplace_back(&qspace);
-    upscatter_quad.emplace_back(&qspace);
+    fiss_upscatter_quad.emplace_back(&qspace, quad->nd());
+    saaf_fiss_upscatter_quad.emplace_back(&qspace, quad->dim()*quad->nd());
   }
 
-  QuadratureFunction dnscatter_quad{&qspace};
+  QuadratureFunction dnscatter_quad{&qspace, quad->nd()};
+  QuadratureFunction saaf_dnscatter_quad{&qspace, quad->dim()*quad->nd()};
 
-  QuadratureFunction selfscatter_quad{&qspace};
-  QuadratureFunctionCoefficient selfscatter_quad_func{selfscatter_quad};
+  QuadratureFunction selfscatter_quad{&qspace, quad->nd()};
+  QuadratureFunction saaf_selfscatter_quad{&qspace, quad->dim()*quad->nd()};
 
-  ScalarVectorProductCoefficient selfscatter_vec_func{selfscatter_quad_func, ones_func};
-
-  std::vector<ScalarVectorTensorProductCoefficient> selfscatter_saaf_func;
-  selfscatter_saaf_func.reserve(mat_lib.ngroup());
+  std::vector<VectorQuadratureFunctionCoefficient> src_quad_func, saaf_src_quad_func;
+  src_quad_func.reserve(mat_lib.ngroup());
+  saaf_src_quad_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    selfscatter_saaf_func.emplace_back(selfscatter_quad_func, saaf_func[g]);
-
-  constexpr double benchmark_source_val{1.0};
-  Vector benchmark_source_vec(quad->nd());
-  benchmark_source_vec = benchmark_source_val;
-  VectorConstantCoefficient benchmark_source_vec_coeff{benchmark_source_vec};
-
-  ConstantCoefficient benchmark_source{benchmark_source_val};
-  ScalarVectorTensorProductCoefficient saaf_benchmark_source{benchmark_source, saaf_func[0]};
+  {
+    src_quad_func.emplace_back(selfscatter_quad);
+    saaf_src_quad_func.emplace_back(saaf_selfscatter_quad);
+  }
 
   std::vector<std::unique_ptr<ParLinearForm>> lf_self_scatter(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
-    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{selfscatter_vec_func});
-    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{selfscatter_saaf_func[g]});
-
-    if (inp.ref == Analytic::saaf_benchmark)
-    {
-      lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{benchmark_source_vec_coeff});
-      lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_benchmark_source});
-    }
-
+    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
+    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
   }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3985,25 +3940,21 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     temperature_heat_conduction(inp, mat_lib, power, temperature);
     time.stop("temperature");
 
-    time.start("lf_fiss_upscatter_fission_assemble");
-    calc_fiss_upscatter(scalar_flux, mat_lib, fiss_quad, upscatter_quad, inp.flux_free_chi);
-    if (inp.ref != Analytic::saaf_benchmark)
-    {
-      for (int g{0}; g < mat_lib.ngroup(); ++g)
-      {
-        fiss_quad[g] /= angular_flux.keff;
-        upscatter_quad[g] += fiss_quad[g];
-      }
-    }
-    time.stop("lf_fiss_upscatter_fission_assemble");
+    time.start("calc_fiss_upscatter_vector");
+    calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad,
+      fiss_upscatter_quad, saaf_fiss_upscatter_quad,
+      angular_flux.keff, inp.flux_free_chi);
+    time.stop("calc_fiss_upscatter_vector");
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
 
-      time.start("lf_dnscatter_assemble");
-      calc_downscatter(g, scalar_flux, mat_lib, dnscatter_quad);
-      dnscatter_quad += upscatter_quad[g];
-      time.stop("lf_dnscatter_assemble");
+      time.start("calc_downscatter_vector");
+      calc_downscatter_vector(g, scalar_flux, mat_lib, quad,
+        dnscatter_quad, saaf_dnscatter_quad);
+      dnscatter_quad += fiss_upscatter_quad[g];
+      saaf_dnscatter_quad += saaf_fiss_upscatter_quad[g];
+      time.stop("calc_downscatter_vector");
 
       double scattering_conv{inp.tol.scatter * 1e1 + 1e-6};
       for (int scattering_iter{0}; (scattering_iter < inp.tol.max_scatter) &&
@@ -4012,10 +3963,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         dsa_phi_old = scalar_flux(g); // (k)
 
-        calc_selfscatter(g, scalar_flux(g), mat_lib, selfscatter_quad);
+        time.start("selfscatter_and_assemble");
+        calc_selfscatter_vector(g, scalar_flux(g), mat_lib, quad,
+          selfscatter_quad, saaf_selfscatter_quad);
         selfscatter_quad += dnscatter_quad;
+        saaf_selfscatter_quad += saaf_dnscatter_quad;
         lf_self_scatter[g]->Assemble();
         std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
+        time.stop("selfscatter_and_assemble");
 
         time.start("Amult");
         std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
@@ -4023,7 +3978,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         angular_flux(g).Distribute(*x);
         time.stop("Amult");
 
+        time.start("scalar_flux");
         calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux); // (k+1/2)
+        time.start("scalar_flux");
 
         if (use_dsa)
         {
@@ -6980,6 +6937,306 @@ void calc_current_vector_vector(const ParGridFunction &angular_flux,
             angular_flux(n + g*quad->nd() + i*quad->nd()*mat_lib.ngroup());
         }
       }
+    }
+  }
+
+  return;
+}
+
+void calc_fiss_upscatter_vector(const Result &scalar_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                std::vector<QuadratureFunction> &fiss_upscatter_quad,
+                                std::vector<QuadratureFunction> &saaf_fiss_upscatter_quad,
+                                const double keff,
+                                const bool flux_free_chi)
+{
+
+  const QuadratureSpace* const qspace{fiss_upscatter_quad[0].GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss_upscatter_quad[g] = 0.0;
+    saaf_fiss_upscatter_quad[g] = 0.0;
+  }
+
+  int idx{0};
+  int saaf_idx{0};
+
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    const FiniteElement* const fe{fespace->GetFE(e)};
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      std::vector<double> spectrum(mat_lib.ngroup());
+
+      // get all xs at this point
+      // this will eventually be temperautre dependent
+      const std::vector<double> &nusf{rec.nusf};
+      const std::vector<double> &tot{rec.sigma_t};
+      const SparseMatrix &scat{rec.sigma_s};
+      std::vector<double> chi;
+      if (rec.is_fiss)
+      {
+
+        // accumulate flux spectrum
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+        {
+          Vector locvec(dofs.Size());
+          scalar_flux(g).GetSubVector(dofs, locvec);
+          spectrum[g] = dofval*locvec;
+        }
+
+        // set chi appropriately
+        chi.resize(mat_lib.ngroup());
+        if (flux_free_chi)
+          chi = rec.chi;
+        else if (mat_lib.rx_wide_chi)
+          chi = mat_lib.chi;
+        else
+          chi = mat.calculate_chi(spectrum);
+
+      }
+      else
+      {
+        // assign to dummy value to work with cacheing later
+        for (double &x : spectrum)
+          x = -1.0;
+      }
+
+      Vector val(mat_lib.ngroup());
+      val = 0.0;
+
+      // fission
+      if (rec.is_fiss)
+      {
+
+        double fiss_sum{0.0};
+        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+          fiss_sum += nusf[gprime]*spectrum[gprime];
+
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+          val(g) += chi[g]*fiss_sum;
+
+        val /= keff;
+
+      }
+
+      // upscatter
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        if (rec.is_upscatter[g])
+        {
+
+          Array<int> col_idx;
+          Vector scat_dat;
+          scat.GetRow(g, col_idx, scat_dat);
+
+          for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+          {
+            const int gprime{col_idx[gidx]};
+            if (gprime > g)
+            {
+              if (spectrum[gprime] < 0.0)
+              {
+                Vector locvec(dofs.Size());
+                scalar_flux(gprime).GetSubVector(dofs, locvec);
+                spectrum[gprime] = dofval*locvec;
+              }
+              val(g) += scat_dat(gidx)*spectrum[gprime];
+            }
+          }
+        }
+      }
+
+      // val array is calculated
+      // need to incorporate into quadrature functions
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+          fiss_upscatter_quad[g](idx) = val(g);
+        ++idx;
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir(quad->omega(n));
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          for (int g{0}; g < mat_lib.ngroup(); ++g)
+            saaf_fiss_upscatter_quad[g](saaf_idx) = dir(d)/tot[g] * val(g);
+          ++saaf_idx;
+        }
+      }
+
+    }
+
+  }
+
+  return;
+}
+
+void calc_downscatter_vector(const int g,
+                             const Result &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             QuadratureFunction &dnscatter_quad,
+                             QuadratureFunction &saaf_dnscatter_quad)
+{
+
+  const QuadratureSpace* const qspace{dnscatter_quad.GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  dnscatter_quad = 0.0;
+  saaf_dnscatter_quad = 0.0;
+
+  int idx{0};
+  int saaf_idx{0};
+
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    const FiniteElement* const fe{fespace->GetFE(e)};
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      // get all xs at this point
+      // this will eventually be temperature dependent
+      const double &tot{rec.sigma_t[g]};
+      const SparseMatrix &scat{rec.sigma_s};
+
+      Array<int> col_idx;
+      Vector scat_dat;
+      scat.GetRow(g, col_idx, scat_dat);
+
+      double val{0.0};
+
+      // assume column indices are sorted
+      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+      {
+
+        const int gprime{col_idx[gidx]};
+        if (gprime >= g) break;
+
+        Vector locvec(dofs.Size());
+        scalar_flux(gprime).GetSubVector(dofs, locvec);
+        const double flux{dofval*locvec};
+
+        val += scat_dat(gidx)*flux;
+
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        dnscatter_quad(idx) = val;
+        ++idx;
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir{quad->omega(n)};
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          saaf_dnscatter_quad(saaf_idx) = dir(d)/tot * val;
+          ++saaf_idx;
+        }
+      }
+
+    }
+
+  }
+
+  return;
+}
+
+void calc_selfscatter_vector(const int g,
+                             const mfem::ParGridFunction &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             QuadratureFunction &selfscatter_quad,
+                             QuadratureFunction &saaf_selfscatter_quad)
+{
+
+  const QuadratureSpace* const qspace{selfscatter_quad.GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux.ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  selfscatter_quad = 0.0;
+  saaf_selfscatter_quad = 0.0;
+
+  int idx{0};
+  int saaf_idx{0};
+
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    const FiniteElement* const fe{fespace->GetFE(e)};
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      // get all xs at this point
+      // this will eventually be temperautre dependent
+      const double scat{rec.sigma_s.Elem(g,g)};
+      const double tot{rec.sigma_t[g]};
+      const double val{scat*scalar_flux.GetValue(e, ip)};
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        selfscatter_quad(idx) = val;
+        ++idx;
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir{quad->omega(n)};
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          saaf_selfscatter_quad(saaf_idx) = dir(d)/tot * val;
+          ++saaf_idx;
+        }
+      }
+
     }
   }
 
