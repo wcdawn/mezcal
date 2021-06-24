@@ -78,6 +78,11 @@ void temperature_heat_conduction(const Input& inp,
                                  ParGridFunction& temperature)
 {
 
+  // TODO need some other method for this...
+  // bwr 5 is poison rods
+  // vvercan 4 is poison rods
+  constexpr int heat_pipe_id{69};
+
   ParFiniteElementSpace* const parfespace{power.ParFESpace()};
   const ParMesh* const pmesh{parfespace->GetParMesh()};
 
@@ -99,11 +104,6 @@ void temperature_heat_conduction(const Input& inp,
     ess_bdr[i] = inp.boundary_conditions[i];
 
   parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
-
-  // TODO need some other method for this...
-  // bwr 5 is poison rods
-  // vvercan 4 is poison rods
-  constexpr int heat_pipe_id{1};
 
   std::unordered_set<int> heat_pipe_set;
   for (int e{0}; e < parfespace->GetNE(); ++e)
@@ -175,7 +175,7 @@ void temperature_heat_conduction(const Input& inp,
   HyprePCG cg(MPI_COMM_WORLD);
   cg.SetPreconditioner(amg);
   cg.SetTol(inp.tol.temp_inner_rel);
-  //cg.SetAbsTol(inp.tol.temp_inner_abs); // TODO implement with new wrapper function i wrote
+  cg.SetAbsTol(inp.tol.temp_inner_abs);
   cg.SetMaxIter(inp.tol.temp_max_inner);
   cg.SetPrintLevel(inp.hypre_print_level());
 
@@ -206,7 +206,7 @@ void temperature_heat_conduction(const Input& inp,
     const double local_temp_conv{temperature_old.Normlinf()};
     MPI_Allreduce(&local_temp_conv, &temp_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    if (parfespace->GetMyRank() == 0)
+    if ((inp.verbose) && (parfespace->GetMyRank() == 0))
       std::cout << "temperature_iter=" << iter << " temp_conv=" << temp_conv << std::endl;
 
   }

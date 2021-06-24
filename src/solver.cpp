@@ -16,6 +16,8 @@
 #include "level_symmetric_quadrature.hpp"
 #include "legendre_chebyschev_quadrature.hpp"
 
+#include "conduction.hpp"
+
 #if 0
 #include "upscattering_coefficient.hpp"
 #include "downscattering_coefficient.hpp"
@@ -3642,7 +3644,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 const Input& inp,
                                 const Material_library& mat_lib,
                                 Result& angular_flux,
-                                Result& scalar_flux)
+                                Result& scalar_flux,
+                                ParGridFunction &power,
+                                ParGridFunction &temperature)
 {
 
   constexpr bool use_gpu{false};
@@ -3972,6 +3976,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int iter{0}; (iter < inp.tol.max_outer)
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
+
+    time.start("power");
+    calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+    time.stop("power");
+
+    time.start("temperature");
+    temperature_heat_conduction(inp, mat_lib, power, temperature);
+    time.stop("temperature");
 
     time.start("lf_fiss_upscatter_fission_assemble");
     calc_fiss_upscatter(scalar_flux, mat_lib, fiss_quad, upscatter_quad, inp.flux_free_chi);

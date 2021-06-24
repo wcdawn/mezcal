@@ -389,8 +389,7 @@ int main(int argc, char* argv[])
           saaf_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_angle_power_iteration):
-          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
-          calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, power, temperature);
           break;
         case (Solver_choice::saaf_angle_jacobi_power_iteration):
           saaf_angle_jacobi_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
