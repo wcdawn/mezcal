@@ -26,17 +26,14 @@ PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
 SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
 
 CXXFLAGS += -DGPU_AWARE_MPI
+CXXFLAGS += -DAMGX_AVAILABLE
 
 AMGX_DIR = $(OLCF_AMGX_ROOT)
 AMGX_LIB_DIR = $(AMGX_DIR)/lib
 AMGX_INCLUDE_DIR = $(AMGX_DIR)/include
 
-#### # TODO move this because it will be the same on both machines
-#### AMGX_DIR = $(PROJ)/amgx
-#### AMGX_LIB_DIR = $(AMGX_DIR)/lib
-#### AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
-
 else ifeq ($(MACH),ARCHBUILD)
+
 STD = c++17
 MPICXX = /opt/mpich/bin/mpicxx
 H5_DIR = /usr/lib
@@ -54,6 +51,8 @@ METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 CUDA_DIR = /opt/cuda
 PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+
+CXXFLAGS += -DAMGX_AVAILABLE
 
 AMGX_DIR = /home/wcdawn/projects/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build

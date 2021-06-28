@@ -594,6 +594,8 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
                               ParFiniteElementSpace* const fespace, Result& res)
 {
 
+#ifdef AMGX_AVAILABLE
+
   /*
    * 1) Efficiency of bassemble. Begin with quadrature functions.
    * 2) Boundary conditions.
@@ -793,6 +795,12 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
       sol(g,n).Finalize();
     }
   }
+
+#else
+
+  MFEM_ABORT("solver not supported without amgx");
+
+#endif
 
   return;
 }
@@ -2457,6 +2465,8 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
                            Result &angular_flux)
 {
 
+#ifdef AMGX_AVAILABLE
+
   ParFiniteElementSpace* const fespace{angular_flux(0).ParFESpace()};
   ParMesh* const pmesh{fespace->GetParMesh()};
 
@@ -2539,6 +2549,12 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
   {
     power_iteration_amgx(Ahypre.release(), Mhypre.release(), inp, time, angular_flux, mat_lib.ngroup()*quad->nd());
   }
+
+#else
+
+  MFEM_ABORT("solver not supported without amgx");
+
+#endif
 
   return;
 }
@@ -3722,6 +3738,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (use_gpu)
       {
 
+#ifdef AMGX_AVAILABLE
+
         std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
 
         this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
@@ -3734,6 +3752,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         this_sol->SetOperator(*Amat);
         Asol[g] = std::move(this_sol);
+
+#else
+
+        MFEM_ABORT("solver not supported without amgx");
+
+#endif
 
       }
       else
@@ -3795,6 +3819,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (use_gpu)
       {
 
+#ifdef AMGX_AVAILABLE
+
         std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
         this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
         this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
@@ -3807,6 +3833,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         this_sol->SetOperator(*Dmat);
         Dsol[g] = std::move(this_sol);
+
+#else
+
+        MFEM_ABORT("solver not supported without amgx");
+
+#endif
 
       }
       else
@@ -4089,7 +4121,6 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
   const int myid{angular_flux_fespace->GetMyRank()};
 
   constexpr int skip_zeros{2};
-  constexpr bool use_gpu{false};
   constexpr bool use_dsa{true};
 
   std::unique_ptr<HypreParMatrix> A;
@@ -4159,28 +4190,20 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
     a.Finalize(skip_zeros);
     A.reset(a.ParallelAssemble());
 
-    if (use_gpu)
-    {
-      A.reset(); // don't need to keep it on the cpu
-    }
-    else
-    {
 
-      std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*A)};
-      amg->SetPrintLevel(inp.hypre_print_level());
-      HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib.ngroup()*quad->nd());
-      Aprec = std::move(amg);
+    std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*A)};
+    amg->SetPrintLevel(inp.hypre_print_level());
+    HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib.ngroup()*quad->nd());
+    Aprec = std::move(amg);
 
-      std::unique_ptr<HyprePCG> cg{std::make_unique<HyprePCG>(*A)};
-      cg->SetPrintLevel(inp.hypre_print_level());
-      cg->SetTol(inp.tol.inner_rel);
-      cg->SetAbsTol(inp.tol.inner_abs);
-      cg->SetMaxIter(inp.tol.max_inner);
-      cg->SetPreconditioner(*Aprec);
+    std::unique_ptr<HyprePCG> cg{std::make_unique<HyprePCG>(*A)};
+    cg->SetPrintLevel(inp.hypre_print_level());
+    cg->SetTol(inp.tol.inner_rel);
+    cg->SetAbsTol(inp.tol.inner_abs);
+    cg->SetMaxIter(inp.tol.max_inner);
+    cg->SetPreconditioner(*Aprec);
 
-      Asol = std::move(cg);
-
-    }
+    Asol = std::move(cg);
 
   } // A operator
 
@@ -4216,28 +4239,20 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
 
     D.reset(d.ParallelAssemble());
 
-    if (use_gpu)
-    {
-      D.reset(); // don't need to keep it on the cpu
-    }
-    else
-    {
+    std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*D)};
+    amg->SetPrintLevel(inp.hypre_print_level());
+    HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib.ngroup());
+    Dprec = std::move(amg);
 
-      std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*D)};
-      amg->SetPrintLevel(inp.hypre_print_level());
-      HYPRE_BoomerAMGSetNumFunctions(*amg, mat_lib.ngroup());
-      Dprec = std::move(amg);
+    std::unique_ptr<HyprePCG> cg{std::make_unique<HyprePCG>(*D)};
+    cg->SetPrintLevel(inp.hypre_print_level());
+    cg->SetTol(inp.tol.inner_rel);
+    cg->SetAbsTol(inp.tol.inner_abs);
+    cg->SetMaxIter(inp.tol.max_inner);
+    cg->SetPreconditioner(*Dprec);
 
-      std::unique_ptr<HyprePCG> cg{std::make_unique<HyprePCG>(*D)};
-      cg->SetPrintLevel(inp.hypre_print_level());
-      cg->SetTol(inp.tol.inner_rel);
-      cg->SetAbsTol(inp.tol.inner_abs);
-      cg->SetMaxIter(inp.tol.max_inner);
-      cg->SetPreconditioner(*Dprec);
+    Dsol = std::move(cg);
 
-      Dsol = std::move(cg);
-
-    }
 
   } // DSA operator
 
@@ -4873,7 +4888,6 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
 {
 
   const int myid{res(0).ParFESpace()->GetMyRank()};
-  const MPI_Comm mycomm{res(0).ParFESpace()->GetComm()};
 
   constexpr bool use_amgx{false};
   constexpr bool compute_residual{false};
@@ -4883,6 +4897,8 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
   if (use_amgx)
   {
 
+#if AMGX_AVAILABLE
+
     if (myid == 0) std::cout << "AMGX_SETUP_BEGIN" << std::endl;
     time.start("amgx_setup");
     std::unique_ptr<AmgXSolver> Aamgx{std::make_unique<AmgXSolver>()};
@@ -4891,9 +4907,9 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
 
     if (myid == 0) std::cout << "AMGX_MPI_SETTING_BEGIN" << std::endl;
     if (inp.ndevices > 0)
-      Aamgx->InitMPITeams(mycomm, inp.ndevices); // use MPITeams
+      Aamgx->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
     else
-      Aamgx->InitExclusiveGPU(mycomm); // use MPI exclusive
+      Aamgx->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI exclusive
     if (myid == 0) std::cout << "AMGX_MPI_SETTING_END" << std::endl;
 
     if (myid == 0) std::cout << "AMGX_SET_OPERATOR_BEGIN" << std::endl;
@@ -4909,6 +4925,12 @@ void power_iteration_amgx(HypreParMatrix* A, HypreParMatrix* M, const Input& inp
     if (myid == 0) std::cout << "AMGX_SETUP_END" << std::endl;
 
     sol = std::move(Aamgx);
+
+#else
+
+    MFEM_ABORT("solver not supported without amgx");
+
+#endif
 
   }
   else
@@ -5182,7 +5204,7 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
 namespace slepc_amgx
 {
 
-  std::unique_ptr<AmgXSolver> sol{nullptr};
+  std::unique_ptr<Solver> sol{nullptr};
   HypreParMatrix *Ahypre{nullptr};
 
   bool verbose{true};
@@ -5193,15 +5215,24 @@ namespace slepc_amgx
 
     std::cout << "PC_SHELL_SETUP" << std::endl;
 
-    sol = std::make_unique<AmgXSolver>();
-    sol->DefaultParameters(AmgXSolver::PRECONDITIONER, verbose);
-    sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-    MFEM_VERIFY(ndevices == 0, "petsc+slepc+amgx link only works for MPIExclusive mode.");
-    sol->InitExclusiveGPU(MPI_COMM_WORLD);
+#ifdef AMGX_AVAILABLE
 
-    sol->SetOperator(*Ahypre);
+    std::unique_ptr<AmgXSolver> amgx{std::make_unique<AmgXSolver>()};
+    amgx->DefaultParameters(AmgXSolver::PRECONDITIONER, verbose);
+    amgx->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+    MFEM_VERIFY(ndevices == 0, "petsc+slepc+amgx link only works for MPIExclusive mode.");
+    amgx->InitExclusiveGPU(MPI_COMM_WORLD);
+    amgx->SetOperator(*Ahypre);
+    sol = std::move(amgx);
+
     delete Ahypre;
     Ahypre = nullptr;
+
+#else
+
+    MFEM_ABORT("solver not supported without amgx");
+
+#endif
     
     return PetscErrorCode{0};
   }
@@ -5218,7 +5249,6 @@ namespace slepc_amgx
   PetscErrorCode destroy(PC pc)
   {
     std::cout << "PC_SHELL_DESTROY" << std::endl;
-    sol->Finalize();
     sol.reset();
     return PetscErrorCode{0};
   }

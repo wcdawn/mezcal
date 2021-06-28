@@ -21,7 +21,7 @@
 namespace slepc_amgx
 {
 
-  extern std::unique_ptr<mfem::AmgXSolver> sol;
+  extern std::unique_ptr<mfem::Solver> sol;
   extern mfem::HypreParMatrix* Ahypre;
 
   PetscErrorCode setup(PC pc);
