@@ -3747,7 +3747,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         prec.push_back(std::move(amg));
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-        this_sol->SetPrintLevel(inp.hypre_print_level());
+        this_sol->SetPrintLevel(2);
         this_sol->SetOperator(*mat_sto.back());
         this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetAbsTol(inp.tol.inner_abs);
@@ -4085,11 +4085,19 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     k_conv = std::abs(angular_flux.keff - keff_old);
 
     if (myid == 0)
-      std::cout << iter 
+      std::cout << iter
         << " keff=" << angular_flux.keff
-        << " dk=" << k_conv 
-        << " dphi=" << phi_conv 
+        << " dk=" << k_conv
+        << " dphi=" << phi_conv
         << std::endl;
+
+    if ((angular_flux.keff < 0.0) ||
+        (angular_flux.keff > 1e50) ||
+        std::isnan(angular_flux.keff))
+    {
+      if (myid == 0) std::cout << "INVALID VALUE FOR KEFF" << std::endl;
+      return;
+    }
 
     scalar_flux.keff = angular_flux.keff;
     // store old values
