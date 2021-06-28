@@ -318,11 +318,32 @@ void calc_downscatter(const int g,
                       mfem::QuadratureFunction& dnscatter_quad_func);
 void calc_selfscatter(const int g, 
                       const mfem::ParGridFunction &scalar_flux,
-                      const Material_library& mat_lib,
-                      mfem::QuadratureFunction& selfscatter_quad_func);
+                      const Material_library &mat_lib,
+                      mfem::QuadratureFunction &selfscatter_quad);
+
 void calc_fiss_src(const Result& scalar_flux, 
                    const Material_library& mat_lib,
                    mfem::QuadratureFunction& fiss_src);
+
+void calc_fiss_upscatter_vector(const Result &scalar_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                std::vector<mfem::QuadratureFunction> &fiss_upscatter_quad,
+                                std::vector<mfem::QuadratureFunction> &saaf_fiss_upscatter_quad,
+                                const double keff,
+                                const bool flux_free_chi=false);
+void calc_downscatter_vector(const int g, 
+                             const Result &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             mfem::QuadratureFunction &dnscatter_quad,
+                             mfem::QuadratureFunction &saaf_dnscatter_quad);
+void calc_selfscatter_vector(const int g, 
+                             const mfem::ParGridFunction &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             mfem::QuadratureFunction &selfscatter_quad,
+                             mfem::QuadratureFunction &saaf_selfscatter_quad);
 
 void calc_spn_next(const Result& flux,
                    const Material_library& mat_lib,
