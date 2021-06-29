@@ -3675,11 +3675,15 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   constexpr int skip_zeros{2};
   const int myid{angular_flux_fespace->GetMyRank()};
 
+  // transport streaming+collision operator
+  std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(mat_lib.ngroup()); // could be HypreSolver
   std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
-  std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
 
-  std::vector<std::unique_ptr<HypreParMatrix>> mat_sto;
-  std::vector<std::unique_ptr<HypreSolver>> prec;
+  // dsa streaming+removal operator
+  std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HypreBoomerAMG>> Dprec(mat_lib.ngroup()); // could be HypreSolver
+  std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
 
   time.start(time.matrix_assembly);
 
@@ -3733,7 +3737,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
       a.Assemble(skip_zeros); // note: no essential bcs in saaf
       a.Finalize(skip_zeros);
-      std::unique_ptr<HypreParMatrix> Amat{a.ParallelAssemble()};
+      Amat[g].reset(a.ParallelAssemble());
 
       if (use_gpu)
       {
@@ -3750,8 +3754,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         else
           this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
 
-        this_sol->SetOperator(*Amat);
+        this_sol->SetOperator(*Amat[g]);
         Asol[g] = std::move(this_sol);
+
+        // Amat no longer needs to be stored on cpu
+        Amat[g].reset();
 
 #else
 
@@ -3763,21 +3770,18 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        mat_sto.push_back(std::move(Amat)); // need to preserve this
-
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*mat_sto.back())};
+        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
         amg->SetPrintLevel(inp.hypre_print_level());
         HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
-        prec.push_back(std::move(amg));
+        Aprec[g] = std::move(amg);
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
         this_sol->SetPrintLevel(2);
-        this_sol->SetOperator(*mat_sto.back());
+        this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+        this_sol->SetOperator(*Amat[g]);
         this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        this_sol->SetPreconditioner(*prec.back());
-
         Asol[g] = std::move(this_sol);
 
       }
@@ -3810,7 +3814,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       d.AddBoundaryIntegrator(new MassIntegrator{albedo});
       d.Assemble(skip_zeros);
       d.Finalize(skip_zeros);
-      std::unique_ptr<HypreParMatrix> Dmat(d.ParallelAssemble());
+
+      Dmat[g].reset(d.ParallelAssemble());
 
       if (use_gpu)
       {
@@ -3827,8 +3832,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
   
 
-        this_sol->SetOperator(*Dmat);
+        this_sol->SetOperator(*Dmat[g]);
         Dsol[g] = std::move(this_sol);
+
+        // Dmat no longer needs to be stored on cpu
+        Dmat[g].reset();
 
 #else
 
@@ -3840,20 +3848,17 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        mat_sto.push_back(std::move(Dmat));
-
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*mat_sto.back())};
+        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
         amg->SetPrintLevel(inp.hypre_print_level());
-        prec.push_back(std::move(amg));
+        Dprec[g] = std::move(amg);
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+        this_sol->SetPreconditioner(*Dprec[g]);
+        this_sol->SetOperator(*Dmat[g]);
         this_sol->SetPrintLevel(inp.hypre_print_level());
-        this_sol->SetOperator(*mat_sto.back());
         this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        this_sol->SetPreconditioner(*prec.back());
-
         Dsol[g] = std::move(this_sol);
 
       }
