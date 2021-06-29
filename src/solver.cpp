@@ -3802,19 +3802,15 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       PWConstCoefficient diffusive_func{diffusive};
       PWConstCoefficient removal_func{removal};
 
+      ConstantCoefficient albedo{0.5};
+
       ParBilinearForm d{scalar_flux_fespace};
       d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
       d.AddDomainIntegrator(new MassIntegrator{removal_func});
-      d.Assemble(1);
-
-      // all bcs essential to match the scalar flux
-      Array<int> ess_bdr(pmesh->bdr_attributes.Max());
-      ess_bdr = 1;
-      d.EliminateEssentialBCDiag(ess_bdr, 1.0);
-
-      d.Finalize(1);
+      d.AddBoundaryIntegrator(new MassIntegrator{albedo});
+      d.Assemble(skip_zeros);
+      d.Finalize(skip_zeros);
       std::unique_ptr<HypreParMatrix> Dmat(d.ParallelAssemble());
-
 
       if (use_gpu)
       {
@@ -4020,8 +4016,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           time.start("Dmult");
 
           ParGridFunction pgf_dphi{scalar_flux(g)};
-          ConstantCoefficient zero{0.0};
-          pgf_dphi.ProjectBdrCoefficient(zero, pmesh->attributes); // all
 
           lf_dsa[g]->Assemble();
           std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
