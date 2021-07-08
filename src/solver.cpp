@@ -3675,6 +3675,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   constexpr int skip_zeros{2};
   const int myid{angular_flux_fespace->GetMyRank()};
 
+  /*
   // transport streaming+collision operator
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
   std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(mat_lib.ngroup()); // could be HypreSolver
@@ -3684,6 +3685,17 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
   std::vector<std::unique_ptr<HypreBoomerAMG>> Dprec(mat_lib.ngroup()); // could be HypreSolver
   std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
+  */
+
+  // transport streaming+collision operator
+  Array<HypreParMatrix*> Amat(mat_lib.ngroup());
+  Array<HypreBoomerAMG*> Aprec(mat_lib.ngroup()); // could be HypreSolver
+  Array<Solver*> Asol(mat_lib.ngroup());
+
+  // dsa streaming+removal operator
+  Array<HypreParMatrix*> Dmat(mat_lib.ngroup());
+  Array<HypreBoomerAMG*> Dprec(mat_lib.ngroup()); // could be HypreSolver
+  Array<Solver*> Dsol(mat_lib.ngroup());
 
   time.start(time.matrix_assembly);
 
@@ -3737,15 +3749,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
       a.Assemble(skip_zeros); // note: no essential bcs in saaf
       a.Finalize(skip_zeros);
-      Amat[g].reset(a.ParallelAssemble());
+      Amat[g] = a.ParallelAssemble();
 
       if (use_gpu)
       {
 
 #ifdef AMGX_AVAILABLE
 
-        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
-
+        AmgXSolver *this_sol = new AmgXSolver;
         this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
         this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
 
@@ -3755,10 +3766,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
 
         this_sol->SetOperator(*Amat[g]);
-        Asol[g] = std::move(this_sol);
+        Asol[g] = this_sol;
 
         // Amat no longer needs to be stored on cpu
-        Amat[g].reset();
+        delete Amat[g];
+        Amat[g] = nullptr;
 
 #else
 
@@ -3770,19 +3782,33 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
+        HypreBoomerAMG *amg = new HypreBoomerAMG{*Amat[g]};
         amg->SetPrintLevel(inp.hypre_print_level());
         HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
-        Aprec[g] = std::move(amg);
+        Aprec[g] = amg;
 
-        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+        /*
+        // TODO
+        //HyprePCG *this_sol = new HyprePCG{MPI_COMM_WORLD};
+        HypreGMRES *this_sol = new HypreGMRES{MPI_COMM_WORLD};
         this_sol->SetPrintLevel(2);
         this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
         this_sol->SetOperator(*Amat[g]);
         this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        Asol[g] = std::move(this_sol);
+        Asol[g] = this_sol;
+        */
+
+        CGSolver *this_sol = new CGSolver{MPI_COMM_WORLD};
+        this_sol->SetPrintLevel(3);
+        // TODO no preconditioner
+        //this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+        this_sol->SetOperator(*Amat[g]);
+        this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
+        this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+        this_sol->SetMaxIter(inp.tol.max_inner);
+        Asol[g] = this_sol;
 
       }
 
@@ -3812,17 +3838,17 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
       d.AddDomainIntegrator(new MassIntegrator{removal_func});
       d.AddBoundaryIntegrator(new MassIntegrator{albedo});
+
       d.Assemble(skip_zeros);
       d.Finalize(skip_zeros);
-
-      Dmat[g].reset(d.ParallelAssemble());
+      Dmat[g] = d.ParallelAssemble();
 
       if (use_gpu)
       {
 
 #ifdef AMGX_AVAILABLE
 
-        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
+        AmgXSolver *this_sol = new AmgXSolver;
         this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
         this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
 
@@ -3833,10 +3859,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   
 
         this_sol->SetOperator(*Dmat[g]);
-        Dsol[g] = std::move(this_sol);
+        Dsol[g] = this_sol;
 
         // Dmat no longer needs to be stored on cpu
-        Dmat[g].reset();
+        delete Dmat[g];
+        Dmat[g] = nullptr;
 
 #else
 
@@ -3848,18 +3875,32 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
+        HypreBoomerAMG *amg = new HypreBoomerAMG{*Dmat[g]};
         amg->SetPrintLevel(inp.hypre_print_level());
-        Dprec[g] = std::move(amg);
+        Dprec[g] = amg;
 
-        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+        /*
+        // TODO
+        //HyprePCG *this_sol = new HyprePCG{MPI_COMM_WORLD};
+        HypreGMRES *this_sol = new HypreGMRES{MPI_COMM_WORLD};
         this_sol->SetPreconditioner(*Dprec[g]);
         this_sol->SetOperator(*Dmat[g]);
         this_sol->SetPrintLevel(inp.hypre_print_level());
         this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
-        Dsol[g] = std::move(this_sol);
+        Dsol[g] = this_sol;
+        */
+
+        CGSolver *this_sol = new CGSolver{MPI_COMM_WORLD};
+        this_sol->SetPrintLevel(3);
+        // TODO no preconditioner
+        //this_sol->SetPreconditioner(*Dprec[g]); // should be before operator
+        this_sol->SetOperator(*Dmat[g]);
+        this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
+        this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+        this_sol->SetMaxIter(inp.tol.max_inner);
+        Dsol[g] = this_sol;
 
       }
 
@@ -4004,6 +4045,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         lf_self_scatter[g]->Assemble();
         std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
         time.stop("selfscatter_and_assemble");
+
+
+        // Maybe try FormLinearSystem?
 
         time.start("Amult");
         std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
