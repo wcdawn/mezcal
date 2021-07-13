@@ -503,14 +503,29 @@ int main(int argc, char* argv[])
     else
     {
 
-      for (int g{0}; g < scalar_flux.ngroup(); ++g)
+      if (inp.sol == Solver_choice::slepc_vector)
       {
-        std::ostringstream scalar_flux_record;
-        scalar_flux_record << "scalar_flux_g"
-                           << std::setfill('0')
-                           << std::setw(group_width)
-                           << g;
-        output.RegisterField(scalar_flux_record.str(), &res(g));
+        for (int g{0}; g < scalar_flux.ngroup(); ++g)
+        {
+          std::ostringstream scalar_flux_record;
+          scalar_flux_record << "scalar_flux_g"
+                             << std::setfill('0')
+                             << std::setw(group_width)
+                             << g;
+          output.RegisterField(scalar_flux_record.str(), &scalar_flux(g));
+        }
+      }
+      else
+      {
+        for (int g{0}; g < scalar_flux.ngroup(); ++g)
+        {
+          std::ostringstream scalar_flux_record;
+          scalar_flux_record << "scalar_flux_g"
+                             << std::setfill('0')
+                             << std::setw(group_width)
+                             << g;
+          output.RegisterField(scalar_flux_record.str(), &res(g));
+        }
       }
 
     }
@@ -524,7 +539,17 @@ int main(int argc, char* argv[])
 
   }
 
-  //total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs"); // TODO
+  if (mat_lib.ngroup() == 24)
+  {
+    // assume 24-group SCALE-based energy group structure
+    // 1) E < 0.625 eV (g < 3)
+    // 2) 0.625 eV < E < 6 keV (3 < g < 17)
+    // 3) E > 6 keV (g > 17)
+    coarse_energy_plot(&pmesh, scalar_flux, {3, 17},
+      inp.input_file_stub()+"_coarse_energy");
+  }
+
+  //total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs");
 
   if (myid == 0) time.Print(cout);
 

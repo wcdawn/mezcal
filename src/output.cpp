@@ -68,3 +68,55 @@ void total_xs_plot(ParMesh *pmesh,
 
   return;
 }
+
+void coarse_energy_plot(ParMesh *pmesh,
+                        const Result &scalar_flux,
+                        const std::vector<int> collapse_vector,
+                        const std::string out_name)
+{
+
+  const int ncoarse{static_cast<int>(collapse_vector.size())+1};
+
+  std::vector<ParGridFunction> coarse_flux;
+  coarse_flux.reserve(ncoarse);
+  for (int i{0}; i < ncoarse; ++i)
+    coarse_flux.emplace_back(scalar_flux(0));
+
+  for (ParGridFunction &pgf : coarse_flux)
+    pgf = 0.0;
+
+  int coarse_idx{0};
+  
+  for (int g{0}; g < scalar_flux.ngroup(); ++g)
+  {
+
+    // see if we have passed the coarse energy boundary but also make sure we
+    // don't access collapse_vector out-of-bounds
+    // note: takes advantage of short-circuiting
+    if ((coarse_idx < static_cast<int>(collapse_vector.size())) && 
+        (g >= collapse_vector[coarse_idx]))
+      ++coarse_idx;
+
+    coarse_flux[coarse_idx] += scalar_flux(g);
+
+  }
+
+  const size_t group_width{std::to_string(scalar_flux.ngroup()).length()};
+
+  ParaViewDataCollection output{out_name, pmesh};
+
+  for (int g{0}; g < ncoarse; ++g)
+  {
+    std::ostringstream coarse_flux_record;
+    coarse_flux_record << "coarse_flux_g"
+                       << std::setfill('0')
+                       << std::setw(group_width)
+                       << g;
+    output.RegisterField(coarse_flux_record.str(), &coarse_flux[g]);
+  }
+
+  output.SetFormat(DataCollection::PARALLEL_FORMAT);
+  output.Save();
+
+  return;
+}

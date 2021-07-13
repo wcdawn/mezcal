@@ -181,7 +181,7 @@ conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp thermal_conduc
 thermal_conductivity_coefficient.o : $(MFEM_HEADER) thermal_conductivity_coefficient.hpp material_library.hpp
 upscattering_coefficient.o : $(MFEM_HEADER) upscattering_coefficient.hpp material_library.hpp result.hpp
 downscattering_coefficient.o : $(MFEM_HEADER) downscattering_coefficient.hpp material_library.hpp result.hpp
-output.o : $(MFEM_HEADER) output.hpp input.hpp material_library.hpp saaf_void_tau_coefficient.hpp
+output.o : $(MFEM_HEADER) output.hpp input.hpp material_library.hpp saaf_void_tau_coefficient.hpp result.hpp
 saaf_void_tau_coefficient.o : $(MFEM_HEADER) saaf_void_tau_coefficient.hpp material_library.hpp
 vector_product_coefficient.o : $(MFEM_HEADER) vector_product_coefficient.hpp
 nda_boundary_factor_coefficient.o : $(MFEM_HEADER) nda_boundary_factor_coefficient.hpp quadrature.hpp material_library.hpp
