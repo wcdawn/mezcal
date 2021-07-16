@@ -101,8 +101,7 @@ link :
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
 	@$(MAKE) -C $(ADDON_DIR)
-	@#$(LD) $(LDFLAGS) $^ -o $@ $(LIBS) 
-	$(NVCC) $(LDFLAGS) -Xcompiler -fopenmp -Xcompiler -pthread $^ -o $@ $(LIBS) $(MPI_LIB)
+	$(LD) $(LDFLAGS) -fopenmp -pthread $^ -o $@ $(LIBS) 
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<

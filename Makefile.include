@@ -35,11 +35,10 @@ AMGX_INCLUDE_DIR = $(AMGX_DIR)/include
 else ifeq ($(MACH),ARCHBUILD)
 
 STD = c++17
-MPICXX = /opt/mpich/bin/mpicxx
+MPICXX = mpicxx
 H5_DIR = /usr/lib
 
-MPI_DIR = /opt/mpich
-MPI_LIB = -L$(MPI_DIR)/lib -lmpi
+MPI_LIB = -L/usr/lib/openmpi -lmpi
 
 MICROREACTOR_DIR = /home/wcdawn/work/microreactor
 MFEM_DIR = $(MICROREACTOR_DIR)/mfem
