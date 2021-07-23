@@ -549,6 +549,8 @@ int main(int argc, char* argv[])
       inp.input_file_stub()+"_coarse_energy");
   }
 
+  mesh_stats(&pmesh);
+
   //total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs");
 
   if (myid == 0) time.Print(cout);

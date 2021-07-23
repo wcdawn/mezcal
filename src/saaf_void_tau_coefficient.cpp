@@ -66,11 +66,14 @@ double SAAFVoidTauCoefficient::effective_diameter(const ElementTransformation &T
     // approximate it using the effective diameter of a sphere or circle for an
     // element with equivalent volume.
     const double volume{pmesh->GetElementVolume(T.ElementNo)};
-    if (pmesh->Dimension() == 3)
-      return std::cbrt(6.0/M_PI*volume);
-    else if (pmesh->Dimension() == 2)
-      return std::sqrt(4.0/M_PI*volume);
-    else
-      MFEM_ABORT("SAAFVoidTauCoefficient effective diameter only implmented for 2d & 3d");
+    switch (pmesh->Dimension())
+    {
+      case (3):
+        return std::cbrt(6.0/M_PI*volume);
+      case (2):
+        return std::sqrt(4.0/M_PI*volume);
+      default:
+        MFEM_ABORT("SAAFVoidTauCoefficient effective diameter only implmented for 2d & 3d");
+    }
     return -1.0;
 }

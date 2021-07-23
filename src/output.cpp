@@ -120,3 +120,39 @@ void coarse_energy_plot(ParMesh *pmesh,
 
   return;
 }
+
+void mesh_stats(ParMesh *pmesh, std::ostream &os)
+{
+
+  const int myid{pmesh->GetMyRank()};
+
+  Vector area_vol(pmesh->attributes.Max());
+  area_vol = 0.0;
+
+  for (int e{0}; e < pmesh->GetNE(); ++e)
+  {
+    const int att{pmesh->GetAttribute(e)-1};
+    const double vol{pmesh->GetElementVolume(e)};
+    area_vol(att) += vol;
+  }
+
+  const auto old_precision{os.precision()};
+  os << std::setprecision(20);
+
+  if (myid == 0) os << "=== AREA/VOLUME ===" << std::endl;
+  if (myid == 0) os << "mat # / vol (cm^2 or cm^3)" << std::endl;
+  double total_area_vol{0.0};
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    double sum_area_vol{0.0};
+    MPI_Allreduce(&area_vol(i), &sum_area_vol, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    total_area_vol += sum_area_vol;
+    if (myid == 0) os << i+1 << " " << sum_area_vol << std::endl;
+  }
+  if (myid == 0) os << "total " << total_area_vol << std::endl;
+  if (myid == 0) os << std::endl;
+
+  os << std::setprecision(old_precision);
+
+  return;
+}
