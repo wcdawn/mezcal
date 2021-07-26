@@ -19,6 +19,8 @@ void coarse_energy_plot(mfem::ParMesh *pmesh,
                         const std::vector<int> collapse_vector,
                         const std::string out_name);
 
-void mesh_stats(mfem::ParMesh *pmesh, std::ostream &os = std::cout);
+void mesh_stats(mfem::ParMesh *pmesh,
+                std::ostream &os = std::cout,
+                Material_library * = nullptr);
 
 #endif

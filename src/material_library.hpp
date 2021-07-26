@@ -68,6 +68,8 @@ struct Material_record
 
   double thermal_conductivity(double temperature) const;
 
+  double exact_area_volume{-1.0};
+
 };
 
 class Material_library

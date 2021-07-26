@@ -351,6 +351,8 @@ int main(int argc, char* argv[])
 
     // do the solving
 
+    mesh_stats(&pmesh, std::cout, &mat_lib); // volume correct xs
+
     if (inp.ref == Analytic::fixed_src)
     {
       diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);

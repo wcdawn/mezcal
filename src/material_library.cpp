@@ -42,6 +42,13 @@ void Material_library::read_material(ifstream& ifs)
       mat[mat_count].G    = xs.ngroup();
       continue;
     }
+    else if (card == "exact_area_volume")
+    {
+      double val;
+      ifs >> val;
+      mat[mat_count].exact_area_volume = val;
+      continue;
+    }
 
     // determine if the card is an isotope name
     int iso_idx{0};

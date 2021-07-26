@@ -121,7 +121,9 @@ void coarse_energy_plot(ParMesh *pmesh,
   return;
 }
 
-void mesh_stats(ParMesh *pmesh, std::ostream &os)
+void mesh_stats(ParMesh *pmesh,
+                std::ostream &os,
+                Material_library *mat_lib)
 {
 
   const int myid{pmesh->GetMyRank()};
@@ -140,14 +142,44 @@ void mesh_stats(ParMesh *pmesh, std::ostream &os)
   os << std::setprecision(20);
 
   if (myid == 0) os << "=== AREA/VOLUME ===" << std::endl;
-  if (myid == 0) os << "mat # / vol (cm^2 or cm^3)" << std::endl;
+  if (myid == 0) os << "mat # | vol [cm^2 or cm^3] | exact vol | rel. err. [%] | correction factor" << std::endl;
   double total_area_vol{0.0};
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     double sum_area_vol{0.0};
     MPI_Allreduce(&area_vol(i), &sum_area_vol, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     total_area_vol += sum_area_vol;
-    if (myid == 0) os << i+1 << " " << sum_area_vol << std::endl;
+    if (myid == 0) os << i+1 << " " << sum_area_vol;
+
+    if ((mat_lib) && (mat_lib->mat[i].exact_area_volume >= 0.0))
+    {
+      const double &exact_area_vol{mat_lib->mat[i].exact_area_volume};
+      const double rel_error{(sum_area_vol - exact_area_vol) / exact_area_vol};
+      const double factor{1.0 / (1.0 + rel_error)};
+      XSRecord &rec{mat_lib->mat[i].rec};
+
+      for (Material_isotope &isotope : mat_lib->mat[i].iso)
+        isotope.nden *= factor;
+
+      for (int g{0}; g < mat_lib->ngroup(); ++g)
+      {
+        rec.sigma_t[g] *= factor;
+        rec.sigma_tr[g] *= factor;
+        rec.nusf[g] *= factor;
+      }
+
+      rec.sigma_r *= factor;
+      rec.sigma_s *= factor;
+
+      if (myid == 0)
+        std::cout << " " << exact_area_vol
+                  << " " << rel_error*1e2
+                  << " " << factor;
+
+    }
+
+    if (myid == 0) std::cout << std::endl;
+
   }
   if (myid == 0) os << "total " << total_area_vol << std::endl;
   if (myid == 0) os << std::endl;
