@@ -1,4 +1,5 @@
 #include "output.hpp"
+#include <cmath>
 
 #include "saaf_void_tau_coefficient.hpp"
 
@@ -154,8 +155,8 @@ void mesh_stats(ParMesh *pmesh,
     if ((mat_lib) && (mat_lib->mat[i].exact_area_volume >= 0.0))
     {
       const double &exact_area_vol{mat_lib->mat[i].exact_area_volume};
-      const double rel_error{(sum_area_vol - exact_area_vol) / exact_area_vol};
-      const double factor{1.0 / (1.0 + rel_error)};
+      const double rel_error{(exact_area_vol > 0.0) ? (sum_area_vol - exact_area_vol) / exact_area_vol : 0.0};
+      const double factor{(std::abs(rel_error) > 0.0) ? 1.0 / (1.0 + rel_error) : 1.0};
       XSRecord &rec{mat_lib->mat[i].rec};
 
       for (Material_isotope &isotope : mat_lib->mat[i].iso)
