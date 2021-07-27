@@ -30,7 +30,8 @@ enum class Solver_choice
   dg_transport_power_iteration,
   spn_partial_assembly_power_iteration,
   conduction_linear, // TODO move this into "analytic"
-  conduction_radial // TODO move this into "analytic"
+  conduction_radial, // TODO move this into "analytic"
+  none // do absolutely nothing
 };
 
 std::string solver_choice_enum_to_str(const Solver_choice& solver);

@@ -448,6 +448,8 @@ int main(int argc, char* argv[])
         case (Solver_choice::conduction_linear):
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
+        case (Solver_choice::none):
+          break; // do absolutely nothing
         default:
           std::cerr << "Invalid solver choice.\n";
           return 1;
