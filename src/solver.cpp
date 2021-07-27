@@ -3681,7 +3681,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   // Choose which solver will be used for the SAAF system.
   // Except for AmgX, HypreBoomerAMG will always be used for preconditioner.
   // DSA system will always be solved with HypreBoomerAMG+HyprePCG.
-  constexpr LINEAR_SOLVER linear_solver{LINEAR_SOLVER::hypre_gmres};
+  constexpr LINEAR_SOLVER linear_solver{LINEAR_SOLVER::hypre_pcg};
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
