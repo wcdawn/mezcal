@@ -3668,6 +3668,21 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   constexpr bool use_gpu{false};
   constexpr bool use_dsa{true};
 
+  enum class LINEAR_SOLVER
+  {
+    amgx,
+    hypre_pcg,
+    hypre_gmres,
+    mfem_cg,
+    mfem_gmres,
+    mfem_minres,
+    mfem_bicgstab
+  };
+  // Choose which solver will be used for the SAAF system.
+  // Except for AmgX, HypreBoomerAMG will always be used for preconditioner.
+  // DSA system will always be solved with HypreBoomerAMG+HyprePCG.
+  constexpr LINEAR_SOLVER linear_solver{LINEAR_SOLVER::hypre_gmres};
+
   ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
   ParMesh *pmesh = angular_flux_fespace->GetParMesh();
@@ -3739,50 +3754,129 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       a.Finalize(skip_zeros);
       Amat[g].reset(a.ParallelAssemble());
 
-      if (use_gpu)
+      // precconditioner
+      // everything uses HypreBoomerAMG except for amgx
+      switch (linear_solver)
       {
+        case (LINEAR_SOLVER::amgx):
+          break;
+        default:
+        {
+          std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
+          amg->SetPrintLevel(inp.hypre_print_level());
+          HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
+          Aprec[g] = std::move(amg);
+        }
+      }
+
+      // solver
+      switch (linear_solver)
+      {
+        case (LINEAR_SOLVER::amgx):
+        {
 
 #ifdef AMGX_AVAILABLE
 
-        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
-        this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-        this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+          std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
+          this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+          this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
 
-        if (inp.ndevices > 0)
-          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
-        else
-          this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
+          if (inp.ndevices > 0)
+            this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
+          else
+            this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
 
-        this_sol->SetOperator(*Amat[g]);
-        Asol[g] = std::move(this_sol);
+          this_sol->SetOperator(*Amat[g]);
+          Asol[g] = std::move(this_sol);
 
-        // Amat no longer needs to be stored on cpu
-        Amat[g].reset();
+          // Amat no longer needs to be stored on cpu
+          Amat[g].reset();
 
 #else
 
-        MFEM_ABORT("solver not supported without amgx");
+          MFEM_ABORT("solver not supported without amgx");
 
 #endif
 
-      }
-      else
-      {
-
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-        amg->SetPrintLevel(inp.hypre_print_level());
-        HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
-        Aprec[g] = std::move(amg);
-
-        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-        this_sol->SetPrintLevel(2);
-        this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-        this_sol->SetOperator(*Amat[g]);
-        this_sol->SetTol(inp.tol.inner_rel);
-        this_sol->SetAbsTol(inp.tol.inner_abs);
-        this_sol->SetMaxIter(inp.tol.max_inner);
-        Asol[g] = std::move(this_sol);
-
+          break;
+        }
+        case (LINEAR_SOLVER::hypre_pcg):
+        {
+          std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(2);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::hypre_gmres):
+        {
+          std::unique_ptr<HypreGMRES> this_sol{std::make_unique<HypreGMRES>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(2);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_cg):
+        {
+          std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
+          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_gmres):
+        {
+          std::unique_ptr<GMRESSolver> this_sol{std::make_unique<GMRESSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
+          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_minres):
+        {
+          std::unique_ptr<MINRESSolver> this_sol{std::make_unique<MINRESSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
+          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_bicgstab):
+        {
+          std::unique_ptr<BiCGSTABSolver> this_sol{std::make_unique<BiCGSTABSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
+          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        default:
+          if (myid==0) std::cout << "unsupported LINEAR_SOLVER" << std::endl;
+          return;
       }
 
     } // g = 1,mat_lib.ngroup()
