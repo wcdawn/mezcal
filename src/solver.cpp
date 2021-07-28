@@ -3668,8 +3668,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   constexpr bool use_gpu{false};
   constexpr bool use_dsa{true};
 
+  ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
+  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
+  ParMesh *pmesh = angular_flux_fespace->GetParMesh();
+
+  constexpr int skip_zeros{2};
+  const int myid{angular_flux_fespace->GetMyRank()};
+
   enum class LINEAR_SOLVER
   {
+    invalid=-1,
     amgx,
     hypre_pcg,
     hypre_gmres,
@@ -3681,14 +3689,28 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   // Choose which solver will be used for the SAAF system.
   // Except for AmgX, HypreBoomerAMG will always be used for preconditioner.
   // DSA system will always be solved with HypreBoomerAMG+HyprePCG.
-  constexpr LINEAR_SOLVER linear_solver{LINEAR_SOLVER::hypre_pcg};
-
-  ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
-  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
-  ParMesh *pmesh = angular_flux_fespace->GetParMesh();
-
-  constexpr int skip_zeros{2};
-  const int myid{angular_flux_fespace->GetMyRank()};
+  LINEAR_SOLVER linear_solver{LINEAR_SOLVER::invalid};
+  const std::string inp_linear_solver{inp.get_linear_solver()};
+  if (inp_linear_solver == "amgx")
+    linear_solver = LINEAR_SOLVER::amgx;
+  else if (inp_linear_solver == "hypre_pcg")
+    linear_solver = LINEAR_SOLVER::hypre_pcg;
+  else if (inp_linear_solver == "hypre_gmres")
+    linear_solver = LINEAR_SOLVER::hypre_gmres;
+  else if (inp_linear_solver == "mfem_cg")
+    linear_solver = LINEAR_SOLVER::mfem_cg;
+  else if (inp_linear_solver == "mfem_gmres")
+    linear_solver = LINEAR_SOLVER::mfem_gmres;
+  else if (inp_linear_solver == "mfem_minres")
+    linear_solver = LINEAR_SOLVER::mfem_minres;
+  else if (inp_linear_solver == "mfem_bicgstab")
+    linear_solver = LINEAR_SOLVER::mfem_bicgstab;
+  else
+  {
+    if (myid == 0) std::cout << "WARNING: unknown (or no) linear solver specified = *" << inp_linear_solver << "*" << std::endl;
+    if (myid == 0) std::cout << "Using default (hypre_pcg) linear solver." << std::endl;
+    linear_solver = LINEAR_SOLVER::hypre_pcg;
+  }
 
   // transport streaming+collision operator
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());

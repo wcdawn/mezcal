@@ -127,6 +127,7 @@ public:
 
   std::string concatenate_path(const std::string& fname) const;
   std::string input_file_stub();
+  std::string get_linear_solver() const { return str_linear_solver; }
 
 private:
 
@@ -144,6 +145,7 @@ private:
   // [STATE]
   std::string solver_str;
   std::string quadrature_str;
+  std::string str_linear_solver;
 
   std::string stub;
   std::string path_stub(std::string path);

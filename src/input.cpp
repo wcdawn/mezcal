@@ -259,6 +259,10 @@ void Input::read_state()
     {
       ifs >> temp_heat_pipe;
     }
+    else if (card == "linear_solver")
+    {
+      ifs >> str_linear_solver;
+    }
     else if (card == "[STATE]")
     {
       // prepare to head into another state block
