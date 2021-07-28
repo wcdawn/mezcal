@@ -3942,13 +3942,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       {
 
         std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
-        amg->SetPrintLevel(inp.hypre_print_level());
         Dprec[g] = std::move(amg);
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
         this_sol->SetPreconditioner(*Dprec[g]);
         this_sol->SetOperator(*Dmat[g]);
-        this_sol->SetPrintLevel(inp.hypre_print_level());
         this_sol->SetTol(inp.tol.inner_rel);
         this_sol->SetAbsTol(inp.tol.inner_abs);
         this_sol->SetMaxIter(inp.tol.max_inner);
@@ -4058,6 +4056,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
 
+#if 0
     time.start("power");
     calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
     time.stop("power");
@@ -4065,6 +4064,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     time.start("temperature");
     temperature_heat_conduction(inp, mat_lib, power, temperature);
     time.stop("temperature");
+#endif
 
     time.start("calc_fiss_upscatter_vector");
     calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad,
