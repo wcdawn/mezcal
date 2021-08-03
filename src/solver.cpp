@@ -3785,7 +3785,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         default:
         {
           std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-          amg->SetPrintLevel(inp.hypre_print_level());
+          amg->SetPrintLevel(1);
           HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
           Aprec[g] = std::move(amg);
         }
@@ -3853,8 +3853,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           this_sol->SetPrintLevel(1);
           this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
           this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
-          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
           this_sol->SetMaxIter(inp.tol.max_inner);
           Asol[g] = std::move(this_sol);
           break;
@@ -3865,8 +3865,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           this_sol->SetPrintLevel(1);
           this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
           this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
-          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
           this_sol->SetMaxIter(inp.tol.max_inner);
           this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
           Asol[g] = std::move(this_sol);
@@ -3878,8 +3878,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           this_sol->SetPrintLevel(1);
           this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
           this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
-          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
           this_sol->SetMaxIter(inp.tol.max_inner);
           Asol[g] = std::move(this_sol);
           break;
@@ -3890,8 +3890,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           this_sol->SetPrintLevel(1);
           this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
           this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(std::sqrt(inp.tol.inner_rel));
-          this_sol->SetAbsTol(std::sqrt(inp.tol.inner_abs));
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
           this_sol->SetMaxIter(inp.tol.max_inner);
           Asol[g] = std::move(this_sol);
           break;
@@ -3964,6 +3964,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       {
 
         std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
+        amg->SetPrintLevel(0);
         Dprec[g] = std::move(amg);
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
