@@ -156,7 +156,7 @@ void mesh_stats(ParMesh *pmesh,
     {
       const double &exact_area_vol{mat_lib->mat[i].exact_area_volume};
       const double rel_error{(exact_area_vol > 0.0) ? (sum_area_vol - exact_area_vol) / exact_area_vol : 0.0};
-      const double factor{(std::abs(rel_error) > 0.0) ? 1.0 / (1.0 + rel_error) : 1.0};
+      const double factor{(sum_area_vol > 0.0) ? exact_area_vol / sum_area_vol : 1.0};
       XSRecord &rec{mat_lib->mat[i].rec};
 
       for (Material_isotope &isotope : mat_lib->mat[i].iso)
