@@ -1,9 +1,0 @@
-[submodule "mfem"]
-	path = mfem
-	url = git@github.com:mfem/mfem
-[submodule "hypre"]
-	path = hypre
-	url = git@github.com:hypre-space/hypre
-[submodule "metis"]
-	path = metis
-	url = git@github.ncsu.edu:wcdawn/metis
