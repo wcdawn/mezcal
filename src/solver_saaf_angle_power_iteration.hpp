@@ -1,0 +1,58 @@
+#ifndef SOLVER_SAAF_ANGLE_POWER_ITERATION_HPP
+#define SOLVER_SAAF_ANGLE_POWER_ITERATION_HPP
+
+#include "input.hpp"
+#include "material_library.hpp"
+#include "quadrature.hpp"
+
+#include "result.hpp"
+#include "timer.hpp"
+
+#include "mfem.hpp"
+
+void saaf_angle_power_iteration(const Quadrature * const quad,
+                                Timer &time,
+                                const Input &inp,
+                                const Material_library &mat_lib,
+                                Result &angular_flux,
+                                Result &scalar_flux,
+                                mfem::ParGridFunction &power,
+                                mfem::ParGridFunction &temperature);
+
+void calc_fiss_upscatter_vector(const Result &scalar_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                std::vector<mfem::QuadratureFunction> &fiss_upscatter_quad,
+                                std::vector<mfem::QuadratureFunction> &saaf_fiss_upscatter_quad,
+                                const double keff,
+                                const bool flux_free_chi=false);
+
+void calc_downscatter_vector(const int g, 
+                             const Result &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             mfem::QuadratureFunction &dnscatter_quad,
+                             mfem::QuadratureFunction &saaf_dnscatter_quad);
+
+void calc_selfscatter_vector(const int g, 
+                             const mfem::ParGridFunction &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             mfem::QuadratureFunction &selfscatter_quad,
+                             mfem::QuadratureFunction &saaf_selfscatter_quad);
+
+void calc_scalar_flux_vector(int g,
+                             const Result& angular_flux, 
+                             const Quadrature* const quad,
+                             Result& scalar_flux);
+
+/* 
+ * WARNING
+ * This is duplicated in solver.[ch]pp.
+ * WARNING
+ */
+static void calc_fiss_src(const Result& scalar_flux, 
+                   const Material_library& mat_lib,
+                   mfem::QuadratureFunction& fiss_src);
+
+#endif

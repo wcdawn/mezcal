@@ -28,6 +28,7 @@
 
 #include "memory.hpp"
 
+#include "../mfem/linalg/petscinternals.hpp" // PCHKERRQ
 #include "slepceps.h"
 
 #include <cmath>
@@ -36,8 +37,6 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-
-#include "../mfem/linalg/petscinternals.hpp" // PCHKERRQ
 
 using namespace mfem;
 
@@ -48,7 +47,7 @@ using std::filesystem::exists; // requires C++17
 #include <fstream>
 bool exists(const std::string& fname)
 {
-  std::ifstream ifs{fname};
+  const std::ifstream ifs{fname};
   return ifs.good();
 }
 #endif
@@ -899,9 +898,15 @@ void spn_slepc_vector(Timer& time, const Input& inp,
 
   time.stop(time.matrix_assembly);
 
-  slepc_initialize(inp);
+  if (exists("slepcrc"))
+    MFEMInitializeSlepc(nullptr, nullptr, "slepcrc", nullptr);
+  else
+    MFEMInitializeSlepc(nullptr, nullptr, nullptr, nullptr);
+
+  
   slepc_solver_wrapper(Ahypre.release(), Mhypre.release(), inp, time, res, mat_lib.ngroup()*inp.spn_eq());
-  slepc_finalize();
+
+  MFEMFinalizeSlepc();
 
   scalar_flux.keff = res.keff;
   for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -2414,50 +2419,6 @@ void saaf_slepc_vector(const Quadrature* const quad,
   return;
 }
 
-void saaf_true_slepc_vector(const Quadrature* const quad,
-                       Timer& time,
-                       const Input& inp,
-                       const Material_library& mat_lib,
-                       Result& angular_flux)
-{
-
-  ParFiniteElementSpace* const fespace{angular_flux(0).ParFESpace()};
-
-  const int myid{fespace->GetMyRank()};
-
-  time.start(time.matrix_assembly);
-
-  HypreParMatrix *Ahypre{saaf_a_matrix(inp, mat_lib, quad, fespace)};
-  HypreParMatrix *Mhypre{saaf_m_matrix(inp, mat_lib, quad, fespace)};
-
-  slepc_hypre::inp = &inp;
-  slepc_hypre::mat_lib = &mat_lib;
-  slepc_hypre::quad = quad;
-
-  time.stop(time.matrix_assembly);
-
-  std::unique_ptr<Memory_stats> mem{nullptr};
-
-  slepc_initialize(inp);
-  if (myid == 0)
-  {
-    mem = std::make_unique<Memory_stats>(Memory_stats::megabyte);
-    mem->update_and_print();
-    mem->init_background(1000);
-  }
-  slepc_solver_wrapper(Ahypre, Mhypre, inp, time, angular_flux, mat_lib.ngroup()*quad->nd());
-  Ahypre = nullptr;
-  Mhypre = nullptr;
-  if (myid == 0)
-  {
-    mem->stop_background();
-    mem.reset();
-  }
-  slepc_finalize();
-
-  return;
-}
-
 void saaf_true_amgx_vector(const Quadrature* const quad,
                            Timer &time,
                            const Input &inp,
@@ -3655,573 +3616,302 @@ void saaf_true_slepc_transport_vector(const Quadrature* const quad_hi,
   return;
 }
 
-void saaf_angle_power_iteration(const Quadrature* const quad,
-                                Timer& time,
-                                const Input& inp,
-                                const Material_library& mat_lib,
-                                Result& angular_flux,
-                                Result& scalar_flux,
-                                ParGridFunction &power,
-                                ParGridFunction &temperature)
+mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   const Quadrature* const quad,
+                                   ParFiniteElementSpace* fespace)
 {
 
-  constexpr bool use_gpu{false};
-  constexpr bool use_dsa{true};
+  const ParMesh* pmesh{fespace->GetParMesh()};
+  const int skip_zeros{2};
+  const int block_rank{mat_lib.ngroup()*quad->nd()};
 
-  ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
-  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
-  ParMesh *pmesh = angular_flux_fespace->GetParMesh();
-
-  constexpr int skip_zeros{2};
-  const int myid{angular_flux_fespace->GetMyRank()};
-
-  enum class LINEAR_SOLVER
+  std::vector<DenseMatrix> omega_operator(quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
   {
-    invalid=-1,
-    amgx,
-    hypre_pcg,
-    hypre_gmres,
-    mfem_cg,
-    mfem_gmres,
-    mfem_minres,
-    mfem_bicgstab
-  };
-  // Choose which solver will be used for the SAAF system.
-  // Except for AmgX, HypreBoomerAMG will always be used for preconditioner.
-  // DSA system will always be solved with HypreBoomerAMG+HyprePCG.
-  LINEAR_SOLVER linear_solver{LINEAR_SOLVER::invalid};
-  const std::string inp_linear_solver{inp.get_linear_solver()};
-  if (inp_linear_solver == "amgx")
-    linear_solver = LINEAR_SOLVER::amgx;
-  else if (inp_linear_solver == "hypre_pcg")
-    linear_solver = LINEAR_SOLVER::hypre_pcg;
-  else if (inp_linear_solver == "hypre_gmres")
-    linear_solver = LINEAR_SOLVER::hypre_gmres;
-  else if (inp_linear_solver == "mfem_cg")
-    linear_solver = LINEAR_SOLVER::mfem_cg;
-  else if (inp_linear_solver == "mfem_gmres")
-    linear_solver = LINEAR_SOLVER::mfem_gmres;
-  else if (inp_linear_solver == "mfem_minres")
-    linear_solver = LINEAR_SOLVER::mfem_minres;
-  else if (inp_linear_solver == "mfem_bicgstab")
-    linear_solver = LINEAR_SOLVER::mfem_bicgstab;
-  else
-  {
-    if (myid == 0) std::cout << "WARNING: unknown (or no) linear solver specified = *" << inp_linear_solver << "*" << std::endl;
-    if (myid == 0) std::cout << "Using default (hypre_pcg) linear solver." << std::endl;
-    linear_solver = LINEAR_SOLVER::hypre_pcg;
+    omega_operator[n].SetSize(quad->dim());
+    MultVVt(quad->omega(n), omega_operator[n]);
   }
 
-  // transport streaming+collision operator
-  std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
-  std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(mat_lib.ngroup()); // could be HypreSolver
-  std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
+  std::vector<Tensor<DenseMatrix>> streaming(pmesh->attributes.Max());
+  std::vector<Vector> collision(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    const XSRecord& rec{mat_lib.mat[i].rec};
+    streaming[i].reserve(block_rank);
+    collision[i].SetSize(block_rank);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      const double tot{rec.sigma_t[g]};
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const int dia{n + g*quad->nd()};
 
-  // dsa streaming+removal operator
-  std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
-  std::vector<std::unique_ptr<HypreBoomerAMG>> Dprec(mat_lib.ngroup()); // could be HypreSolver
-  std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
+        omega_operator[n] *= 1.0/tot;
+        streaming[i].AddElement(omega_operator[n], dia);
+        omega_operator[n] *= tot;
 
-  time.start(time.matrix_assembly);
+        collision[i](dia) = tot;
+      }
+    }
+  }
+  ParBilinearForm sink_bilinear{fespace};
+  MatrixTensorPWConstCoefficient streaming_func{block_rank, streaming};
+  VectorPWConstCoefficient collision_func{collision};
+  sink_bilinear.AddDomainIntegrator(new TensorDiffusionIntegrator{streaming_func});
+  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{collision_func});
 
-  { // streaming+collision
-
-    std::vector<DenseMatrix> omega_mat(quad->nd());
+  Tensor<Vector> boundary;
+  boundary.reserve(block_rank);
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
     for (int n{0}; n < quad->nd(); ++n)
-    {
-      omega_mat[n].SetSize(quad->dim());
-      MultVVt(quad->omega(n), omega_mat[n]);
-    }
+      boundary.AddElement(quad->omega(n), n+g*quad->nd());
+  VectorTensorConstantCoefficient boundary_func{block_rank, boundary};
+  sink_bilinear.AddBdrFaceIntegrator(
+    new VectorDGTraceIntegrator{boundary_func, 1.0});
 
-    Tensor<Vector> omega;
-    omega.reserve(quad->nd());
-    for(int n{0}; n < quad->nd(); ++n)
-    {
-      omega.AddElement(quad->omega(n), n);
-    }
-    VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
-    
+  std::vector<DenseMatrix> scattering(pmesh->attributes.Max());
+  std::vector<Tensor<Vector>> scattering_saaf(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    scattering[i].SetSize(block_rank);
+    const XSRecord& record{mat_lib.mat[i].rec};
+
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
 
-      ParBilinearForm a{angular_flux_fespace};
+      Array<int> col_idx;
+      Vector scat_dat;
+      record.sigma_s.GetRow(g, col_idx, scat_dat);
 
-      std::vector<Vector> total(pmesh->attributes.Max());
-      std::vector<Tensor<DenseMatrix>> leakage(pmesh->attributes.Max());
-      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      const double tot{record.sigma_t[g]};
+
+      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
-
-        leakage[i].reserve(quad->nd());
+        const int gprime{col_idx[gidx]};
+        const double scat{scat_dat(gidx)};
         for (int n{0}; n < quad->nd(); ++n)
         {
-          const double val{1.0/tot};
-          omega_mat[n] *= val;
-          leakage[i].AddElement(omega_mat[n], n);
-          omega_mat[n] *= 1.0/val;
-        }
-        
-        total[i].SetSize(quad->nd());
-        total[i] = tot;
+          const int row{n + g*quad->nd()};
+          for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          {
+            const int col{nprime + gprime*quad->nd()};
+            const double val{-scat*quad->weight(nprime)};
+            scattering[i](row,col) = val;
 
-      }
+            Vector v{quad->omega(n)};
+            v *= val/tot;
+            scattering_saaf[i].AddElement(v, row, col);
+          } // nprime < quad->nd()
+        } // n < quad->nd()
+      } // gidx < col_idx.Size()
 
-      VectorPWConstCoefficient total_func{total};
-      MatrixTensorPWConstCoefficient leakage_func{quad->nd(), leakage};
-      a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
-      a.AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
-      a.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
+    } // g < mat_lib.ngroup()
+    scattering_saaf[i].Transpose(); // related to the need for the transpose integrator
+  } // i < pmesh->attributes.Max()
+  MatrixPWConstCoefficient scattering_func{scattering};
+  VectorTensorPWConstCoefficient scattering_saaf_func{block_rank, scattering_saaf};
+  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{scattering_func});
+  sink_bilinear.AddDomainIntegrator(
+    new TransposeIntegrator{
+    new VectorConvectionIntegrator{scattering_saaf_func}});
 
-      a.Assemble(skip_zeros); // note: no essential bcs in saaf
-      a.Finalize(skip_zeros);
-      Amat[g].reset(a.ParallelAssemble());
+  sink_bilinear.Assemble(skip_zeros);
+  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
 
-      // precconditioner
-      // everything uses HypreBoomerAMG except for amgx
-      switch (linear_solver)
-      {
-        case (LINEAR_SOLVER::amgx):
-          break;
-        default:
-        {
-          std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-          amg->SetPrintLevel(1);
-          HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
-          Aprec[g] = std::move(amg);
-        }
-      }
+  return sink_bilinear.ParallelAssemble();
 
-      // solver
-      switch (linear_solver)
-      {
-        case (LINEAR_SOLVER::amgx):
-        {
+}
 
-#ifdef AMGX_AVAILABLE
+HypreParMatrix* saaf_m_matrix(const Input &inp, 
+                              const Material_library &mat_lib,
+                              const Quadrature* const quad,
+                              ParFiniteElementSpace* fespace)
+{
 
-          std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
-          this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-          this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+  const ParMesh* pmesh{fespace->GetParMesh()};
+  const int skip_zeros{2};
+  const int block_rank{mat_lib.ngroup()*quad->nd()};
 
-          if (inp.ndevices > 0)
-            this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
-          else
-            this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
-
-          this_sol->SetOperator(*Amat[g]);
-          Asol[g] = std::move(this_sol);
-
-          // Amat no longer needs to be stored on cpu
-          Amat[g].reset();
-
-#else
-
-          MFEM_ABORT("solver not supported without amgx");
-
-#endif
-
-          break;
-        }
-        case (LINEAR_SOLVER::hypre_pcg):
-        {
-          std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(2);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::hypre_gmres):
-        {
-          std::unique_ptr<HypreGMRES> this_sol{std::make_unique<HypreGMRES>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(2);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_cg):
-        {
-          std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_gmres):
-        {
-          std::unique_ptr<GMRESSolver> this_sol{std::make_unique<GMRESSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_minres):
-        {
-          std::unique_ptr<MINRESSolver> this_sol{std::make_unique<MINRESSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_bicgstab):
-        {
-          std::unique_ptr<BiCGSTABSolver> this_sol{std::make_unique<BiCGSTABSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        default:
-          if (myid==0) std::cout << "unsupported LINEAR_SOLVER" << std::endl;
-          return;
-      }
-
-    } // g = 1,mat_lib.ngroup()
-
-  } // streaming+collision
-
-  { // DSA operator
+  std::vector<DenseMatrix> fiss(pmesh->attributes.Max());
+  std::vector<Tensor<Vector>> fiss_saaf(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    fiss[i].SetSize(block_rank);
+    fiss_saaf[i].reserve(block_rank*block_rank);
+    const Material_record& mat{mat_lib.mat[i]};
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-
-      Vector diffusive(pmesh->attributes.Max());
-      Vector removal(pmesh->attributes.Max());
-      for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      {
-        const XSRecord &rec{mat_lib.mat[i].rec};
-        diffusive(i) = 1.0 / (3.0*rec.sigma_t[g]);
-        removal(i)   = rec.sigma_t[g] - rec.sigma_s.Elem(g,g);
-      }
-      PWConstCoefficient diffusive_func{diffusive};
-      PWConstCoefficient removal_func{removal};
-
-      ConstantCoefficient albedo{0.5};
-
-      ParBilinearForm d{scalar_flux_fespace};
-      d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
-      d.AddDomainIntegrator(new MassIntegrator{removal_func});
-      d.AddBoundaryIntegrator(new MassIntegrator{albedo});
-
-      d.Assemble(skip_zeros);
-      d.Finalize(skip_zeros);
-      Dmat[g].reset(d.ParallelAssemble());
-
-      if (use_gpu)
+      const double tot{mat.rec.sigma_t[g]};
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
 
-#ifdef AMGX_AVAILABLE
-
-        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
-        this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-        this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-
-        if (inp.ndevices > 0)
-          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
-        else
-          this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
-  
-
-        this_sol->SetOperator(*Dmat[g]);
-        Dsol[g] = std::move(this_sol);
-
-        // Dmat no longer needs to be stored on cpu
-        Dmat[g].reset();
-
-#else
-
-        MFEM_ABORT("solver not supported without amgx");
-
-#endif
-
-      }
-      else
-      {
-
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
-        amg->SetPrintLevel(0);
-        Dprec[g] = std::move(amg);
-
-        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-        this_sol->SetPreconditioner(*Dprec[g]);
-        this_sol->SetOperator(*Dmat[g]);
-        this_sol->SetTol(inp.tol.inner_rel);
-        this_sol->SetAbsTol(inp.tol.inner_abs);
-        this_sol->SetMaxIter(inp.tol.max_inner);
-        Dsol[g] = std::move(this_sol);
-
-      }
-
-    } // g=1,mat_lib.ngroup()
-
-  } // DSA operator
-
-  time.stop(time.matrix_assembly);
-
-  const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
-  QuadratureSpace qspace{scalar_flux_fespace->GetParMesh(), integration_order};
-
-  std::vector<QuadratureFunction> fiss_upscatter_quad, saaf_fiss_upscatter_quad;
-  fiss_upscatter_quad.reserve(mat_lib.ngroup());
-  saaf_fiss_upscatter_quad.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    fiss_upscatter_quad.emplace_back(&qspace, quad->nd());
-    saaf_fiss_upscatter_quad.emplace_back(&qspace, quad->dim()*quad->nd());
-  }
-
-  QuadratureFunction dnscatter_quad{&qspace, quad->nd()};
-  QuadratureFunction saaf_dnscatter_quad{&qspace, quad->dim()*quad->nd()};
-
-  QuadratureFunction selfscatter_quad{&qspace, quad->nd()};
-  QuadratureFunction saaf_selfscatter_quad{&qspace, quad->dim()*quad->nd()};
-
-  std::vector<VectorQuadratureFunctionCoefficient> src_quad_func, saaf_src_quad_func;
-  src_quad_func.reserve(mat_lib.ngroup());
-  saaf_src_quad_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    src_quad_func.emplace_back(selfscatter_quad);
-    saaf_src_quad_func.emplace_back(saaf_selfscatter_quad);
-  }
-
-  std::vector<std::unique_ptr<ParLinearForm>> lf_self_scatter(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
-    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
-    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
-  }
-
-////////////////////////////////////////////////////////////////////////////////
-  // DSA rhs
-
-  std::vector<GridFunctionCoefficient> scalar_flux_func; // (k+1/2)
-  scalar_flux_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    scalar_flux_func.emplace_back(&scalar_flux(g));
-
-  ParGridFunction dsa_phi_old{scalar_flux_fespace};    // (k)
-  GridFunctionCoefficient dsa_phi_old_func{&dsa_phi_old};
-
-  std::vector<SumCoefficient> dsa_flux_func;
-  dsa_flux_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    dsa_flux_func.emplace_back(scalar_flux_func[g], dsa_phi_old_func, 1.0, -1.0);
-
-  std::vector<PWConstCoefficient> self_scatter_func;
-  self_scatter_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    Vector self_scatter(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      self_scatter(i) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
-    self_scatter_func.emplace_back(self_scatter);
-  }
-
-  std::vector<ProductCoefficient> dsa_src;
-  dsa_src.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    dsa_src.emplace_back(self_scatter_func[g], dsa_flux_func[g]);
-
-  std::vector<std::unique_ptr<ParLinearForm>> lf_dsa(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
-    lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
-  }
-
-////////////////////////////////////////////////////////////////////////////////
-
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    angular_flux(g) = 1.0;
-    scalar_flux(g) = 1.0;
-  }
-  angular_flux.keff = 1.0;
-  scalar_flux.keff = 1.0;
-
-  QuadratureFunction fiss_src_quad_old{&qspace};
-  fiss_src_quad_old = 1.0;
-  double k_conv{inp.tol.k * 1e1 + 1e-6};
-  double phi_conv{inp.tol.phi * 1e1 + 1e-6};
-  double keff_old{angular_flux.keff};
-  double fiss_sum_old{1.0};
-  int solve_counter{0};
-
-  time.start(time.solver);
-  for (int iter{0}; (iter < inp.tol.max_outer)
-                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
-  {
-
-#if 0
-    time.start("power");
-    calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
-    time.stop("power");
-
-    time.start("temperature");
-    temperature_heat_conduction(inp, mat_lib, power, temperature);
-    time.stop("temperature");
-#endif
-
-    time.start("calc_fiss_upscatter_vector");
-    calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad,
-      fiss_upscatter_quad, saaf_fiss_upscatter_quad,
-      angular_flux.keff, inp.flux_free_chi);
-    time.stop("calc_fiss_upscatter_vector");
-
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-
-      time.start("calc_downscatter_vector");
-      calc_downscatter_vector(g, scalar_flux, mat_lib, quad,
-        dnscatter_quad, saaf_dnscatter_quad);
-      dnscatter_quad += fiss_upscatter_quad[g];
-      saaf_dnscatter_quad += saaf_fiss_upscatter_quad[g];
-      time.stop("calc_downscatter_vector");
-
-      double scattering_conv{inp.tol.scatter * 1e1 + 1e-6};
-      for (int scattering_iter{0}; (scattering_iter < inp.tol.max_scatter) &&
-        (scattering_conv > inp.tol.scatter); ++scattering_iter)
-      {
-
-        dsa_phi_old = scalar_flux(g); // (k)
-
-        time.start("selfscatter_and_assemble");
-        calc_selfscatter_vector(g, scalar_flux(g), mat_lib, quad,
-          selfscatter_quad, saaf_selfscatter_quad);
-        selfscatter_quad += dnscatter_quad;
-        saaf_selfscatter_quad += saaf_dnscatter_quad;
-        lf_self_scatter[g]->Assemble();
-        std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
-        time.stop("selfscatter_and_assemble");
-
-
-        // Maybe try FormLinearSystem?
-
-        time.start("Amult");
-        std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
-        Asol[g]->Mult(*b, *x);
-        angular_flux(g).Distribute(*x);
-        time.stop("Amult");
-
-        time.start("scalar_flux");
-        calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux); // (k+1/2)
-        time.start("scalar_flux");
-
-        if (use_dsa)
+        double val{0.0};
+        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
+          const Material_isotope& isotope{mat.iso[iso_idx]};
+          const XSRecord& record{isotope.rec};
+          const double nden{isotope.nden};
+          val += record.chi[g] * nden * record.nusf[gprime];
+        } // iso_idx < mat.niso
 
-          time.start("Dmult");
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const int row{n + g*quad->nd()};
+          for (int nprime{0}; nprime < quad->nd(); ++nprime)
+          {
+            const int col{nprime + gprime*quad->nd()};
+            fiss[i](row,col) = val*quad->weight(nprime);
 
-          ParGridFunction pgf_dphi{scalar_flux(g)};
+            Vector v{quad->omega(n)};
+            v /= tot;
+            v *= val * quad->weight(nprime);
+            fiss_saaf[i].AddElement(v, row, col);
+          } // nprime < quad->nd()
+        } // n < quad->nd()
+      } // gprime < mat_lib.ngroup()
+    } // g < mat_lib.ngroup()
+    fiss_saaf[i].Transpose(); // related to the need for the transpose integrator
+  } // i < pmesh->attributes.Max()
+  MatrixPWConstCoefficient fiss_func{fiss};
+  VectorTensorPWConstCoefficient fiss_saaf_func{block_rank, fiss_saaf};
+  ParBilinearForm fiss_bilinear{fespace};
+  fiss_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
+  fiss_bilinear.AddDomainIntegrator(
+    new TransposeIntegrator{
+    new VectorConvectionIntegrator{fiss_saaf_func}});
 
-          lf_dsa[g]->Assemble();
-          std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
-          std::unique_ptr<HypreParVector> dphi{pgf_dphi.ParallelAssemble()};
-          Dsol[g]->Mult(*f, *dphi);
-          pgf_dphi.Distribute(*dphi);
+  fiss_bilinear.Assemble(skip_zeros);
+  fiss_bilinear.Finalize(skip_zeros);
 
-          scalar_flux(g) += pgf_dphi;
+  return fiss_bilinear.ParallelAssemble();
 
-          time.stop("Dmult");
+}
 
+HypreParMatrix* spn_a_matrix(const Input &inp,
+                             const Material_library &mat_lib,
+                             ParFiniteElementSpace* fespace,
+                             const Array<int>& ess_bdr)
+{
+
+  const ParMesh* pmesh{fespace->GetParMesh()};
+
+  ParBilinearForm diffusion_bilinear{fespace};
+
+  std::vector<DenseMatrix> leakage(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    leakage[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
+    const XSRecord& record{mat_lib.mat[i].rec};
+    for (int n{0}; n < inp.spn_eq(); ++n)
+    {
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const int idx_dia{g + mat_lib.ngroup() * n};
+        const double dble_n{2.0*n};
+        const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+
+        leakage[i](idx_dia,idx_dia) = xmult_next / record.sigma_r(g,2*n+1);
+
+        if (n > 0)
+        {
+          const int idx_sub{idx_dia - mat_lib.ngroup()};
+          const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
+          const double ymult{(dble_n*dble_n - dble_n) / (4.0*dble_n*dble_n - 1.0)};
+          leakage[i](idx_dia,idx_dia) += xmult_prev / record.sigma_r(g,2*n-1);
+          leakage[i](idx_dia,idx_sub) = ymult / record.sigma_r(g,2*n-1);
         }
 
-        ++solve_counter;
+        if ((n+1) < inp.spn_eq())
+        {
+          const int idx_sup{idx_dia + mat_lib.ngroup()};
+          const double zmult{(dble_n+1.0)*(dble_n+2.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
+          leakage[i](idx_dia,idx_sup) = zmult / record.sigma_r(g,2*n+1);
+        }
 
-        dsa_phi_old -= scalar_flux(g);
-        const double local_scattering_conv{dsa_phi_old.Normlinf() / scalar_flux(g).Normlinf()};
-        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-
-        if (myid == 0)
-          std::cout << "..."
-                    << scattering_iter
-                    << " g=" << g
-                    << " conv=" << scattering_conv
-                    << '\n';
-
-      } // scattering_iter
-    } // ngroup
-
-    time.start("fisssum");
-    QuadratureFunction fiss_src_quad{&qspace};
-    calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
-    const double local_fiss_sum{fiss_src_quad.Sum()};
-    double fiss_sum{0.0};
-    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    time.stop("fisssum");
-
-    time.start("phiconv");
-    fiss_src_quad_old -= fiss_src_quad;
-    
-    // note: some nodes may contain zero fissile elements depending on decomposition
-    const double delta{fiss_src_quad_old.Normlinf()};
-    const double norm{fiss_src_quad.Normlinf()};
-    const double local_phi_conv{(norm > 0.0) ? delta / norm : 0.0};
-
-    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    time.stop("phiconv");
-
-    if (iter > 0) angular_flux.keff *= fiss_sum / fiss_sum_old;
-    k_conv = std::abs(angular_flux.keff - keff_old);
-
-    if (myid == 0)
-      std::cout << iter
-        << " keff=" << angular_flux.keff
-        << " dk=" << k_conv
-        << " dphi=" << phi_conv
-        << std::endl;
-
-    if ((angular_flux.keff < 0.0) ||
-        (angular_flux.keff > 1e50) ||
-        std::isnan(angular_flux.keff))
-    {
-      if (myid == 0) std::cout << "INVALID VALUE FOR KEFF" << std::endl;
-      return;
+      }
     }
-
-    scalar_flux.keff = angular_flux.keff;
-    // store old values
-    keff_old = angular_flux.keff;
-    fiss_sum_old = fiss_sum;
-    fiss_src_quad_old = fiss_src_quad;
-
   }
-  time.stop(time.solver);
+  MatrixPWConstCoefficient leakage_func{leakage};
+  diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
 
-  if (myid == 0)
+  std::vector<DenseMatrix> removal(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    std::cout << "ITERATIONS FINISHED!!!" << std::endl;
-    std::cout << "solve_counter= " << solve_counter << std::endl;
+    removal[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
+    const XSRecord& record{mat_lib.mat[i].rec};
+
+    DenseMatrix scat_mat;
+    record.sigma_s.ToDenseMatrix(scat_mat);
+    scat_mat.Neg();
+    removal[i].AddMatrix(scat_mat, 0, 0);
+
+    for (int n{0}; n < inp.spn_eq(); ++n)
+    {
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        const int idx_dia{g + n*mat_lib.ngroup()};
+        removal[i](idx_dia,idx_dia) = record.sigma_r(g,n);
+      }
+    }
+  }
+  MatrixPWConstCoefficient removal_func{removal};
+  diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
+
+  bool all_essential{true};
+  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
+    all_essential = (ess_bdr[i] == 0);
+  const int skip_zeros{(all_essential) ? 2 : 1};
+  diffusion_bilinear.Assemble(skip_zeros);
+  diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
+  diffusion_bilinear.Finalize(skip_zeros);
+
+  return diffusion_bilinear.ParallelAssemble();
+}
+
+mfem::HypreParMatrix* spn_m_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   ParFiniteElementSpace* fespace,
+                                   const Array<int>& ess_bdr)
+{
+
+  const ParMesh* pmesh{fespace->GetParMesh()};
+
+  std::vector<DenseMatrix> fission(pmesh->attributes.Max());
+  for (int i{0}; i < pmesh->attributes.Max(); ++i)
+  {
+    fission[i].SetSize(mat_lib.ngroup()*inp.spn_eq()); // zero initialized
+    const Material_record& mat{mat_lib.mat[i]};
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+      {
+        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
+        {
+          const Material_isotope& isotope{mat.iso[iso_idx]};
+          const XSRecord& record{isotope.rec};
+          const double nden{isotope.nden};
+          fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
+        }
+      }
+    }
   }
 
-  return;
+  ParBilinearForm fission_bilinear{fespace};
+  MatrixPWConstCoefficient fission_func{fission};
+  fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
+
+  bool all_essential{true};
+  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
+    all_essential = (ess_bdr[i] == 0);
+  const int skip_zeros{(all_essential) ? 2 : 1};
+  fission_bilinear.Assemble(skip_zeros);
+  fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
+  fission_bilinear.Finalize(skip_zeros);
+
+  return fission_bilinear.ParallelAssemble();
+
 }
 
 void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
@@ -4531,29 +4221,6 @@ void calc_scalar_flux(int g,
     tmp *= quad->weight(n);
     scalar_flux(g) += tmp;
   }
-  return;
-}
-
-void calc_scalar_flux_vector(int g,
-                             const Result& angular_flux,
-                             const Quadrature* const quad, 
-                             Result& scalar_flux)
-{
-
-  ParFiniteElementSpace* fespace{angular_flux(g).ParFESpace()};
-
-  MFEM_VERIFY(fespace->GetOrdering() == Ordering::byVDIM,
-    "scalar flux calculation relies on angular flux being ordered by vdim");
-
-  const int ndofs{fespace->GetNDofs()};
-  const int vdim{quad->nd()};
-
-  scalar_flux(g) = 0.0;
-
-  for (int i{0}; i < ndofs; ++i)
-    for (int n{0}; n < quad->nd(); ++n)
-      scalar_flux(g)(i) += angular_flux(g)(n+i*vdim) * quad->weight(n);
-
   return;
 }
 
@@ -5194,131 +4861,6 @@ void flux_sign_fixup(Vector& pgf)
   return;
 }
 
-HypreParMatrix* spn_a_matrix(const Input &inp,
-                             const Material_library &mat_lib,
-                             ParFiniteElementSpace* fespace,
-                             const Array<int>& ess_bdr)
-{
-
-  const ParMesh* pmesh{fespace->GetParMesh()};
-
-  ParBilinearForm diffusion_bilinear{fespace};
-
-  std::vector<DenseMatrix> leakage(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-  {
-    leakage[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
-    const XSRecord& record{mat_lib.mat[i].rec};
-    for (int n{0}; n < inp.spn_eq(); ++n)
-    {
-      for (int g{0}; g < mat_lib.ngroup(); ++g)
-      {
-        const int idx_dia{g + mat_lib.ngroup() * n};
-        const double dble_n{2.0*n};
-        const double xmult_next{(dble_n+1.0)*(dble_n+1.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
-
-        leakage[i](idx_dia,idx_dia) = xmult_next / record.sigma_r(g,2*n+1);
-
-        if (n > 0)
-        {
-          const int idx_sub{idx_dia - mat_lib.ngroup()};
-          const double xmult_prev{dble_n*dble_n / (4.0*dble_n*dble_n - 1.0)};
-          const double ymult{(dble_n*dble_n - dble_n) / (4.0*dble_n*dble_n - 1.0)};
-          leakage[i](idx_dia,idx_dia) += xmult_prev / record.sigma_r(g,2*n-1);
-          leakage[i](idx_dia,idx_sub) = ymult / record.sigma_r(g,2*n-1);
-        }
-
-        if ((n+1) < inp.spn_eq())
-        {
-          const int idx_sup{idx_dia + mat_lib.ngroup()};
-          const double zmult{(dble_n+1.0)*(dble_n+2.0) / ((2.0*dble_n+1.0)*(2.0*dble_n+3.0))};
-          leakage[i](idx_dia,idx_sup) = zmult / record.sigma_r(g,2*n+1);
-        }
-
-      }
-    }
-  }
-  MatrixPWConstCoefficient leakage_func{leakage};
-  diffusion_bilinear.AddDomainIntegrator(new VectorDiffusionIntegrator{leakage_func});
-
-  std::vector<DenseMatrix> removal(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-  {
-    removal[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
-    const XSRecord& record{mat_lib.mat[i].rec};
-
-    DenseMatrix scat_mat;
-    record.sigma_s.ToDenseMatrix(scat_mat);
-    scat_mat.Neg();
-    removal[i].AddMatrix(scat_mat, 0, 0);
-
-    for (int n{0}; n < inp.spn_eq(); ++n)
-    {
-      for (int g{0}; g < mat_lib.ngroup(); ++g)
-      {
-        const int idx_dia{g + n*mat_lib.ngroup()};
-        removal[i](idx_dia,idx_dia) = record.sigma_r(g,n);
-      }
-    }
-  }
-  MatrixPWConstCoefficient removal_func{removal};
-  diffusion_bilinear.AddDomainIntegrator(new VectorMassIntegrator{removal_func});
-
-  bool all_essential{true};
-  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
-    all_essential = (ess_bdr[i] == 0);
-  const int skip_zeros{(all_essential) ? 2 : 1};
-  diffusion_bilinear.Assemble(skip_zeros);
-  diffusion_bilinear.EliminateEssentialBCDiag(ess_bdr, 1.0);
-  diffusion_bilinear.Finalize(skip_zeros);
-
-  return diffusion_bilinear.ParallelAssemble();
-}
-
-mfem::HypreParMatrix* spn_m_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   ParFiniteElementSpace* fespace,
-                                   const Array<int>& ess_bdr)
-{
-
-  const ParMesh* pmesh{fespace->GetParMesh()};
-
-  std::vector<DenseMatrix> fission(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-  {
-    fission[i].SetSize(mat_lib.ngroup()*inp.spn_eq()); // zero initialized
-    const Material_record& mat{mat_lib.mat[i]};
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-      {
-        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
-        {
-          const Material_isotope& isotope{mat.iso[iso_idx]};
-          const XSRecord& record{isotope.rec};
-          const double nden{isotope.nden};
-          fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
-        }
-      }
-    }
-  }
-
-  ParBilinearForm fission_bilinear{fespace};
-  MatrixPWConstCoefficient fission_func{fission};
-  fission_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fission_func});
-
-  bool all_essential{true};
-  for (int i{0}; (i < ess_bdr.Size()) && (all_essential); ++i)
-    all_essential = (ess_bdr[i] == 0);
-  const int skip_zeros{(all_essential) ? 2 : 1};
-  fission_bilinear.Assemble(skip_zeros);
-  fission_bilinear.EliminateEssentialBCDiag(ess_bdr, std::numeric_limits<double>::min());
-  fission_bilinear.Finalize(skip_zeros);
-
-  return fission_bilinear.ParallelAssemble();
-
-}
-
 namespace slepc_amgx
 {
 
@@ -5429,389 +4971,6 @@ namespace slepc_hypre
   }
 
 } // namespace slepc_hypre
-
-void slepc_solver_wrapper(HypreParMatrix* Ahypre,
-                          HypreParMatrix* Mhypre,
-                          const Input& inp,
-                          Timer& time,
-                          Result& res,
-                          int numfunctions)
-{
-
-  constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
-
-  const PetscParMatrix A{Ahypre, petsc_format};
-  const PetscParMatrix M{Mhypre, petsc_format};
-
-  /* This seems incompatible with the GMRES setup...
-  if (numfunctions > 1)
-  {
-    PetscErrorCode ierr;
-    ierr = MatSetBlockSize(A, numfunctions); PCHKERRQ(A, ierr);
-    ierr = MatSetBlockSize(M, numfunctions); PCHKERRQ(M, ierr);
-  }
-  */
-
-  constexpr bool slepc_amgx{false};
-  constexpr bool slepc_ksp{false};
-  constexpr bool slepc_hypre{false};
-
-  if ((petsc_format != Operator::PETSC_MATHYPRE) && 
-      (petsc_format != Operator::PETSC_MATSHELL))
-  {
-    if ((!slepc_amgx) && (!slepc_hypre))
-    {
-      delete Ahypre;
-      Ahypre = nullptr;
-    }
-    delete Mhypre;
-    Mhypre = nullptr;
-  }
-
-  SlepcEigenSolver slepc{MPI_COMM_WORLD};
-  slepc.SetNumModes(1); // only fundamental mode
-  slepc.SetTol(std::min(inp.tol.phi, inp.tol.k));
-  slepc.SetMaxIter(inp.tol.max_outer);
-  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
-  slepc.SetOperators(A, M);
-  
-  PetscErrorCode ierr;
-  PC preconditioner;
-  if (slepc_amgx)
-  {
-
-    ST spectral_transform;
-    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
-
-    KSP petsc_solver;
-    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
-
-    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
-    ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
-    ierr = PCShellSetSetUp(preconditioner, slepc_amgx::setup); PCHKERRQ(slepc, ierr);
-    ierr = PCShellSetApply(preconditioner, slepc_amgx::apply); PCHKERRQ(slepc, ierr);
-    ierr = PCShellSetDestroy(preconditioner, slepc_amgx::destroy); PCHKERRQ(slepc, ierr);
-    slepc_amgx::Ahypre = Ahypre;
-    slepc_amgx::verbose = inp.verbose;
-    slepc_amgx::ndevices = inp.ndevices;
-    Ahypre = nullptr;
-
-    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
-  }
-  else if (slepc_ksp)
-  {
-
-    ST spectral_transform;
-    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
-
-    KSP petsc_solver;
-    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
-
-    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
-    ierr = PCSetType(preconditioner, PCKSP); PCHKERRQ(slepc, ierr);
-
-    KSP petsc_solver_inner;
-    ierr = PCKSPGetKSP(preconditioner, &petsc_solver_inner); PCHKERRQ(slepc, ierr);
-    ierr = KSPSetType(petsc_solver_inner, KSPGMRES); PCHKERRQ(slepc, ierr);
-    ierr = KSPGMRESSetRestart(petsc_solver_inner, inp.tol.max_inner); PCHKERRQ(slepc, ierr); // (no restarting rn)
-    ierr = KSPSetTolerances(petsc_solver_inner, inp.tol.inner_rel, inp.tol.inner_abs, 1e6, inp.tol.max_inner); PCHKERRQ(slepc, ierr);
-
-    PC preconditioner_inner;
-    ierr = KSPGetPC(petsc_solver_inner, &preconditioner_inner); PCHKERRQ(slepc, ierr);
-    ierr = PCSetType(preconditioner_inner, PCGAMG); PCHKERRQ(slepc, ierr);
-    ierr = PCGAMGSetSymGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
-
-    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
-  }
-  else if (slepc_hypre)
-  {
-
-    ST spectral_transform;
-    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
-
-    KSP petsc_solver;
-    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
-
-    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
-    ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
-    ierr = PCShellSetSetUp(preconditioner, slepc_hypre::setup); PCHKERRQ(slepc, ierr);
-    ierr = PCShellSetApply(preconditioner, slepc_hypre::apply); PCHKERRQ(slepc, ierr);
-    ierr = PCShellSetDestroy(preconditioner, slepc_hypre::destroy); PCHKERRQ(slepc, ierr);
-
-    slepc_hypre::Ahypre = Ahypre;
-    Ahypre = nullptr;
-
-    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
-
-  }
-
-  /* RESTART
-  // set based on the previous state
-  Vector true_dof;
-  res(0).GetTrueDofs(true_dof);
-  const PetscParVector tv{MPI_COMM_WORLD, true_dof, true};
-  const std::unique_ptr<Vec[]> array{std::make_unique<Vec[]>(1)};
-  array[0] = tv;
-  EPSSetInitialSpace(slepc, 1, array.get());
-  */
-
-  time.start(time.solver);
-  slepc.Solve();
-  time.stop(time.solver);
-
-  if ((slepc_amgx) || (slepc_hypre))
-  {
-    ierr = PCDestroy(&preconditioner); PCHKERRQ(slepc, ierr);
-  }
-
-  delete Ahypre;
-  delete Mhypre;
-
-  if (slepc.GetNumConverged() >= 1)
-  {
-    slepc.GetEigenvalue(0, res.keff);
-    res.keff = 1.0 / res.keff;
-    Vector tmp(res(0).ParFESpace()->GetTrueVSize());
-    slepc.GetEigenvector(0, tmp);
-    res(0).Distribute(tmp);
-  }
-  else
-  {
-    // if the solution failed to converge, do something so that the
-    // power/temperature solver doesn't completely bomb
-    res(0) = 1.0;
-  }
-
-  flux_sign_fixup(res(0));
-
-  return;
-}
-
-void slepc_initialize(const Input& inp)
-{
-
-  const std::string slepcrc_fname{inp.concatenate_path("slepcrc")};
-
-#if 0
-  std::vector<std::string> arguments{" ",
-    "-eps_monitor", "-eps_converged_reason", "-eps_type", "gd", 
-    "-st_type", "precond", "-st_ksp_type", "preonly",
-    "-st_pc_type", "hypre", "-st_pc_hypre_type", "boomeramg",
-    // the following are required for gpu
-    "-st_pc_hypre_boomeramg_coarsen_type", "PMIS",
-    "-st_pc_hypre_boomeramg_interp_type", "ext+i",
-    "-st_pc_hypre_boomeramg_relax_type_all", "l1scaled-Jacobi",
-    // try to reduce the memory burden (size of search space after restarting)
-    "-eps_gd_minv", "2"};
-
-  arguments.emplace_back("-st_pc_hypre_boomeramg_numfunctions");
-  arguments.emplace_back(std::to_string(num_equations));
-
-  if (inp.verbose)
-  {
-    arguments.emplace_back("-eps_view");
-    arguments.emplace_back("-st_pc_hypre_boomeramg_print_statistics");
-  }
-
-  int argc_val{static_cast<int>(arguments.size())};
-  std::vector<char*> argv_val(argc_val);
-  for (int i{0}; i < argc_val; ++i)
-    argv_val[i] = const_cast<char*>(arguments[i].c_str());
-
-  char** argv{argv_val.data()};
-
-  if (exists(slepcrc_fname))
-    MFEMInitializeSlepc(&argc_val, &argv, slepcrc_fname.c_str(), nullptr);
-  else
-    MFEMInitializeSlepc(&argc_val, &argv, nullptr, nullptr);
-#endif
-
-  if (exists(slepcrc_fname))
-    MFEMInitializeSlepc(nullptr, nullptr, slepcrc_fname.c_str(), nullptr);
-  else
-    MFEMInitializeSlepc(nullptr, nullptr, nullptr, nullptr);
-
-  return;
-}
-
-void slepc_finalize()
-{
-  MFEMFinalizeSlepc();
-  return;
-}
-
-mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   const Quadrature* const quad,
-                                   ParFiniteElementSpace* fespace)
-{
-
-  const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{2};
-  const int block_rank{mat_lib.ngroup()*quad->nd()};
-
-  std::vector<DenseMatrix> omega_operator(quad->nd());
-  for (int n{0}; n < quad->nd(); ++n)
-  {
-    omega_operator[n].SetSize(quad->dim());
-    MultVVt(quad->omega(n), omega_operator[n]);
-  }
-
-  std::vector<Tensor<DenseMatrix>> streaming(pmesh->attributes.Max());
-  std::vector<Vector> collision(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-  {
-    const XSRecord& rec{mat_lib.mat[i].rec};
-    streaming[i].reserve(block_rank);
-    collision[i].SetSize(block_rank);
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-      const double tot{rec.sigma_t[g]};
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        const int dia{n + g*quad->nd()};
-
-        omega_operator[n] *= 1.0/tot;
-        streaming[i].AddElement(omega_operator[n], dia);
-        omega_operator[n] *= tot;
-
-        collision[i](dia) = tot;
-      }
-    }
-  }
-  ParBilinearForm sink_bilinear{fespace};
-  MatrixTensorPWConstCoefficient streaming_func{block_rank, streaming};
-  VectorPWConstCoefficient collision_func{collision};
-  sink_bilinear.AddDomainIntegrator(new TensorDiffusionIntegrator{streaming_func});
-  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{collision_func});
-
-  Tensor<Vector> boundary;
-  boundary.reserve(block_rank);
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-    for (int n{0}; n < quad->nd(); ++n)
-      boundary.AddElement(quad->omega(n), n+g*quad->nd());
-  VectorTensorConstantCoefficient boundary_func{block_rank, boundary};
-  sink_bilinear.AddBdrFaceIntegrator(
-    new VectorDGTraceIntegrator{boundary_func, 1.0});
-
-  std::vector<DenseMatrix> scattering(pmesh->attributes.Max());
-  std::vector<Tensor<Vector>> scattering_saaf(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-  {
-    scattering[i].SetSize(block_rank);
-    const XSRecord& record{mat_lib.mat[i].rec};
-
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-
-      Array<int> col_idx;
-      Vector scat_dat;
-      record.sigma_s.GetRow(g, col_idx, scat_dat);
-
-      const double tot{record.sigma_t[g]};
-
-      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
-      {
-        const int gprime{col_idx[gidx]};
-        const double scat{scat_dat(gidx)};
-        for (int n{0}; n < quad->nd(); ++n)
-        {
-          const int row{n + g*quad->nd()};
-          for (int nprime{0}; nprime < quad->nd(); ++nprime)
-          {
-            const int col{nprime + gprime*quad->nd()};
-            const double val{-scat*quad->weight(nprime)};
-            scattering[i](row,col) = val;
-
-            Vector v{quad->omega(n)};
-            v *= val/tot;
-            scattering_saaf[i].AddElement(v, row, col);
-          } // nprime < quad->nd()
-        } // n < quad->nd()
-      } // gidx < col_idx.Size()
-
-    } // g < mat_lib.ngroup()
-    scattering_saaf[i].Transpose(); // related to the need for the transpose integrator
-  } // i < pmesh->attributes.Max()
-  MatrixPWConstCoefficient scattering_func{scattering};
-  VectorTensorPWConstCoefficient scattering_saaf_func{block_rank, scattering_saaf};
-  sink_bilinear.AddDomainIntegrator(new VectorMassIntegrator{scattering_func});
-  sink_bilinear.AddDomainIntegrator(
-    new TransposeIntegrator{
-    new VectorConvectionIntegrator{scattering_saaf_func}});
-
-  sink_bilinear.Assemble(skip_zeros);
-  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
-
-  return sink_bilinear.ParallelAssemble();
-
-}
-
-HypreParMatrix* saaf_m_matrix(const Input &inp, 
-                              const Material_library &mat_lib,
-                              const Quadrature* const quad,
-                              ParFiniteElementSpace* fespace)
-{
-
-  const ParMesh* pmesh{fespace->GetParMesh()};
-  const int skip_zeros{2};
-  const int block_rank{mat_lib.ngroup()*quad->nd()};
-
-  std::vector<DenseMatrix> fiss(pmesh->attributes.Max());
-  std::vector<Tensor<Vector>> fiss_saaf(pmesh->attributes.Max());
-  for (int i{0}; i < pmesh->attributes.Max(); ++i)
-  {
-    fiss[i].SetSize(block_rank);
-    fiss_saaf[i].reserve(block_rank*block_rank);
-    const Material_record& mat{mat_lib.mat[i]};
-
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-      const double tot{mat.rec.sigma_t[g]};
-      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-      {
-
-        double val{0.0};
-        for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
-        {
-          const Material_isotope& isotope{mat.iso[iso_idx]};
-          const XSRecord& record{isotope.rec};
-          const double nden{isotope.nden};
-          val += record.chi[g] * nden * record.nusf[gprime];
-        } // iso_idx < mat.niso
-
-        for (int n{0}; n < quad->nd(); ++n)
-        {
-          const int row{n + g*quad->nd()};
-          for (int nprime{0}; nprime < quad->nd(); ++nprime)
-          {
-            const int col{nprime + gprime*quad->nd()};
-            fiss[i](row,col) = val*quad->weight(nprime);
-
-            Vector v{quad->omega(n)};
-            v /= tot;
-            v *= val * quad->weight(nprime);
-            fiss_saaf[i].AddElement(v, row, col);
-          } // nprime < quad->nd()
-        } // n < quad->nd()
-      } // gprime < mat_lib.ngroup()
-    } // g < mat_lib.ngroup()
-    fiss_saaf[i].Transpose(); // related to the need for the transpose integrator
-  } // i < pmesh->attributes.Max()
-  MatrixPWConstCoefficient fiss_func{fiss};
-  VectorTensorPWConstCoefficient fiss_saaf_func{block_rank, fiss_saaf};
-  ParBilinearForm fiss_bilinear{fespace};
-  fiss_bilinear.AddDomainIntegrator(new VectorMassIntegrator{fiss_func});
-  fiss_bilinear.AddDomainIntegrator(
-    new TransposeIntegrator{
-    new VectorConvectionIntegrator{fiss_saaf_func}});
-
-  fiss_bilinear.Assemble(skip_zeros);
-  fiss_bilinear.Finalize(skip_zeros);
-
-  return fiss_bilinear.ParallelAssemble();
-
-}
 
 void calc_all_scatter(const Result& scalar_flux,
                       const Material_library& mat_lib,
@@ -7099,297 +6258,212 @@ void calc_current_vector_vector(const ParGridFunction &angular_flux,
   return;
 }
 
-void calc_fiss_upscatter_vector(const Result &scalar_flux,
-                                const Material_library &mat_lib,
-                                const Quadrature * const quad,
-                                std::vector<QuadratureFunction> &fiss_upscatter_quad,
-                                std::vector<QuadratureFunction> &saaf_fiss_upscatter_quad,
-                                const double keff,
-                                const bool flux_free_chi)
+void slepc_solver_wrapper(HypreParMatrix* Ahypre,
+                          HypreParMatrix* Mhypre,
+                          const Input& inp,
+                          Timer& time,
+                          Result& res,
+                          int numfunctions)
 {
 
-  const QuadratureSpace* const qspace{fiss_upscatter_quad[0].GetSpace()};
-  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
-  const ParMesh* const mesh{fespace->GetParMesh()};
+  constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
 
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  const PetscParMatrix A{Ahypre, petsc_format};
+  const PetscParMatrix M{Mhypre, petsc_format};
+
+  /* This seems incompatible with the GMRES setup...
+  if (numfunctions > 1)
   {
-    fiss_upscatter_quad[g] = 0.0;
-    saaf_fiss_upscatter_quad[g] = 0.0;
+    PetscErrorCode ierr;
+    ierr = MatSetBlockSize(A, numfunctions); PCHKERRQ(A, ierr);
+    ierr = MatSetBlockSize(M, numfunctions); PCHKERRQ(M, ierr);
   }
+  */
 
-  int idx{0};
-  int saaf_idx{0};
+  constexpr bool slepc_amgx{true};
+  constexpr bool slepc_ksp{false};
+  constexpr bool slepc_hypre{false};
 
-  for (int e{0}; e < qspace->GetNE(); ++e)
+  if ((petsc_format != Operator::PETSC_MATHYPRE) && 
+      (petsc_format != Operator::PETSC_MATSHELL))
   {
-
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
-    const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
-
-    const FiniteElement* const fe{fespace->GetFE(e)};
-    Array<int> dofs;
-    fespace->GetElementDofs(e, dofs);
-
-    for (int i{0}; i < ir.GetNPoints(); ++i)
+    if ((!slepc_amgx) && (!slepc_hypre))
     {
-
-      const IntegrationPoint ip{ir.IntPoint(i)};
-      Vector dofval(dofs.Size());
-      fe->CalcShape(ip, dofval);
-
-      std::vector<double> spectrum(mat_lib.ngroup());
-
-      // get all xs at this point
-      // this will eventually be temperautre dependent
-      const std::vector<double> &nusf{rec.nusf};
-      const std::vector<double> &tot{rec.sigma_t};
-      const SparseMatrix &scat{rec.sigma_s};
-      std::vector<double> chi;
-      if (rec.is_fiss)
-      {
-
-        // accumulate flux spectrum
-        for (int g{0}; g < mat_lib.ngroup(); ++g)
-        {
-          Vector locvec(dofs.Size());
-          scalar_flux(g).GetSubVector(dofs, locvec);
-          spectrum[g] = dofval*locvec;
-        }
-
-        // set chi appropriately
-        chi.resize(mat_lib.ngroup());
-        if (flux_free_chi)
-          chi = rec.chi;
-        else if (mat_lib.rx_wide_chi)
-          chi = mat_lib.chi;
-        else
-          chi = mat.calculate_chi(spectrum);
-
-      }
-      else
-      {
-        // assign to dummy value to work with cacheing later
-        for (double &x : spectrum)
-          x = -1.0;
-      }
-
-      Vector val(mat_lib.ngroup());
-      val = 0.0;
-
-      // fission
-      if (rec.is_fiss)
-      {
-
-        double fiss_sum{0.0};
-        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-          fiss_sum += nusf[gprime]*spectrum[gprime];
-
-        for (int g{0}; g < mat_lib.ngroup(); ++g)
-          val(g) += chi[g]*fiss_sum;
-
-        val /= keff;
-
-      }
-
-      // upscatter
-      for (int g{0}; g < mat_lib.ngroup(); ++g)
-      {
-        if (rec.is_upscatter[g])
-        {
-
-          Array<int> col_idx;
-          Vector scat_dat;
-          scat.GetRow(g, col_idx, scat_dat);
-
-          for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
-          {
-            const int gprime{col_idx[gidx]};
-            if (gprime > g)
-            {
-              if (spectrum[gprime] < 0.0)
-              {
-                Vector locvec(dofs.Size());
-                scalar_flux(gprime).GetSubVector(dofs, locvec);
-                spectrum[gprime] = dofval*locvec;
-              }
-              val(g) += scat_dat(gidx)*spectrum[gprime];
-            }
-          }
-        }
-      }
-
-      // val array is calculated
-      // need to incorporate into quadrature functions
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        for (int g{0}; g < mat_lib.ngroup(); ++g)
-          fiss_upscatter_quad[g](idx) = val(g);
-        ++idx;
-      }
-
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        const Vector &dir(quad->omega(n));
-        for (int d{0}; d < quad->dim(); ++d)
-        {
-          for (int g{0}; g < mat_lib.ngroup(); ++g)
-            saaf_fiss_upscatter_quad[g](saaf_idx) = dir(d)/tot[g] * val(g);
-          ++saaf_idx;
-        }
-      }
-
+      delete Ahypre;
+      Ahypre = nullptr;
     }
+    delete Mhypre;
+    Mhypre = nullptr;
+  }
+
+  SlepcEigenSolver slepc{MPI_COMM_WORLD};
+  slepc.SetNumModes(1); // only fundamental mode
+  slepc.SetTol(std::min(inp.tol.phi, inp.tol.k));
+  slepc.SetMaxIter(inp.tol.max_outer);
+  slepc.SetWhichEigenpairs(SlepcEigenSolver::SMALLEST_MAGNITUDE);
+  slepc.SetOperators(A, M);
+  
+  PetscErrorCode ierr;
+  PC preconditioner;
+  if (slepc_amgx)
+  {
+
+    ST spectral_transform;
+    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver;
+    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
+
+    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetSetUp(preconditioner, slepc_amgx::setup); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetApply(preconditioner, slepc_amgx::apply); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetDestroy(preconditioner, slepc_amgx::destroy); PCHKERRQ(slepc, ierr);
+    slepc_amgx::Ahypre = Ahypre;
+    slepc_amgx::verbose = inp.verbose;
+    slepc_amgx::ndevices = inp.ndevices;
+    Ahypre = nullptr;
+
+    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
+  }
+  else if (slepc_ksp)
+  {
+
+    ST spectral_transform;
+    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver;
+    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
+
+    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner, PCKSP); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver_inner;
+    ierr = PCKSPGetKSP(preconditioner, &petsc_solver_inner); PCHKERRQ(slepc, ierr);
+    ierr = KSPSetType(petsc_solver_inner, KSPGMRES); PCHKERRQ(slepc, ierr);
+    ierr = KSPGMRESSetRestart(petsc_solver_inner, inp.tol.max_inner); PCHKERRQ(slepc, ierr); // (no restarting rn)
+    ierr = KSPSetTolerances(petsc_solver_inner, inp.tol.inner_rel, inp.tol.inner_abs, 1e6, inp.tol.max_inner); PCHKERRQ(slepc, ierr);
+
+    PC preconditioner_inner;
+    ierr = KSPGetPC(petsc_solver_inner, &preconditioner_inner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner_inner, PCGAMG); PCHKERRQ(slepc, ierr);
+    ierr = PCGAMGSetSymGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
+
+    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
+  }
+  else if (slepc_hypre)
+  {
+
+    ST spectral_transform;
+    ierr = EPSGetST(slepc, &spectral_transform); PCHKERRQ(slepc, ierr);
+
+    KSP petsc_solver;
+    ierr = STGetKSP(spectral_transform, &petsc_solver); PCHKERRQ(slepc, ierr);
+
+    ierr = PCCreate(MPI_COMM_WORLD, &preconditioner); PCHKERRQ(slepc, ierr);
+    ierr = PCSetType(preconditioner, PCSHELL); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetSetUp(preconditioner, slepc_hypre::setup); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetApply(preconditioner, slepc_hypre::apply); PCHKERRQ(slepc, ierr);
+    ierr = PCShellSetDestroy(preconditioner, slepc_hypre::destroy); PCHKERRQ(slepc, ierr);
+
+    slepc_hypre::Ahypre = Ahypre;
+    Ahypre = nullptr;
+
+    ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
 
   }
+
+  /* RESTART
+  // set based on the previous state
+  Vector true_dof;
+  res(0).GetTrueDofs(true_dof);
+  const PetscParVector tv{MPI_COMM_WORLD, true_dof, true};
+  const std::unique_ptr<Vec[]> array{std::make_unique<Vec[]>(1)};
+  array[0] = tv;
+  EPSSetInitialSpace(slepc, 1, array.get());
+  */
+
+  time.start(time.solver);
+  slepc.Solve();
+  time.stop(time.solver);
+
+  if ((slepc_amgx) || (slepc_hypre))
+  {
+    ierr = PCDestroy(&preconditioner); PCHKERRQ(slepc, ierr);
+  }
+
+  delete Ahypre;
+  delete Mhypre;
+
+  if (slepc.GetNumConverged() >= 1)
+  {
+    slepc.GetEigenvalue(0, res.keff);
+    res.keff = 1.0 / res.keff;
+    Vector tmp(res(0).ParFESpace()->GetTrueVSize());
+    slepc.GetEigenvector(0, tmp);
+    res(0).Distribute(tmp);
+  }
+  else
+  {
+    // if the solution failed to converge, do something so that the
+    // power/temperature solver doesn't completely bomb
+    res(0) = 1.0;
+  }
+
+  flux_sign_fixup(res(0));
 
   return;
 }
 
-void calc_downscatter_vector(const int g,
-                             const Result &scalar_flux,
-                             const Material_library &mat_lib,
-                             const Quadrature * const quad,
-                             QuadratureFunction &dnscatter_quad,
-                             QuadratureFunction &saaf_dnscatter_quad)
+void slepc_initialize(const Input& inp)
 {
 
-  const QuadratureSpace* const qspace{dnscatter_quad.GetSpace()};
-  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
-  const ParMesh* const mesh{fespace->GetParMesh()};
+  const std::string slepcrc_fname{inp.concatenate_path("slepcrc")};
 
-  dnscatter_quad = 0.0;
-  saaf_dnscatter_quad = 0.0;
+#if 0
+  std::vector<std::string> arguments{" ",
+    "-eps_monitor", "-eps_converged_reason", "-eps_type", "gd", 
+    "-st_type", "precond", "-st_ksp_type", "preonly",
+    "-st_pc_type", "hypre", "-st_pc_hypre_type", "boomeramg",
+    // the following are required for gpu
+    "-st_pc_hypre_boomeramg_coarsen_type", "PMIS",
+    "-st_pc_hypre_boomeramg_interp_type", "ext+i",
+    "-st_pc_hypre_boomeramg_relax_type_all", "l1scaled-Jacobi",
+    // try to reduce the memory burden (size of search space after restarting)
+    "-eps_gd_minv", "2"};
 
-  int idx{0};
-  int saaf_idx{0};
+  arguments.emplace_back("-st_pc_hypre_boomeramg_numfunctions");
+  arguments.emplace_back(std::to_string(num_equations));
 
-  for (int e{0}; e < qspace->GetNE(); ++e)
+  if (inp.verbose)
   {
-
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
-    const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
-
-    const FiniteElement* const fe{fespace->GetFE(e)};
-    Array<int> dofs;
-    fespace->GetElementDofs(e, dofs);
-
-    for (int i{0}; i < ir.GetNPoints(); ++i)
-    {
-
-      const IntegrationPoint ip{ir.IntPoint(i)};
-      Vector dofval(dofs.Size());
-      fe->CalcShape(ip, dofval);
-
-      // get all xs at this point
-      // this will eventually be temperature dependent
-      const double &tot{rec.sigma_t[g]};
-      const SparseMatrix &scat{rec.sigma_s};
-
-      Array<int> col_idx;
-      Vector scat_dat;
-      scat.GetRow(g, col_idx, scat_dat);
-
-      double val{0.0};
-
-      // assume column indices are sorted
-      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
-      {
-
-        const int gprime{col_idx[gidx]};
-        if (gprime >= g) break;
-
-        Vector locvec(dofs.Size());
-        scalar_flux(gprime).GetSubVector(dofs, locvec);
-        const double flux{dofval*locvec};
-
-        val += scat_dat(gidx)*flux;
-
-      }
-
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        dnscatter_quad(idx) = val;
-        ++idx;
-      }
-
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        const Vector &dir{quad->omega(n)};
-        for (int d{0}; d < quad->dim(); ++d)
-        {
-          saaf_dnscatter_quad(saaf_idx) = dir(d)/tot * val;
-          ++saaf_idx;
-        }
-      }
-
-    }
-
+    arguments.emplace_back("-eps_view");
+    arguments.emplace_back("-st_pc_hypre_boomeramg_print_statistics");
   }
+
+  int argc_val{static_cast<int>(arguments.size())};
+  std::vector<char*> argv_val(argc_val);
+  for (int i{0}; i < argc_val; ++i)
+    argv_val[i] = const_cast<char*>(arguments[i].c_str());
+
+  char** argv{argv_val.data()};
+
+  if (exists(slepcrc_fname))
+    MFEMInitializeSlepc(&argc_val, &argv, slepcrc_fname.c_str(), nullptr);
+  else
+    MFEMInitializeSlepc(&argc_val, &argv, nullptr, nullptr);
+#endif
+
+  if (exists(slepcrc_fname))
+    MFEMInitializeSlepc(nullptr, nullptr, slepcrc_fname.c_str(), nullptr);
+  else
+    MFEMInitializeSlepc(nullptr, nullptr, nullptr, nullptr);
 
   return;
 }
 
-void calc_selfscatter_vector(const int g,
-                             const mfem::ParGridFunction &scalar_flux,
-                             const Material_library &mat_lib,
-                             const Quadrature * const quad,
-                             QuadratureFunction &selfscatter_quad,
-                             QuadratureFunction &saaf_selfscatter_quad)
+void slepc_finalize()
 {
-
-  const QuadratureSpace* const qspace{selfscatter_quad.GetSpace()};
-  const ParFiniteElementSpace* const fespace{scalar_flux.ParFESpace()};
-  const ParMesh* const mesh{fespace->GetParMesh()};
-
-  selfscatter_quad = 0.0;
-  saaf_selfscatter_quad = 0.0;
-
-  int idx{0};
-  int saaf_idx{0};
-
-  for (int e{0}; e < qspace->GetNE(); ++e)
-  {
-
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
-    const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
-
-    for (int i{0}; i < ir.GetNPoints(); ++i)
-    {
-
-      const IntegrationPoint ip{ir.IntPoint(i)};
-
-      // get all xs at this point
-      // this will eventually be temperautre dependent
-      const double scat{rec.sigma_s.Elem(g,g)};
-      const double tot{rec.sigma_t[g]};
-
-      const double val{scat*scalar_flux.GetValue(e, ip)};
-
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        selfscatter_quad(idx) = val;
-        ++idx;
-      }
-
-      for (int n{0}; n < quad->nd(); ++n)
-      {
-        const Vector &dir{quad->omega(n)};
-        for (int d{0}; d < quad->dim(); ++d)
-        {
-          saaf_selfscatter_quad(saaf_idx) = dir(d)/tot * val;
-          ++saaf_idx;
-        }
-      }
-
-    }
-  }
-
+  MFEMFinalizeSlepc();
   return;
 }

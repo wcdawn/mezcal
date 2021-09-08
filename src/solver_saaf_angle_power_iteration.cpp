@@ -1,0 +1,960 @@
+#include "solver_saaf_angle_power_iteration.hpp"
+
+#include "make_unique.hpp"
+
+#include "../addon/mfem_addon.hpp"
+#include "../addon/tensor.hpp"
+
+#include "vector_pwconst_coefficient.hpp"
+
+#include <cmath>
+#include <vector>
+
+using namespace mfem;
+
+void saaf_angle_power_iteration(const Quadrature* const quad,
+                                Timer& time,
+                                const Input& inp,
+                                const Material_library& mat_lib,
+                                Result& angular_flux,
+                                Result& scalar_flux,
+                                ParGridFunction &power,
+                                ParGridFunction &temperature)
+{
+
+  constexpr bool use_gpu{false};
+  constexpr bool use_dsa{true};
+
+  ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
+  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux(0).ParFESpace();
+  ParMesh *pmesh = angular_flux_fespace->GetParMesh();
+
+  constexpr int skip_zeros{2};
+  const int myid{angular_flux_fespace->GetMyRank()};
+
+  enum class LINEAR_SOLVER
+  {
+    invalid=-1,
+    amgx,
+    hypre_pcg,
+    hypre_gmres,
+    mfem_cg,
+    mfem_gmres,
+    mfem_minres,
+    mfem_bicgstab
+  };
+  // Choose which solver will be used for the SAAF system.
+  // Except for AmgX, HypreBoomerAMG will always be used for preconditioner.
+  // DSA system will always be solved with HypreBoomerAMG+HyprePCG.
+  LINEAR_SOLVER linear_solver{LINEAR_SOLVER::invalid};
+  const std::string inp_linear_solver{inp.get_linear_solver()};
+  if (inp_linear_solver == "amgx")
+    linear_solver = LINEAR_SOLVER::amgx;
+  else if (inp_linear_solver == "hypre_pcg")
+    linear_solver = LINEAR_SOLVER::hypre_pcg;
+  else if (inp_linear_solver == "hypre_gmres")
+    linear_solver = LINEAR_SOLVER::hypre_gmres;
+  else if (inp_linear_solver == "mfem_cg")
+    linear_solver = LINEAR_SOLVER::mfem_cg;
+  else if (inp_linear_solver == "mfem_gmres")
+    linear_solver = LINEAR_SOLVER::mfem_gmres;
+  else if (inp_linear_solver == "mfem_minres")
+    linear_solver = LINEAR_SOLVER::mfem_minres;
+  else if (inp_linear_solver == "mfem_bicgstab")
+    linear_solver = LINEAR_SOLVER::mfem_bicgstab;
+  else
+  {
+    if (myid == 0) std::cout << "WARNING: unknown (or no) linear solver specified = *" << inp_linear_solver << "*" << std::endl;
+    if (myid == 0) std::cout << "Using default (hypre_pcg) linear solver." << std::endl;
+    linear_solver = LINEAR_SOLVER::hypre_pcg;
+  }
+
+  // transport streaming+collision operator
+  std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(mat_lib.ngroup()); // could be HypreSolver
+  std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
+
+  // dsa streaming+removal operator
+  std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HypreBoomerAMG>> Dprec(mat_lib.ngroup()); // could be HypreSolver
+  std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
+
+  time.start(time.matrix_assembly);
+
+  { // streaming+collision
+
+    std::vector<DenseMatrix> omega_mat(quad->nd());
+    for (int n{0}; n < quad->nd(); ++n)
+    {
+      omega_mat[n].SetSize(quad->dim());
+      MultVVt(quad->omega(n), omega_mat[n]);
+    }
+
+    Tensor<Vector> omega;
+    omega.reserve(quad->nd());
+    for(int n{0}; n < quad->nd(); ++n)
+    {
+      omega.AddElement(quad->omega(n), n);
+    }
+    VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
+    
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      ParBilinearForm a{angular_flux_fespace};
+
+      std::vector<Vector> total(pmesh->attributes.Max());
+      std::vector<Tensor<DenseMatrix>> leakage(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      {
+        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+
+        leakage[i].reserve(quad->nd());
+        for (int n{0}; n < quad->nd(); ++n)
+        {
+          const double val{1.0/tot};
+          omega_mat[n] *= val;
+          leakage[i].AddElement(omega_mat[n], n);
+          omega_mat[n] *= 1.0/val;
+        }
+        
+        total[i].SetSize(quad->nd());
+        total[i] = tot;
+
+      }
+
+      VectorPWConstCoefficient total_func{total};
+      MatrixTensorPWConstCoefficient leakage_func{quad->nd(), leakage};
+      a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
+      a.AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
+      a.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
+
+      a.Assemble(skip_zeros); // note: no essential bcs in saaf
+      a.Finalize(skip_zeros);
+      Amat[g].reset(a.ParallelAssemble());
+
+      // precconditioner
+      // everything uses HypreBoomerAMG except for amgx
+      switch (linear_solver)
+      {
+        case (LINEAR_SOLVER::amgx):
+          break;
+        default:
+        {
+          std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
+          amg->SetPrintLevel(1);
+          HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
+          Aprec[g] = std::move(amg);
+        }
+      }
+
+      // solver
+      switch (linear_solver)
+      {
+        case (LINEAR_SOLVER::amgx):
+        {
+
+#ifdef AMGX_AVAILABLE
+
+          std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
+          this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+          this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+          if (inp.ndevices > 0)
+            this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
+          else
+            this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
+
+          this_sol->SetOperator(*Amat[g]);
+          Asol[g] = std::move(this_sol);
+
+          // Amat no longer needs to be stored on cpu
+          Amat[g].reset();
+
+#else
+
+          MFEM_ABORT("solver not supported without amgx");
+
+#endif
+
+          break;
+        }
+        case (LINEAR_SOLVER::hypre_pcg):
+        {
+          std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(2);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::hypre_gmres):
+        {
+          std::unique_ptr<HypreGMRES> this_sol{std::make_unique<HypreGMRES>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(2);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_cg):
+        {
+          std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_gmres):
+        {
+          std::unique_ptr<GMRESSolver> this_sol{std::make_unique<GMRESSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_minres):
+        {
+          std::unique_ptr<MINRESSolver> this_sol{std::make_unique<MINRESSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        case (LINEAR_SOLVER::mfem_bicgstab):
+        {
+          std::unique_ptr<BiCGSTABSolver> this_sol{std::make_unique<BiCGSTABSolver>(MPI_COMM_WORLD)};
+          this_sol->SetPrintLevel(1);
+          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+          this_sol->SetOperator(*Amat[g]);
+          this_sol->SetRelTol(inp.tol.inner_rel);
+          this_sol->SetAbsTol(inp.tol.inner_abs);
+          this_sol->SetMaxIter(inp.tol.max_inner);
+          Asol[g] = std::move(this_sol);
+          break;
+        }
+        default:
+          if (myid==0) std::cout << "unsupported LINEAR_SOLVER" << std::endl;
+          return;
+      }
+
+    } // g = 1,mat_lib.ngroup()
+
+  } // streaming+collision
+
+  { // DSA operator
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      Vector diffusive(pmesh->attributes.Max());
+      Vector removal(pmesh->attributes.Max());
+      for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      {
+        const XSRecord &rec{mat_lib.mat[i].rec};
+        diffusive(i) = 1.0 / (3.0*rec.sigma_t[g]);
+        removal(i)   = rec.sigma_t[g] - rec.sigma_s.Elem(g,g);
+      }
+      PWConstCoefficient diffusive_func{diffusive};
+      PWConstCoefficient removal_func{removal};
+
+      ConstantCoefficient albedo{0.5};
+
+      ParBilinearForm d{scalar_flux_fespace};
+      d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
+      d.AddDomainIntegrator(new MassIntegrator{removal_func});
+      d.AddBoundaryIntegrator(new MassIntegrator{albedo});
+
+      d.Assemble(skip_zeros);
+      d.Finalize(skip_zeros);
+      Dmat[g].reset(d.ParallelAssemble());
+
+      if (use_gpu)
+      {
+
+#ifdef AMGX_AVAILABLE
+
+        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
+        this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
+        this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
+
+        if (inp.ndevices > 0)
+          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
+        else
+          this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
+  
+
+        this_sol->SetOperator(*Dmat[g]);
+        Dsol[g] = std::move(this_sol);
+
+        // Dmat no longer needs to be stored on cpu
+        Dmat[g].reset();
+
+#else
+
+        MFEM_ABORT("solver not supported without amgx");
+
+#endif
+
+      }
+      else
+      {
+
+        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
+        amg->SetPrintLevel(0);
+        Dprec[g] = std::move(amg);
+
+        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+        this_sol->SetPreconditioner(*Dprec[g]);
+        this_sol->SetOperator(*Dmat[g]);
+        this_sol->SetTol(inp.tol.inner_rel);
+        this_sol->SetAbsTol(inp.tol.inner_abs);
+        this_sol->SetMaxIter(inp.tol.max_inner);
+        Dsol[g] = std::move(this_sol);
+
+      }
+
+    } // g=1,mat_lib.ngroup()
+
+  } // DSA operator
+
+  time.stop(time.matrix_assembly);
+
+  const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
+  QuadratureSpace qspace{scalar_flux_fespace->GetParMesh(), integration_order};
+
+  std::vector<QuadratureFunction> fiss_upscatter_quad, saaf_fiss_upscatter_quad;
+  fiss_upscatter_quad.reserve(mat_lib.ngroup());
+  saaf_fiss_upscatter_quad.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss_upscatter_quad.emplace_back(&qspace, quad->nd());
+    saaf_fiss_upscatter_quad.emplace_back(&qspace, quad->dim()*quad->nd());
+  }
+
+  QuadratureFunction dnscatter_quad{&qspace, quad->nd()};
+  QuadratureFunction saaf_dnscatter_quad{&qspace, quad->dim()*quad->nd()};
+
+  QuadratureFunction selfscatter_quad{&qspace, quad->nd()};
+  QuadratureFunction saaf_selfscatter_quad{&qspace, quad->dim()*quad->nd()};
+
+  std::vector<VectorQuadratureFunctionCoefficient> src_quad_func, saaf_src_quad_func;
+  src_quad_func.reserve(mat_lib.ngroup());
+  saaf_src_quad_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    src_quad_func.emplace_back(selfscatter_quad);
+    saaf_src_quad_func.emplace_back(saaf_selfscatter_quad);
+  }
+
+  std::vector<std::unique_ptr<ParLinearForm>> lf_self_scatter(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
+    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
+    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
+  }
+
+////////////////////////////////////////////////////////////////////////////////
+  // DSA rhs
+
+  std::vector<GridFunctionCoefficient> scalar_flux_func; // (k+1/2)
+  scalar_flux_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    scalar_flux_func.emplace_back(&scalar_flux(g));
+
+  ParGridFunction dsa_phi_old{scalar_flux_fespace};    // (k)
+  GridFunctionCoefficient dsa_phi_old_func{&dsa_phi_old};
+
+  std::vector<SumCoefficient> dsa_flux_func;
+  dsa_flux_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    dsa_flux_func.emplace_back(scalar_flux_func[g], dsa_phi_old_func, 1.0, -1.0);
+
+  std::vector<PWConstCoefficient> self_scatter_func;
+  self_scatter_func.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    Vector self_scatter(pmesh->attributes.Max());
+    for (int i{0}; i < pmesh->attributes.Max(); ++i)
+      self_scatter(i) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+    self_scatter_func.emplace_back(self_scatter);
+  }
+
+  std::vector<ProductCoefficient> dsa_src;
+  dsa_src.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    dsa_src.emplace_back(self_scatter_func[g], dsa_flux_func[g]);
+
+  std::vector<std::unique_ptr<ParLinearForm>> lf_dsa(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
+    lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
+  }
+
+////////////////////////////////////////////////////////////////////////////////
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    angular_flux(g) = 1.0;
+    scalar_flux(g) = 1.0;
+  }
+  angular_flux.keff = 1.0;
+  scalar_flux.keff = 1.0;
+
+  QuadratureFunction fiss_src_quad_old{&qspace};
+  fiss_src_quad_old = 1.0;
+  double k_conv{inp.tol.k * 1e1 + 1e-6};
+  double phi_conv{inp.tol.phi * 1e1 + 1e-6};
+  double keff_old{angular_flux.keff};
+  double fiss_sum_old{1.0};
+  int solve_counter{0};
+
+  time.start(time.solver);
+  for (int iter{0}; (iter < inp.tol.max_outer)
+                 && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
+  {
+
+#if 0
+    time.start("power");
+    calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+    time.stop("power");
+
+    time.start("temperature");
+    temperature_heat_conduction(inp, mat_lib, power, temperature);
+    time.stop("temperature");
+#endif
+
+    time.start("calc_fiss_upscatter_vector");
+    calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad,
+      fiss_upscatter_quad, saaf_fiss_upscatter_quad,
+      angular_flux.keff, inp.flux_free_chi);
+    time.stop("calc_fiss_upscatter_vector");
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+
+      time.start("calc_downscatter_vector");
+      calc_downscatter_vector(g, scalar_flux, mat_lib, quad,
+        dnscatter_quad, saaf_dnscatter_quad);
+      dnscatter_quad += fiss_upscatter_quad[g];
+      saaf_dnscatter_quad += saaf_fiss_upscatter_quad[g];
+      time.stop("calc_downscatter_vector");
+
+      double scattering_conv{inp.tol.scatter * 1e1 + 1e-6};
+      for (int scattering_iter{0}; (scattering_iter < inp.tol.max_scatter) &&
+        (scattering_conv > inp.tol.scatter); ++scattering_iter)
+      {
+
+        dsa_phi_old = scalar_flux(g); // (k)
+
+        time.start("selfscatter_and_assemble");
+        calc_selfscatter_vector(g, scalar_flux(g), mat_lib, quad,
+          selfscatter_quad, saaf_selfscatter_quad);
+        selfscatter_quad += dnscatter_quad;
+        saaf_selfscatter_quad += saaf_dnscatter_quad;
+        lf_self_scatter[g]->Assemble();
+        std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
+        time.stop("selfscatter_and_assemble");
+
+
+        // Maybe try FormLinearSystem?
+
+        time.start("Amult");
+        std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
+        Asol[g]->Mult(*b, *x);
+        angular_flux(g).Distribute(*x);
+        time.stop("Amult");
+
+        time.start("scalar_flux");
+        calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux); // (k+1/2)
+        time.start("scalar_flux");
+
+        if (use_dsa)
+        {
+
+          time.start("Dmult");
+
+          ParGridFunction pgf_dphi{scalar_flux(g)};
+
+          lf_dsa[g]->Assemble();
+          std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
+          std::unique_ptr<HypreParVector> dphi{pgf_dphi.ParallelAssemble()};
+          Dsol[g]->Mult(*f, *dphi);
+          pgf_dphi.Distribute(*dphi);
+
+          scalar_flux(g) += pgf_dphi;
+
+          time.stop("Dmult");
+
+        }
+
+        ++solve_counter;
+
+        dsa_phi_old -= scalar_flux(g);
+        const double local_scattering_conv{dsa_phi_old.Normlinf() / scalar_flux(g).Normlinf()};
+        MPI_Allreduce(&local_scattering_conv, &scattering_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+        if (myid == 0)
+          std::cout << "..."
+                    << scattering_iter
+                    << " g=" << g
+                    << " conv=" << scattering_conv
+                    << '\n';
+
+      } // scattering_iter
+    } // ngroup
+
+    time.start("fisssum");
+    QuadratureFunction fiss_src_quad{&qspace};
+    calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
+    const double local_fiss_sum{fiss_src_quad.Sum()};
+    double fiss_sum{0.0};
+    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    time.stop("fisssum");
+
+    time.start("phiconv");
+    fiss_src_quad_old -= fiss_src_quad;
+    
+    // note: some nodes may contain zero fissile elements depending on decomposition
+    const double delta{fiss_src_quad_old.Normlinf()};
+    const double norm{fiss_src_quad.Normlinf()};
+    const double local_phi_conv{(norm > 0.0) ? delta / norm : 0.0};
+
+    MPI_Allreduce(&local_phi_conv, &phi_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    time.stop("phiconv");
+
+    if (iter > 0) angular_flux.keff *= fiss_sum / fiss_sum_old;
+    k_conv = std::abs(angular_flux.keff - keff_old);
+
+    if (myid == 0)
+      std::cout << iter
+        << " keff=" << angular_flux.keff
+        << " dk=" << k_conv
+        << " dphi=" << phi_conv
+        << std::endl;
+
+    if ((angular_flux.keff < 0.0) ||
+        (angular_flux.keff > 1e50) ||
+        std::isnan(angular_flux.keff))
+    {
+      if (myid == 0) std::cout << "INVALID VALUE FOR KEFF" << std::endl;
+      return;
+    }
+
+    scalar_flux.keff = angular_flux.keff;
+    // store old values
+    keff_old = angular_flux.keff;
+    fiss_sum_old = fiss_sum;
+    fiss_src_quad_old = fiss_src_quad;
+
+  }
+  time.stop(time.solver);
+
+  if (myid == 0)
+  {
+    std::cout << "ITERATIONS FINISHED!!!" << std::endl;
+    std::cout << "solve_counter= " << solve_counter << std::endl;
+  }
+
+  return;
+}
+
+void calc_fiss_upscatter_vector(const Result &scalar_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                std::vector<QuadratureFunction> &fiss_upscatter_quad,
+                                std::vector<QuadratureFunction> &saaf_fiss_upscatter_quad,
+                                const double keff,
+                                const bool flux_free_chi)
+{
+
+  const QuadratureSpace* const qspace{fiss_upscatter_quad[0].GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
+    fiss_upscatter_quad[g] = 0.0;
+    saaf_fiss_upscatter_quad[g] = 0.0;
+  }
+
+  int idx{0};
+  int saaf_idx{0};
+
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    const FiniteElement* const fe{fespace->GetFE(e)};
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      std::vector<double> spectrum(mat_lib.ngroup());
+
+      // get all xs at this point
+      // this will eventually be temperautre dependent
+      const std::vector<double> &nusf{rec.nusf};
+      const std::vector<double> &tot{rec.sigma_t};
+      const SparseMatrix &scat{rec.sigma_s};
+      std::vector<double> chi;
+      if (rec.is_fiss)
+      {
+
+        // accumulate flux spectrum
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+        {
+          Vector locvec(dofs.Size());
+          scalar_flux(g).GetSubVector(dofs, locvec);
+          spectrum[g] = dofval*locvec;
+        }
+
+        // set chi appropriately
+        chi.resize(mat_lib.ngroup());
+        if (flux_free_chi)
+          chi = rec.chi;
+        else if (mat_lib.rx_wide_chi)
+          chi = mat_lib.chi;
+        else
+          chi = mat.calculate_chi(spectrum);
+
+      }
+      else
+      {
+        // assign to dummy value to work with cacheing later
+        for (double &x : spectrum)
+          x = -1.0;
+      }
+
+      Vector val(mat_lib.ngroup());
+      val = 0.0;
+
+      // fission
+      if (rec.is_fiss)
+      {
+
+        double fiss_sum{0.0};
+        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+          fiss_sum += nusf[gprime]*spectrum[gprime];
+
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+          val(g) += chi[g]*fiss_sum;
+
+        val /= keff;
+
+      }
+
+      // upscatter
+      for (int g{0}; g < mat_lib.ngroup(); ++g)
+      {
+        if (rec.is_upscatter[g])
+        {
+
+          Array<int> col_idx;
+          Vector scat_dat;
+          scat.GetRow(g, col_idx, scat_dat);
+
+          for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+          {
+            const int gprime{col_idx[gidx]};
+            if (gprime > g)
+            {
+              if (spectrum[gprime] < 0.0)
+              {
+                Vector locvec(dofs.Size());
+                scalar_flux(gprime).GetSubVector(dofs, locvec);
+                spectrum[gprime] = dofval*locvec;
+              }
+              val(g) += scat_dat(gidx)*spectrum[gprime];
+            }
+          }
+        }
+      }
+
+      // val array is calculated
+      // need to incorporate into quadrature functions
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        for (int g{0}; g < mat_lib.ngroup(); ++g)
+          fiss_upscatter_quad[g](idx) = val(g);
+        ++idx;
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir(quad->omega(n));
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          for (int g{0}; g < mat_lib.ngroup(); ++g)
+            saaf_fiss_upscatter_quad[g](saaf_idx) = dir(d)/tot[g] * val(g);
+          ++saaf_idx;
+        }
+      }
+
+    }
+
+  }
+
+  return;
+}
+
+void calc_downscatter_vector(const int g,
+                             const Result &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             QuadratureFunction &dnscatter_quad,
+                             QuadratureFunction &saaf_dnscatter_quad)
+{
+
+  const QuadratureSpace* const qspace{dnscatter_quad.GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  dnscatter_quad = 0.0;
+  saaf_dnscatter_quad = 0.0;
+
+  int idx{0};
+  int saaf_idx{0};
+
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    const FiniteElement* const fe{fespace->GetFE(e)};
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      // get all xs at this point
+      // this will eventually be temperature dependent
+      const double &tot{rec.sigma_t[g]};
+      const SparseMatrix &scat{rec.sigma_s};
+
+      Array<int> col_idx;
+      Vector scat_dat;
+      scat.GetRow(g, col_idx, scat_dat);
+
+      double val{0.0};
+
+      // assume column indices are sorted
+      for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+      {
+
+        const int gprime{col_idx[gidx]};
+        if (gprime >= g) break;
+
+        Vector locvec(dofs.Size());
+        scalar_flux(gprime).GetSubVector(dofs, locvec);
+        const double flux{dofval*locvec};
+
+        val += scat_dat(gidx)*flux;
+
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        dnscatter_quad(idx) = val;
+        ++idx;
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir{quad->omega(n)};
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          saaf_dnscatter_quad(saaf_idx) = dir(d)/tot * val;
+          ++saaf_idx;
+        }
+      }
+
+    }
+
+  }
+
+  return;
+}
+
+void calc_selfscatter_vector(const int g,
+                             const mfem::ParGridFunction &scalar_flux,
+                             const Material_library &mat_lib,
+                             const Quadrature * const quad,
+                             QuadratureFunction &selfscatter_quad,
+                             QuadratureFunction &saaf_selfscatter_quad)
+{
+
+  const QuadratureSpace* const qspace{selfscatter_quad.GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux.ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  selfscatter_quad = 0.0;
+  saaf_selfscatter_quad = 0.0;
+
+  int idx{0};
+  int saaf_idx{0};
+
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+
+      // get all xs at this point
+      // this will eventually be temperautre dependent
+      const double scat{rec.sigma_s.Elem(g,g)};
+      const double tot{rec.sigma_t[g]};
+
+      const double val{scat*scalar_flux.GetValue(e, ip)};
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        selfscatter_quad(idx) = val;
+        ++idx;
+      }
+
+      for (int n{0}; n < quad->nd(); ++n)
+      {
+        const Vector &dir{quad->omega(n)};
+        for (int d{0}; d < quad->dim(); ++d)
+        {
+          saaf_selfscatter_quad(saaf_idx) = dir(d)/tot * val;
+          ++saaf_idx;
+        }
+      }
+
+    }
+  }
+
+  return;
+}
+
+void calc_scalar_flux_vector(int g,
+                             const Result& angular_flux,
+                             const Quadrature* const quad, 
+                             Result& scalar_flux)
+{
+
+  ParFiniteElementSpace* fespace{angular_flux(g).ParFESpace()};
+
+  MFEM_VERIFY(fespace->GetOrdering() == Ordering::byVDIM,
+    "scalar flux calculation relies on angular flux being ordered by vdim");
+
+  const int ndofs{fespace->GetNDofs()};
+  const int vdim{quad->nd()};
+
+  scalar_flux(g) = 0.0;
+
+  for (int i{0}; i < ndofs; ++i)
+    for (int n{0}; n < quad->nd(); ++n)
+      scalar_flux(g)(i) += angular_flux(g)(n+i*vdim) * quad->weight(n);
+
+  return;
+}
+
+/* 
+ * WARNING
+ * This is duplicated in solver.[ch]pp.
+ * WARNING
+ */
+void calc_fiss_src(const Result& scalar_flux, 
+                   const Material_library& mat_lib,
+                   QuadratureFunction& fiss_src)
+{
+
+  const QuadratureSpace* const qspace{fiss_src.GetSpace()};
+  const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
+  const ParMesh* const mesh{fespace->GetParMesh()};
+
+  fiss_src = 0.0;
+
+  int idx{0};
+  for (int e{0}; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const int attribute{mesh->GetAttribute(e)-1};
+    const Material_record& mat{mat_lib.mat[attribute]};
+    const XSRecord& rec{mat.rec};
+
+    if (!rec.is_fiss)
+    {
+      idx += ir.GetNPoints();
+      continue;
+    }
+
+    const std::vector<double>& nusf{rec.nusf};
+
+    const FiniteElement* const fe{fespace->GetFE(e)};
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i{0}; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint ip{ir.IntPoint(i)};
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+      {
+        Vector locvec(dofs.Size());
+        scalar_flux(gprime,0).GetSubVector(dofs, locvec);
+        const double flux{dofval*locvec};
+        fiss_src(idx) += nusf[gprime]*flux;
+      }
+
+      ++idx;
+    }
+
+  }
+
+  return;
+}

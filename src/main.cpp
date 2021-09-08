@@ -6,6 +6,9 @@
 
 #include "solver.hpp"
 #include "solver_amgx.h"
+#include "solver_saaf_angle_power_iteration.hpp"
+#include "solver_saaf_true_slepc_vector.hpp"
+
 #include "conduction.hpp"
 
 #include "timer.hpp"

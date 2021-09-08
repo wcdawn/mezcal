@@ -211,14 +211,6 @@ void saaf_power_iteration(const Quadrature* const quad,
                           mfem::ParFiniteElementSpace* const fespace,
                           Result& angular_flux,
                           Result& scalar_flux);
-void saaf_angle_power_iteration(const Quadrature * const quad,
-                                Timer &time,
-                                const Input &inp,
-                                const Material_library &mat_lib,
-                                Result &angular_flux,
-                                Result &scalar_flux,
-                                mfem::ParGridFunction &power,
-                                mfem::ParGridFunction &temperature);
 void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
                                        Timer& time,
                                        const Input& inp,
@@ -234,11 +226,6 @@ void saaf_slepc_vector(const Quadrature* const quad,
                        mfem::ParFiniteElementSpace* const fespace,
                        Result& angular_flux,
                        Result& scalar_flux);
-void saaf_true_slepc_vector(const Quadrature* const quad,
-                            Timer& time,
-                            const Input& inp,
-                            const Material_library& mat_lib,
-                            Result& angular_flux);
 
 void saaf_true_amgx_vector(const Quadrature* const quad,
                            Timer& time,
@@ -287,16 +274,32 @@ void saaf_true_slepc_transport_vector(const Quadrature* const quad,
                                       const Material_library& mat_lib,
                                       Result& angular_flux);
 
-void slepc_davidson_hypre_boomeramg_initialize(const Input& inp, int num_equations);
+mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   const Quadrature* const quad,
+                                   mfem::ParFiniteElementSpace* fespace);
+mfem::HypreParMatrix* saaf_m_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   const Quadrature* const quad,
+                                   mfem::ParFiniteElementSpace* fespace);
+
+mfem::HypreParMatrix* spn_a_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   mfem::ParFiniteElementSpace* fespace,
+                                   const mfem::Array<int>& ess_bdr);
+mfem::HypreParMatrix* spn_m_matrix(const Input &inp, 
+                                   const Material_library &mat_lib,
+                                   mfem::ParFiniteElementSpace* fespace,
+                                   const mfem::Array<int>& ess_bdr);
+
+void slepc_initialize(const Input& inp);
+void slepc_solver_wrapper(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
+void slepc_finalize();
 
 void calc_scalar_flux(int g,
                       const Result& angular_flux, 
                       const Quadrature* const quad,
                       Result& scalar_flux);
-void calc_scalar_flux_vector(int g,
-                             const Result& angular_flux, 
-                             const Quadrature* const quad,
-                             Result& scalar_flux);
 void calc_scalar_flux_slepc_vector(const Result& angular_flux, 
                                    const Quadrature* const quad,
                                    const Material_library& mat_lib,
@@ -321,29 +324,9 @@ void calc_selfscatter(const int g,
                       const Material_library &mat_lib,
                       mfem::QuadratureFunction &selfscatter_quad);
 
-void calc_fiss_src(const Result& scalar_flux, 
+static void calc_fiss_src(const Result& scalar_flux, 
                    const Material_library& mat_lib,
                    mfem::QuadratureFunction& fiss_src);
-
-void calc_fiss_upscatter_vector(const Result &scalar_flux,
-                                const Material_library &mat_lib,
-                                const Quadrature * const quad,
-                                std::vector<mfem::QuadratureFunction> &fiss_upscatter_quad,
-                                std::vector<mfem::QuadratureFunction> &saaf_fiss_upscatter_quad,
-                                const double keff,
-                                const bool flux_free_chi=false);
-void calc_downscatter_vector(const int g, 
-                             const Result &scalar_flux,
-                             const Material_library &mat_lib,
-                             const Quadrature * const quad,
-                             mfem::QuadratureFunction &dnscatter_quad,
-                             mfem::QuadratureFunction &saaf_dnscatter_quad);
-void calc_selfscatter_vector(const int g, 
-                             const mfem::ParGridFunction &scalar_flux,
-                             const Material_library &mat_lib,
-                             const Quadrature * const quad,
-                             mfem::QuadratureFunction &selfscatter_quad,
-                             mfem::QuadratureFunction &saaf_selfscatter_quad);
 
 void calc_spn_next(const Result& flux,
                    const Material_library& mat_lib,
@@ -380,28 +363,6 @@ double par_norml2(const mfem::Vector& x);
 void flux_sign_fixup(mfem::Vector& pgf);
 
 void power_iteration_amgx(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
-
-void slepc_initialize(const Input& inp);
-void slepc_solver_wrapper(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);
-void slepc_finalize();
-
-mfem::HypreParMatrix* spn_a_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   mfem::ParFiniteElementSpace* fespace,
-                                   const mfem::Array<int>& ess_bdr);
-mfem::HypreParMatrix* spn_m_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   mfem::ParFiniteElementSpace* fespace,
-                                   const mfem::Array<int>& ess_bdr);
-
-mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   const Quadrature* const quad,
-                                   mfem::ParFiniteElementSpace* fespace);
-mfem::HypreParMatrix* saaf_m_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   const Quadrature* const quad,
-                                   mfem::ParFiniteElementSpace* fespace);
 
 void dg_spn_power_iteration(Input &inp,
                             const Material_library &mat_lib,
