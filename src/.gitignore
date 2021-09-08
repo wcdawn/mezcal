@@ -1,6 +1,5 @@
 *.o
 
-version.cpp
 version.hpp
 
-micro.x
+mezcal.x

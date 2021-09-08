@@ -78,7 +78,7 @@ HPP_FILES = analytic.hpp \
 
 OBJ = $(CPP_FILES:.cpp=.o)
 
-EXEC = micro.x
+EXEC = mezcal.x
 
 GIT_VERSION = $(shell git describe --dirty --always --tags)
 GIT_SHA     = $(shell git log -n1 --format=format:"%H")
@@ -107,16 +107,17 @@ $(EXEC) : $(OBJ)
 	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<
 
 version:
-	$(RM) version.hpp
+	$(RM) version.hpp version.o
 	$(MAKE) version.hpp
 	$(MAKE) version.o
 
 version.o : version.cpp version.hpp
+	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<
 
 version.hpp :
 	@echo "#ifndef VERSION" > version.hpp
 	@echo "#define VERSION" >> version.hpp
-	@echo "" >> ../include/version.hpp
+	@echo "" >> version.hpp
 	@echo "#include <string>" >> version.hpp
 	@echo "" >> version.hpp
 	@echo "namespace Version" >> version.hpp
@@ -129,20 +130,21 @@ version.hpp :
 	@echo "" >> version.hpp
 	@echo "#endif" >> version.hpp
 
-version.cpp :
-	@echo "#include \"version.hpp\"" > version.cpp
-	@echo "#include <iostream>" >> version.cpp
-	@echo "" >> version.cpp
-	@echo "void version(std::ostream& os)" >> version.cpp
-	@echo "{" >> version.cpp
-	@echo "  os << \"git version   = \" << Version::git_version   << \"\\n\";" >> version.cpp
-	@echo "  os << \"git sha       = \" << Version::git_sha       << \"\\n\";" >> version.cpp
-	@echo "  os << \"compiled date = \" << Version::compiled_date << \"\\n\";" >> version.cpp
-	@echo "  os << \"compiled on   = \" << Version::compiled_host << \"\\n\";" >> version.cpp
-	@echo "}" >> version.cpp
+#version.cpp :
+#	@echo "#include \"version.hpp\"" > version.cpp
+#	@echo "#include <iostream>" >> version.cpp
+#	@echo "" >> version.cpp
+#	@echo "void version(std::ostream& os)" >> version.cpp
+#	@echo "{" >> version.cpp
+#	@echo "  os << \"git version   = \" << Version::git_version   << \"\\n\";" >> version.cpp
+#	@echo "  os << \"git sha       = \" << Version::git_sha       << \"\\n\";" >> version.cpp
+#	@echo "  os << \"compiled date = \" << Version::compiled_date << \"\\n\";" >> version.cpp
+#	@echo "  os << \"compiled on   = \" << Version::compiled_host << \"\\n\";" >> version.cpp
+#	@echo "}" >> version.cpp
 
 clean :
-	$(RM) $(OBJ) $(EXEC) version.cpp version.hpp
+	#$(RM) $(OBJ) $(EXEC) version.cpp version.hpp
+	$(RM) $(OBJ) $(EXEC) version.hpp
 	$(MAKE) -C $(ADDON_DIR) clean
 
 format : $(CPP_FILES) $(HPP_FILES)
