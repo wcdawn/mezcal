@@ -14,13 +14,14 @@ H5_DIR = $(OLCF_HDF5_ROOT)/lib
 MPI_DIR = $(OLCF_SPECTRUM_MPI_ROOT)
 MPI_LIB = -L$(MPI_DIR)/lib -lmpi_ibm
 
-PROJ = /ccs/proj/csc404/wcdawn
+PROJ = /ccs/proj/csc254/wcdawn/container
 MFEM_DIR = $(PROJ)/mfem
 HYPRE_DIR = $(PROJ)/hypre/src/hypre
 METIS_DIR = $(PROJ)/metis-5.1.0
-METIS_LIB = -L$(METIS_DIR)/lib -l:libmetis.so
+METIS_LIB = -L$(METIS_DIR)/lib -lmetis
 
 # CUDA_DIR is set automatically by the module
+CUDA_ARCH = -arch=sm_70
 
 PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
 SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
@@ -38,7 +39,7 @@ STD = c++17
 MPICXX = mpicxx
 H5_DIR = /usr/lib
 
-MPI_LIB = -L/usr/lib/openmpi -lmpi
+MPI_LIB = -L/usr/lib/openmpi -lmpi -lmpi_cxx
 
 MICROREACTOR_DIR = /home/wcdawn/work/microreactor
 MFEM_DIR = $(MICROREACTOR_DIR)/mfem
@@ -87,7 +88,8 @@ HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 METIS_INCLUDE = -I$(METIS_DIR)/include
 
 CUDA_INCLUDE = -I$(CUDA_DIR)/include
-CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart_static -ldl -lrt -lcusparse_static -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
+CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
+CUDA_ARCH = -arch=sm_75
 
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
