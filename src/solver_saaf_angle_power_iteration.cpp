@@ -469,17 +469,19 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         dsa_phi_old = scalar_flux(g); // (k)
 
-        time.start("selfscatter_and_assemble");
+        time.start("calc_selfscatter_vector");
         calc_selfscatter_vector(g, scalar_flux(g), mat_lib, quad,
           selfscatter_quad, saaf_selfscatter_quad);
+        time.stop("calc_selfscatter_vector");
+        time.start("calc_selfscatter_vector_sum");
         selfscatter_quad += dnscatter_quad;
         saaf_selfscatter_quad += saaf_dnscatter_quad;
+        time.stop("calc_selfscatter_vector_sum");
+
+        time.start("b_assemble");
         lf_self_scatter[g]->Assemble();
         std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
-        time.stop("selfscatter_and_assemble");
-
-
-        // Maybe try FormLinearSystem?
+        time.stop("b_assemble");
 
         time.start("Amult");
         std::unique_ptr<HypreParVector> x{angular_flux(g).ParallelAssemble()};
@@ -494,19 +496,20 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         if (use_dsa)
         {
 
-          time.start("Dmult");
-
           ParGridFunction pgf_dphi{scalar_flux(g)};
 
+          time.start("b_dsa_assemble");
           lf_dsa[g]->Assemble();
           std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
           std::unique_ptr<HypreParVector> dphi{pgf_dphi.ParallelAssemble()};
+          time.stop("b_dsa_assemble");
+
+          time.start("Dmult");
           Dsol[g]->Mult(*f, *dphi);
           pgf_dphi.Distribute(*dphi);
+          time.stop("Dmult");
 
           scalar_flux(g) += pgf_dphi;
-
-          time.stop("Dmult");
 
         }
 
