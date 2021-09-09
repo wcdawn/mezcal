@@ -17,6 +17,8 @@
 
 using namespace mfem;
 
+namespace
+{
 #if __cplusplus >= 201703L
 #include <filesystem>
 using std::filesystem::exists; // requires C++17
@@ -28,6 +30,7 @@ bool exists(const std::string& fname)
   return ifs.good();
 }
 #endif
+} // namespace anonymous
 
 void saaf_true_slepc_vector(const Quadrature* const quad,
                             Timer& time,
