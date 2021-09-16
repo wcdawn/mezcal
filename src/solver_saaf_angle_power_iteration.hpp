@@ -14,7 +14,7 @@
 
 void saaf_angle_power_iteration(const Quadrature * const quad,
                                 Timer &time,
-                                const Input &inp,
+                                Input &inp,
                                 const Material_library &mat_lib,
                                 std::vector<std::unique_ptr<mfem::ParGridFunction>> &angular_flux,
                                 std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
@@ -44,10 +44,9 @@ void calc_selfscatter_vector(const int g,
                              mfem::QuadratureFunction &selfscatter_quad,
                              mfem::QuadratureFunction &saaf_selfscatter_quad);
 
-void calc_scalar_flux_vector(int g,
-                             const std::vector<std::unique_ptr<mfem::ParGridFunction>> &angular_flux, 
+void calc_scalar_flux_vector(const mfem::ParGridFunction &angular_flux, 
                              const Quadrature* const quad,
-                             std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux);
+                             mfem::ParGridFunction &scalar_flux);
 
 /* 
  * WARNING

@@ -14,7 +14,7 @@ using namespace mfem;
 
 void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Timer& time,
-                                const Input& inp,
+                                Input& inp,
                                 const Material_library& mat_lib,
                                 std::vector<std::unique_ptr<ParGridFunction>> &angular_flux,
                                 std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
@@ -25,14 +25,48 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   constexpr bool use_gpu{false};
   constexpr bool use_dsa{true};
+
   constexpr bool restart{false};
+  constexpr bool restart_out{true};
+
+  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
+  const int myid{scalar_flux_fespace->GetMyRank()};
+  ParMesh *pmesh = scalar_flux_fespace->GetParMesh();
+
+  if (restart)
+  {
+
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      angular_flux[g].reset();
+      const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".sol")};
+      std::ifstream ifs{fname};
+      angular_flux[g] = std::make_unique<ParGridFunction>(pmesh, ifs);
+      calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]);
+    }
+
+    const std::string keff_fname{inp.input_file_stub() + "_keff_restart.out"};
+    std::ifstream keff_ifs{keff_fname};
+    while (keff_ifs.good())
+      keff_ifs >> keff;
+
+  }
+  else
+  {
+
+    for (auto&& af : angular_flux)
+      *af = 1.0;
+
+    for (auto&& sf : scalar_flux)
+      *sf = 1.0;
+
+    keff = 1.0;
+
+  }
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux[0]->ParFESpace();
-  ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
-  ParMesh *pmesh = angular_flux_fespace->GetParMesh();
 
   constexpr int skip_zeros{2};
-  const int myid{angular_flux_fespace->GetMyRank()};
 
   enum class LINEAR_SOLVER
   {
@@ -417,14 +451,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-  for (auto&& af : angular_flux)
-    *af = 1.0;
-
-  for (auto&& sf : scalar_flux)
-    *sf = 1.0;
-
-  keff = 1.0;
-
   QuadratureFunction fiss_src_quad_old{&qspace};
   fiss_src_quad_old = 1.0;
   double k_conv{inp.tol.k * 1e1 + 1e-6};
@@ -432,6 +458,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   double keff_old{keff};
   double fiss_sum_old{1.0};
   int solve_counter{0};
+
+  const std::string keff_fname{inp.input_file_stub() + "_keff_restart.out"};
+  std::ofstream keff_ofs{keff_fname};
+  keff_ofs << std::setprecision(20);
 
   time.start(time.solver);
   for (int iter{0}; (iter < inp.tol.max_outer)
@@ -492,7 +522,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         time.stop("Amult");
 
         time.start("scalar_flux");
-        calc_scalar_flux_vector(g, angular_flux, quad, scalar_flux); // (k+1/2)
+        calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]); // (k+1/2)
         time.start("scalar_flux");
 
         if (use_dsa)
@@ -529,6 +559,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                     << '\n';
 
       } // scattering_iter
+
+      if (restart_out)
+      {
+        time.start("restart_out");
+        const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".sol")};
+        std::ofstream ofs{fname};
+        angular_flux[g]->Save(ofs);
+        time.stop("restart_out");
+      }
+
     } // ngroup
 
     time.start("fisssum");
@@ -554,11 +594,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     k_conv = std::abs(keff - keff_old);
 
     if (myid == 0)
+    {
       std::cout << iter
         << " keff=" << keff
         << " dk=" << k_conv
         << " dphi=" << phi_conv
         << std::endl;
+      keff_ofs << keff << std::endl;
+    }
 
     if ((keff < 0.0) || (keff > 1e50) || std::isnan(keff))
     {
@@ -878,13 +921,12 @@ void calc_selfscatter_vector(const int g,
   return;
 }
 
-void calc_scalar_flux_vector(int g,
-                             const std::vector<std::unique_ptr<ParGridFunction>> &angular_flux,
+void calc_scalar_flux_vector(const ParGridFunction &angular_flux,
                              const Quadrature * const quad, 
-                             std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux)
+                             ParGridFunction &scalar_flux)
 {
 
-  ParFiniteElementSpace* fespace{angular_flux[g]->ParFESpace()};
+  ParFiniteElementSpace* fespace{angular_flux.ParFESpace()};
 
   MFEM_VERIFY(fespace->GetOrdering() == Ordering::byVDIM,
     "scalar flux calculation relies on angular flux being ordered by vdim");
@@ -892,11 +934,11 @@ void calc_scalar_flux_vector(int g,
   const int ndofs{fespace->GetNDofs()};
   const int vdim{quad->nd()};
 
-  *scalar_flux[g] = 0.0;
+  scalar_flux = 0.0;
 
   for (int i{0}; i < ndofs; ++i)
     for (int n{0}; n < quad->nd(); ++n)
-      (*scalar_flux[g])(i) += (*angular_flux[g])(n+i*vdim) * quad->weight(n);
+      scalar_flux(i) += angular_flux(n+i*vdim) * quad->weight(n);
 
   return;
 }
