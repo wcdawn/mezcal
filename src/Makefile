@@ -174,7 +174,7 @@ version.o : version.hpp
 vector_pwconst_coefficient.o : $(MFEM_HEADER) vector_pwconst_coefficient.hpp
 spn_source_coefficient.o : $(MFEM_HEADER) spn_source_coefficient.hpp result.hpp material_library.hpp xslibrary.hpp
 solver_choice.o : solver_choice.hpp
-result.o : $(MFEM_HEADER) result.hpp
+result.o : $(MFEM_HEADER) result.hpp make_unique.hpp
 incoming_flux_coefficient.o : $(MFEM_HEADER) incoming_flux_coefficient.hpp
 level_symmetric_quadrature.o : $(MFEM_HEADER) level_symmetric_quadrature.hpp quadrature.hpp
 legendre_chebyschev_quadrature.o : $(MFEM_HEADER) legendre_chebyschev_quadrature.hpp quadrature.hpp

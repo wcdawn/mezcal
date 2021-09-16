@@ -34,6 +34,8 @@ void version(std::ostream& os); // forward declaration
 int main(int argc, char* argv[])
 {
 
+  constexpr bool restart{false};
+
   Timer time;
 
   // Initialize MPI
@@ -114,15 +116,31 @@ int main(int argc, char* argv[])
   // 3. Read the mesh from the given mesh file. We can handle triangular,
   //    quadrilateral, tetrahedral, hexahedral, surface and volume meshes with
   //    the same code.
-  Mesh mesh{inp.mesh_file, 1, 1};
-  int dim = mesh.Dimension();
+  std::unique_ptr<ParMesh> pmesh;
+  if (restart)
+  {
+    const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".mesh")};
+    std::ifstream ifs{fname};
+    MFEM_VERIFY(ifs.good(), "Restart mesh file " << fname << " not found.");
+    pmesh = std::make_unique<ParMesh>(MPI_COMM_WORLD, ifs);
+  }
+  else
+  {
+    Mesh mesh{inp.mesh_file, 1, 1};
 
-  // refine the mesh in serial
-  for (int lvl{0}; lvl < inp.refine_serial; ++lvl) mesh.UniformRefinement();
+    // refine the mesh in serial
+    for (int lvl{0}; lvl < inp.refine_serial; ++lvl) mesh.UniformRefinement();
 
-  // create a parallel mesh and refine as necessary
-  ParMesh pmesh{MPI_COMM_WORLD, mesh};
-  for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh.UniformRefinement();
+    // create a parallel mesh and refine as necessary
+    pmesh = std::make_unique<ParMesh>(MPI_COMM_WORLD, mesh);
+    for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh->UniformRefinement();
+
+    const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".mesh")};
+    std::ofstream ofs{fname};
+    pmesh->ParPrint(ofs);
+  }
+
+  const int dim = pmesh->SpaceDimension();
 
   time.stop();
 
@@ -130,25 +148,30 @@ int main(int argc, char* argv[])
   //    Lagrange finite elements of the specified order. If order < 1, we
   //    instead use an isoparametric/isogeometric space.
   FiniteElementCollection* fec{nullptr};
-  if (inp.order > 0)
-  { 
-    fec = new H1_FECollection(inp.order, dim);
-  }
-  else if (pmesh.GetNodes())
+  // only worry about FEC if this is not a restart problem
+  // for restart problems, FEC is created and owned by PGF
+  if (!restart)
   {
-    fec = pmesh.GetNodes()->OwnFEC();
-    if (myid == 0) cout << "Using isoparametric FEs: " << fec->Name() << endl;
-  }
-  else
-  {
-    fec = new H1_FECollection(inp.order = 1, dim);
+    if (inp.order > 0)
+    { 
+      fec = new H1_FECollection(inp.order, dim);
+    }
+    else if (pmesh->GetNodes())
+    {
+      fec = pmesh->GetNodes()->OwnFEC();
+      if (myid == 0) cout << "Using isoparametric FEs: " << fec->Name() << endl;
+    }
+    else
+    {
+      fec = new H1_FECollection(inp.order = 1, dim);
+    }
   }
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
   //    In this example, the boundary conditions are defined by marking all
   //    the boundary attributes from the mesh as essential (Dirichlet) and
   //    converting them to a list of true dofs.
-  Array<int> ess_bdr(pmesh.bdr_attributes.Max());
+  Array<int> ess_bdr(pmesh->bdr_attributes.Max());
   // begin by setting all bcs to essential
   ess_bdr = 1;
 
@@ -184,16 +207,16 @@ int main(int argc, char* argv[])
     case (Quadrature_choice::level_symmetric):
       quad =
         std::make_unique<Level_symmetric_quadrature>(inp.quad_order,
-        pmesh.SpaceDimension());
+        pmesh->SpaceDimension());
       break;
     case (Quadrature_choice::legendre_chebyschev):
       if ((inp.quad_legendre_order > 0) && (inp.quad_chebyschev_order > 0))
         quad =
           std::make_unique<Legendre_chebyschev_quadrature>(inp.quad_legendre_order,
-          inp.quad_chebyschev_order, pmesh.SpaceDimension());
+          inp.quad_chebyschev_order, pmesh->SpaceDimension());
       else
         quad = std::make_unique<Legendre_chebyschev_quadrature>(inp.quad_order,
-          pmesh.SpaceDimension());
+          pmesh->SpaceDimension());
       break;
     default:
       if (is_transport)
@@ -242,8 +265,8 @@ int main(int argc, char* argv[])
       break;
   }
 
-  ParFiniteElementSpace fespace{&pmesh, fec, vdim, Ordering::byVDIM};
-  ParFiniteElementSpace scalar_flux_fespace{&pmesh, fec, scalar_flux_vdim, Ordering::byVDIM};
+  ParFiniteElementSpace fespace{pmesh.get(), fec, vdim, Ordering::byVDIM};
+  ParFiniteElementSpace scalar_flux_fespace{pmesh.get(), fec, scalar_flux_vdim, Ordering::byVDIM};
 
   long long dof{fespace.GlobalVSize()};
   switch (inp.sol)
@@ -337,7 +360,7 @@ int main(int argc, char* argv[])
   Result res{&fespace, flux_length, moment_angle_length};
   Result scalar_flux{&scalar_flux_fespace, scalar_flux_length};
 
-  ParFiniteElementSpace true_scalar_fespace{&pmesh, fec};
+  ParFiniteElementSpace true_scalar_fespace{pmesh.get(), fec};
   ParGridFunction power{&true_scalar_fespace};
   ParGridFunction temperature{&true_scalar_fespace};
 
@@ -354,47 +377,48 @@ int main(int argc, char* argv[])
 
     // do the solving
 
-    mesh_stats(&pmesh, std::cout, &mat_lib); // volume correct xs
+    mesh_stats(pmesh.get(), std::cout, &mat_lib); // volume correct xs
 
     if (inp.ref == Analytic::fixed_src)
     {
-      diffusion_fixed_src(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+      diffusion_fixed_src(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
     }
     else
     {
       switch (inp.sol)
       {
         case (Solver_choice::lobpcg):
-          diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
         case (Solver_choice::power_iteration):
-          spn_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_power_iteration(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
         case (Solver_choice::amgx_power_iteration):
-          spn_amgx_power_iteration(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_amgx_power_iteration(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
         case (Solver_choice::slepc_vector):
-          spn_slepc_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
+          spn_slepc_vector(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res, scalar_flux);
           calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
           //temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         case (Solver_choice::amgx_vector):
-          spn_amgx_vector(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_amgx_vector(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
         case (Solver_choice::slepc_manual):
-          spn_slepc_manual(time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res);
+          spn_slepc_manual(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
         case (Solver_choice::epdo_power_iteration):
-          epdo_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
+          epdo_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res, scalar_flux);
           break;
         case (Solver_choice::sfent_power_iteration):
-          sfent_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, &pmesh, &fespace, res, scalar_flux);
+          sfent_power_iteration(quad.get(), time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_power_iteration):
-          saaf_power_iteration(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          saaf_power_iteration(quad.get(), time, inp, mat_lib, pmesh.get(), &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_angle_power_iteration):
-          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, power, temperature);
+          saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
+          res.keff = scalar_flux.keff;
           break;
         case (Solver_choice::saaf_angle_jacobi_power_iteration):
           saaf_angle_jacobi_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux);
@@ -403,7 +427,7 @@ int main(int argc, char* argv[])
           saaf_angle_nda_slepc(quad.get(), time, inp, mat_lib, res, scalar_flux);
           break;
         case (Solver_choice::saaf_slepc_vector):
-          saaf_slepc_vector(quad.get(), time, inp, mat_lib, &pmesh, &fespace, res, scalar_flux);
+          saaf_slepc_vector(quad.get(), time, inp, mat_lib, pmesh.get(), &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_true_slepc_vector):
           saaf_true_slepc_vector(quad.get(), time, inp, mat_lib, res);
@@ -439,10 +463,10 @@ int main(int argc, char* argv[])
           calc_scalar_flux_slepc_vector(res, quad.get(), mat_lib, scalar_flux);
           break;
         case (Solver_choice::dg_spn_power_iteration):
-          dg_spn_power_iteration(inp, mat_lib, &pmesh);
+          dg_spn_power_iteration(inp, mat_lib, pmesh.get());
           break;
         case (Solver_choice::dg_transport_power_iteration):
-          dg_transport_power_iteration(inp, mat_lib, quad.get(), &pmesh);
+          dg_transport_power_iteration(inp, mat_lib, quad.get(), pmesh.get());
           break;
         case (Solver_choice::spn_partial_assembly_power_iteration):
           spn_partial_assembly_power_iteration(inp, mat_lib, ess_bdr, res);
@@ -475,7 +499,7 @@ int main(int argc, char* argv[])
         gf = &scalar_flux;
       else
         gf = &res;
-      Analytic anal(inp.ref, inp.sol, *gf, xs, &pmesh);
+      Analytic anal(inp.ref, inp.sol, *gf, xs, pmesh.get());
       anal.analyze(cout);
       ostringstream analysis_fname;
       analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
@@ -486,7 +510,7 @@ int main(int argc, char* argv[])
     ostringstream state_name;
     state_name << "STATE" << setfill('0') << setw(3) << state;
 
-    ParaViewDataCollection output(inp.input_file_stub() + "_" + state_name.str(), &pmesh);
+    ParaViewDataCollection output(inp.input_file_stub() + "_" + state_name.str(), pmesh.get());
 
     output.RegisterField("temperature", &temperature);
     output.RegisterField("power", &power);
@@ -552,11 +576,11 @@ int main(int argc, char* argv[])
     // 1) E < 0.625 eV (g < 3)
     // 2) 0.625 eV < E < 6 keV (3 < g < 17)
     // 3) E > 6 keV (g > 17)
-    coarse_energy_plot(&pmesh, scalar_flux, {3, 17},
+    coarse_energy_plot(pmesh.get(), scalar_flux, {3, 17},
       inp.input_file_stub()+"_coarse_energy");
   }
 
-  mesh_stats(&pmesh);
+  mesh_stats(pmesh.get());
 
   //total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs");
 

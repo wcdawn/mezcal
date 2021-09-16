@@ -39,8 +39,8 @@ void Result::resize(int ngroup, int nmoment)
         for (int n{old_nmoment}; n < N; ++n)
         {
           const int idx{g+G*n};
-          phi[idx].SetSpace(fespace);
-          phi[idx] = 0.0;
+          phi[idx] = std::make_unique<ParGridFunction>(fespace);
+          *phi[idx] = 0.0;
         }
       }
     }
@@ -53,10 +53,10 @@ void Result::resize(int ngroup, int nmoment)
 
 void Result::initialize()
 {
-  for (ParGridFunction& flux : phi)
+  for (auto&& flux : phi)
   {
-    flux.SetSpace(fespace);
+    flux = std::make_unique<ParGridFunction>(fespace);
     // must be zero to enforce zero-flux (essential) boundary conditions
-    flux = 0.0;
+    *flux = 0.0;
   }
 }
