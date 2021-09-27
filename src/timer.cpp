@@ -4,21 +4,6 @@
 #include <iomanip>
 #include <vector>
 
-using std::chrono::duration_cast;
-using std::chrono::milliseconds;
-
-using std::ostream;
-
-using std::left;
-using std::right;
-using std::setprecision;
-using std::setw;
-
-using std::string;
-using std::vector;
-
-using std::find_if;
-
 void Timer::Time_record::stop()
 {
   if (running)
@@ -34,7 +19,7 @@ void Timer::Time_record::start()
   start_time = clock::now();
 }
 
-void Timer::start(const string& time_name)
+void Timer::start(const std::string& time_name)
 {
   timers[time_name].start();
   most_recent = time_name;
@@ -54,7 +39,7 @@ void Timer::restart(const string& time_name)
 }
 */
 
-void Timer::stop(const string& time_name)
+void Timer::stop(const std::string& time_name)
 {
   timers[time_name].stop();
 }
@@ -64,7 +49,7 @@ void Timer::stop()
   timers[most_recent].stop();
 }
 
-void Timer::Print(ostream& os)
+void Timer::Print(std::ostream& os)
 {
 
   const auto final_clock{clock::now()};
@@ -82,26 +67,26 @@ void Timer::Print(ostream& os)
   os << "=== Timing Summary [s] ===\n";
   for (const auto& tr : timers)
   {
-    const string& name{tr.first};
+    const std::string& name{tr.first};
     const Time_record& time{tr.second};
-    os << left << setw(max_name_length) << name << right << setw(5)
-       << duration_cast<milliseconds>(time.elapsed()).count() / 1000.0 << " ("
-       << setprecision(4)
+    os << std::left << std::setw(max_name_length) << name << std::right << std::setw(5)
+       << std::chrono::duration_cast<std::chrono::milliseconds>(time.elapsed()).count() / 1000.0 << " ("
+       << std::setprecision(4)
        << static_cast<double>(time.elapsed().count()) / total_elapsed.count()
           * 100.
        << "%)\n";
   }
 
-  os << left << setw(20) << "Total" << right << setw(5)
-     << duration_cast<milliseconds>(clock::now() - init_clock).count() / 1000.
+  os << std::left << std::setw(20) << "Total" << std::right << std::setw(5)
+     << std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - init_clock).count() / 1000.
      << '\n';
 }
 
 /*
 std::vector<Timer::Time_record>::iterator
-Timer::find_record(const string& time_name)
+Timer::find_record(const std::string& time_name)
 {
-  return find_if(
+  return std::find_if(
   times.begin(), times.end(),
   [&time_name](const Time_record& tr) { return tr.name() == time_name; });
 }
