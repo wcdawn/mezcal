@@ -150,21 +150,18 @@ int main(int argc, char* argv[])
   FiniteElementCollection* fec{nullptr};
   // only worry about FEC if this is not a restart problem
   // for restart problems, FEC is created and owned by PGF
-  if (!restart)
+  if (inp.order > 0)
   {
-    if (inp.order > 0)
-    { 
-      fec = new H1_FECollection(inp.order, dim);
-    }
-    else if (pmesh->GetNodes())
-    {
-      fec = pmesh->GetNodes()->OwnFEC();
-      if (myid == 0) cout << "Using isoparametric FEs: " << fec->Name() << endl;
-    }
-    else
-    {
-      fec = new H1_FECollection(inp.order = 1, dim);
-    }
+    fec = new H1_FECollection(inp.order, dim);
+  }
+  else if (pmesh->GetNodes())
+  {
+    fec = pmesh->GetNodes()->OwnFEC();
+    if (myid == 0) cout << "Using isoparametric FEs: " << fec->Name() << endl;
+  }
+  else
+  {
+    fec = new H1_FECollection(inp.order = 1, dim);
   }
 
   // 6. Determine the list of true (i.e. conforming) essential boundary dofs.
