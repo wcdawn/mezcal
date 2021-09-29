@@ -39,7 +39,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       angular_flux[g].reset();
-      const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".sol")};
+      const std::string fname{MakeParFilename(inp.input_file_stub() + "_g" + std::to_string(g) + "_restart", myid, ".sol")};
       std::ifstream ifs{fname};
       angular_flux[g] = std::make_unique<ParGridFunction>(pmesh, ifs);
       calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]);
@@ -563,7 +563,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (restart_out)
       {
         time.start("restart_out");
-        const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".sol")};
+        const std::string fname{MakeParFilename(inp.input_file_stub() + "_g" + std::to_string(g) + "_restart", myid, ".sol")};
         std::ofstream ofs{fname};
         angular_flux[g]->Save(ofs);
         time.stop("restart_out");
@@ -651,10 +651,10 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule &ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const Material_record &mat{mat_lib.mat[attribute]};
+    const XSRecord &rec{mat.rec};
 
     const FiniteElement* const fe{fespace->GetFE(e)};
     Array<int> dofs;
@@ -663,7 +663,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
     for (int i{0}; i < ir.GetNPoints(); ++i)
     {
 
-      const IntegrationPoint ip{ir.IntPoint(i)};
+      const IntegrationPoint &ip{ir.IntPoint(i)};
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
@@ -796,10 +796,10 @@ void calc_downscatter_vector(const int g,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule &ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const Material_record &mat{mat_lib.mat[attribute]};
+    const XSRecord &rec{mat.rec};
 
     const FiniteElement* const fe{fespace->GetFE(e)};
     Array<int> dofs;
@@ -808,7 +808,7 @@ void calc_downscatter_vector(const int g,
     for (int i{0}; i < ir.GetNPoints(); ++i)
     {
 
-      const IntegrationPoint ip{ir.IntPoint(i)};
+      const IntegrationPoint &ip{ir.IntPoint(i)};
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
@@ -882,15 +882,15 @@ void calc_selfscatter_vector(const int g,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule &ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const Material_record &mat{mat_lib.mat[attribute]};
+    const XSRecord &rec{mat.rec};
 
     for (int i{0}; i < ir.GetNPoints(); ++i)
     {
 
-      const IntegrationPoint ip{ir.IntPoint(i)};
+      const IntegrationPoint &ip{ir.IntPoint(i)};
 
       // get all xs at this point
       // this will eventually be temperautre dependent
@@ -963,10 +963,10 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule &ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
-    const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const Material_record &mat{mat_lib.mat[attribute]};
+    const XSRecord &rec{mat.rec};
 
     if (!rec.is_fiss)
     {
@@ -983,7 +983,7 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
     for (int i{0}; i < ir.GetNPoints(); ++i)
     {
 
-      const IntegrationPoint ip{ir.IntPoint(i)};
+      const IntegrationPoint &ip{ir.IntPoint(i)};
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
