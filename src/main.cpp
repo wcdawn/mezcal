@@ -470,6 +470,7 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::conduction_radial):
         case (Solver_choice::conduction_linear):
+        case (Solver_choice::conduction_var_cond):
           temperature_heat_conduction(inp, mat_lib, power, temperature);
           break;
         case (Solver_choice::none):

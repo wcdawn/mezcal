@@ -182,7 +182,7 @@ quadrature.o : $(MFEM_HEADER) quadrature.hpp delaunay.hpp
 delaunay.o : $(MFEM_HEADER) delaunay.hpp
 stability_tau_coefficient.o : $(MFEM_HEADER) stability_tau_coefficient.hpp
 vector_integrator_wrapper.o : $(MFEM_HEADER) vector_integrator_wrapper.hpp
-conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp thermal_conductivity_coefficient.hpp
+conduction.o : $(MFEM_HEADER) conduction.hpp material_library.hpp solver_choice.hpp thermal_conductivity_coefficient.hpp
 thermal_conductivity_coefficient.o : $(MFEM_HEADER) thermal_conductivity_coefficient.hpp material_library.hpp
 upscattering_coefficient.o : $(MFEM_HEADER) upscattering_coefficient.hpp material_library.hpp result.hpp
 downscattering_coefficient.o : $(MFEM_HEADER) downscattering_coefficient.hpp material_library.hpp result.hpp

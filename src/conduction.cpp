@@ -1,5 +1,6 @@
 #include "conduction.hpp"
 
+#include "solver_choice.hpp"
 #include "thermal_conductivity_coefficient.hpp"
 
 #include <iostream>
@@ -28,6 +29,14 @@ double radial_source(const Vector& v)
 
   constexpr double q0{100.};
   return q0 * (R_B - r) / (R_B - R_HP);
+}
+
+double var_cond_source(const Vector& v)
+{
+  const double x{v(0)-0.2};
+  constexpr double L{5.0};
+  constexpr double q0{200.0};
+  return q0*std::cos(0.5*M_PI*x/L);
 }
 
 double linear_solution(const Vector& v)
@@ -72,6 +81,31 @@ double radial_solution(const Vector& v)
   return q0/k / (R_B - R_HP) * (std::pow(r,3)/9. - 0.25*R_B*std::pow(r,2) + c1*std::log(r) + c2);
 }
 
+double var_cond_solution(const Vector& v)
+{
+  const double x{v(0)-0.2};
+
+  constexpr double q0{200.0};
+  constexpr double k0{10.0};
+  constexpr double kbar{5.100359646753139};
+  constexpr double alpha{1e-2};
+  constexpr double L{5.0};
+  constexpr double T0{600.0};
+  constexpr double TL{300.0};
+
+  constexpr double c2{q0*std::pow(2.0*L/M_PI, 2) - 0.5/alpha*(std::pow(k0, 2) -
+    std::pow(alpha*T0-k0, 2))};
+  constexpr double c1{-1.0/L * (0.5/alpha*(std::pow(k0, 2) - std::pow(alpha*TL-k0, 2)) + c2)};
+
+  constexpr bool constant{false};
+
+  if (x < 0.0) return T0;
+  if (constant) return -(q0/kbar) * std::pow(2.0*L/M_PI, 2) * (1.0 - x/L -
+      std::cos(0.5*M_PI*x/L)) + (TL-T0)/L*x + T0;
+  return (k0 - std::sqrt(std::pow(k0, 2) - 2.0*alpha * (
+    q0*std::pow(2.0*L/M_PI, 2)*std::cos(0.5*M_PI*x/L) - c1*x - c2)))/alpha;
+}
+
 void temperature_heat_conduction(const Input& inp,
                                  const Material_library& mat_lib,
                                  const ParGridFunction& power,
@@ -81,7 +115,7 @@ void temperature_heat_conduction(const Input& inp,
   // TODO need some other method for this...
   // bwr 5 is poison rods
   // vvercan 4 is poison rods
-  constexpr int heat_pipe_id{69};
+  constexpr int heat_pipe_id{1};
 
   ParFiniteElementSpace* const parfespace{power.ParFESpace()};
   const ParMesh* const pmesh{parfespace->GetParMesh()};
@@ -134,6 +168,7 @@ void temperature_heat_conduction(const Input& inp,
 
   ThermalConductivityCoefficient thermal_conductivity_coeff{mat_lib, &temperature};
   ConstantCoefficient analytic_coeff{0.1}; // used for verification problems
+  Var_cond_conductivity var_cond_conductivity_coeff{temperature};
 
   ParBilinearForm a{parfespace};
   switch (inp.sol)
@@ -141,6 +176,9 @@ void temperature_heat_conduction(const Input& inp,
     case (Solver_choice::conduction_linear):
     case (Solver_choice::conduction_radial):
       a.AddDomainIntegrator(new DiffusionIntegrator{analytic_coeff});
+      break;
+    case (Solver_choice::conduction_var_cond):
+      a.AddDomainIntegrator(new DiffusionIntegrator{var_cond_conductivity_coeff});
       break;
     default:
       a.AddDomainIntegrator(new DiffusionIntegrator{thermal_conductivity_coeff});
@@ -150,6 +188,7 @@ void temperature_heat_conduction(const Input& inp,
 
   FunctionCoefficient linear_source_coeff{linear_source};
   FunctionCoefficient radial_source_coeff{radial_source};
+  FunctionCoefficient var_cond_source_coeff{var_cond_source};
   GridFunctionCoefficient power_coeff{&power};
 
   ParLinearForm b{parfespace};
@@ -160,6 +199,9 @@ void temperature_heat_conduction(const Input& inp,
         break;
     case (Solver_choice::conduction_radial):
         b.AddDomainIntegrator(new DomainLFIntegrator{radial_source_coeff});
+        break;
+    case (Solver_choice::conduction_var_cond):
+        b.AddDomainIntegrator(new DomainLFIntegrator{var_cond_source_coeff});
         break;
     default:
         b.AddDomainIntegrator(new DomainLFIntegrator{power_coeff});
@@ -206,7 +248,8 @@ void temperature_heat_conduction(const Input& inp,
     const double local_temp_conv{temperature_old.Normlinf()};
     MPI_Allreduce(&local_temp_conv, &temp_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    if ((inp.verbose) && (parfespace->GetMyRank() == 0))
+    //if ((inp.verbose) && (parfespace->GetMyRank() == 0))
+    if (parfespace->GetMyRank() == 0)
       std::cout << "temperature_iter=" << iter << " temp_conv=" << temp_conv << std::endl;
 
   }
@@ -221,7 +264,13 @@ void temperature_heat_conduction(const Input& inp,
       }
     case (Solver_choice::conduction_radial):
       {
-        FunctionCoefficient solution{radial_solution}; // TODO
+        FunctionCoefficient solution{radial_solution};
+        conduction_error_analysis(solution, temperature);
+        break;
+      }
+    case (Solver_choice::conduction_var_cond):
+      {
+        FunctionCoefficient solution{var_cond_solution};
         conduction_error_analysis(solution, temperature);
         break;
       }
@@ -239,5 +288,39 @@ void conduction_error_analysis(Coefficient& coeff, GridFunction& sol)
   std::cout << "===TEMPERATURE_ERROR===" << std::endl;
   std::cout << "l2error=" << l2error << std::endl;
   std::cout << "lmaxerror=" << lmaxerror << std::endl;
+
+  GridFunction exact{sol};
+  exact.ProjectCoefficient(coeff);
+  Vector nval_exact;
+  exact.GetNodalValues(nval_exact);
+
+  Vector nval_sol;
+  sol.GetNodalValues(nval_sol);
+
+  Mesh *mesh = sol.FESpace()->GetMesh();
+  Vector node;
+  mesh->GetVertices(node);
+
+  std::ofstream os{"solution.out"};
+
+  const int dim = mesh->SpaceDimension();
+
+  // i, x, y, z, sol, exact, diff
+
+  for (int i{0}; i < mesh->GetNV(); ++i)
+  {
+    os << i << ",";
+    Vector coord(3);
+    coord = 0.0;
+    for(int j{0}; j < dim; ++j)
+      coord(j) = node(j*dim + i);
+    for (int j{0}; j < coord.Size(); ++j)
+      os << coord(j) << ",";
+    os << nval_sol(i) << ","
+       << nval_exact(i) << ","
+       << nval_sol(i) - nval_exact(i) << std::endl;
+  }
+
+
   return;
 }

@@ -31,6 +31,7 @@ enum class Solver_choice
   spn_partial_assembly_power_iteration,
   conduction_linear, // TODO move this into "analytic"
   conduction_radial, // TODO move this into "analytic"
+  conduction_var_cond,
   none // do absolutely nothing
 };
 
