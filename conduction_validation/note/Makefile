@@ -11,7 +11,10 @@ PYTHON_DIR = ../python
 
 FIGURES = $(FIGS_DIR)/radial_line.pdf \
 		  $(FIGS_DIR)/radial_circle.pdf \
-		  $(FIGS_DIR)/linear.pdf
+		  $(FIGS_DIR)/linear.pdf \
+		  $(FIGS_DIR)/var_cond_temperature.pdf \
+		  $(FIGS_DIR)/var_cond_conductivity.pdf \
+		  $(FIGS_DIR)/var_cond_diff.pdf
 
 EXTRAS = 
 
@@ -51,6 +54,15 @@ $(FIGS_DIR)/linear.pdf : $(PYTHON_DIR)/conduction.py
 	$(PYTHON) $<
 
 $(FIGS_DIR)/linear_geometry.pdf : $(PYTHON_DIR)/conduction.py
+	$(PYTHON) $<
+
+$(FIGS_DIR)/var_cond_temperature.pdf : $(PYTHON_DIR)/var_cond.py
+	$(PYTHON) $<
+
+$(FIGS_DIR)/var_cond_conductivity.pdf : $(PYTHON_DIR)/var_cond.py
+	$(PYTHON) $<
+
+$(FIGS_DIR)/var_cond_diff.pdf : $(PYTHON_DIR)/var_cond.py
 	$(PYTHON) $<
 
 clean :

@@ -28,12 +28,14 @@
 \newcommand{\grad}{\nabla}
 
 \newcommand{\vr}{\mathbf{r}}
+\newcommand{\kbar}{\bar{k}}
+\newcommand{\that}{\hat{T}}
 
 % reference macros
 \newcommand{\eref}[1]{\hyperref[#1]{Eq.~}(\ref{#1})}
 \newcommand{\fref}[1]{\hyperref[#1]{Fig.~}\ref{#1}}
 \newcommand{\tref}[1]{\hyperref[#1]{Table~}\ref{#1}}
-\newcommand{\sref}[1]{\hyperref[#1]{\S~}\ref{#1}}
+\newcommand{\sref}[1]{\hyperref[#1]{\S}\ref{#1}}
 \newcommand{\algorithmref}[1]{\hyperref[#1]{Algorithm~}\ref{#1}}
 
 \begin{document}
@@ -50,7 +52,7 @@ These solutions were originally developed for use with microreactor modeling so 
 The general form of the steady-state heat conduction equation is
 \begin{equation}
   \label{eq:general_heat_conduction}
-  - \grad \cdot ( k(T(\vr),\vr) \, \grad T(\vr) ) = q(\vr)
+  - \grad \cdot ( k(\vr, T(\vr)) \, \grad T(\vr) ) = q(\vr)
 \end{equation}
 where $k$ is the thermal conductivity of the material, $T$ is the temperature distribution, $q$ is the volumetric heat source, and $\vr$ is the position vector.
 
@@ -58,16 +60,8 @@ Note that in its most general form, the thermal conductivity depends on both pos
 Physically speaking, thermal conductivity is temperature dependent.
 However, \eref{eq:general_heat_conduction} can be solved using an fixed-point iteration algorithm so solvers typically only need to consider thermal conductivity as a piecewise-constant function of position.
 The fixed-point iteration algorithm is not guaranteed to converge as it would require knowledge of the properties of the thermal conductivity function, but this method is typically acceptable for physical simulations.
-For the rest of this note, $k$ will be considered a constant.
-Therefore, the thermal conductivity equation solved here is
-\begin{equation}
-  \label{eq:constant_k_heat_conduction}
-  - k \grad^2 T(\vr) = q(\vr)
-\end{equation}
-where $\grad^2 = \grad \cdot \grad$ is the Laplacian.
-The solution to \eref{eq:constant_k_heat_conduction} can be obtained by integrating the volumetric heat source twice.
 
-When evaluating \eref{eq:constant_k_heat_conduction}, one must appropriately consider the Laplacian in the space (e.g. for cylindrical coordinates).
+When evaluating integrals to solve \eref{eq:general_heat_conduction}, one must appropriately consider the Laplacian in the space (e.g. for cylindrical coordinates).
 Specific geometries and heat source functions are considered next.
 
 \section{Heat Pipe Modeling}
@@ -81,6 +75,7 @@ For the purposes of this model, heat pipes are assumed to operate at a constant 
 If a more accurate heat pipe model is required, an appropriate model could be added to the computer program and solved as an additional multiphysics model.
 
 \section{One-Dimension Cartesian Heat Conduction}
+\label{sec:oned}
 
 Begin by considering the heat conduction equation in one-dimension
 \begin{equation}
@@ -257,6 +252,142 @@ Note that the temperature is treated as constant within the heat pipe.
   \end{subfigure}
   \caption{One-Dimension Cylindrical Heat Conduction Solution.}
   \label{fig:radial}
+\end{figure}
+
+\section{One-Dimension Cartesian Heat Conduction with Variable Thermal Conductivity}
+
+In realistic materials, thermal conductivity decreases as temperature increases.
+This poses a challenge with solving the heat conduction equation as the thermal conductivity is dependent on the solution to the heat conduction equation.
+Typically, thermal conductivities are weakly dependent on temperature so a simple fixed-point iteration is acceptable to treat the temperature dependence.
+That is, the heat conduction equation is solved using an estimate for the material temperature and associated thermal conductivity and the material temperature is recalculated until convergence.
+
+As the temperature dependence of thermal conductivity is an important effect in realistic materials, this analytic solution may serve as a benchmark for verifying computer programs designed to model heat conduction in realistic materials.
+In one-dimensional Cartesian geometry, the heat conduction equation can be written
+\begin{equation}
+  \label{eq:var_cond_equation}
+  - \frac{d}{dx} \left(k(x, T(x)) \frac{d}{dx} T(x)\right) = q(x).
+\end{equation}
+This solution will be restricted to the domain $x \in [0, L]$ and will assume the thermal conductivity to have the form
+\begin{equation}
+  \label{eq:var_cond_conductivity}
+  k(x, T(x)) = k_0 - \alpha T(x)
+\end{equation}
+with a heat source of the form
+\begin{equation}
+  \label{eq:var_cond_source}
+  q(x) = q_0 \cos \left( \frac{\pi \, x}{2L} \right).
+\end{equation}
+Boundary conditions will be treated as fixed temperatures such that
+\begin{align}
+  \label{eq:var_cond_T0}
+  T(0) &= T_0 \\
+  \label{eq:var_cond_TL}
+  T(L) &= T_L.
+\end{align}
+
+The solution will begin by substituting the heat source definition from \eref{eq:var_cond_source} into the heat conduction equation from \eref{eq:var_cond_equation}.
+\begin{equation}
+  \label{eq:var_cond_1}
+  - \frac{d}{dx} \left( k(x, T(x)) \frac{d}{dx} T(x) \right) = q_0 \cos \left( \frac{\pi \, x}{2L} \right)
+\end{equation}
+Then, \eref{eq:var_cond_1} is integrated with respect to $x$ as
+\begin{equation}
+  \label{eq:var_cond_2}
+  -k(x, T(x)) \frac{d}{dx} T(x) = q_0 \frac{2L}{\pi} \sin \left( \frac{\pi \, x}{2L} \right) + c_1
+\end{equation}
+where $c_1$ is a constant of integration.
+Then, the form of the variable thermal conductivity from \eref{eq:var_cond_conductivity} is substituted into \eref{eq:var_cond_2}.
+\begin{align}
+  (\alpha T(x) - k_0) \frac{d}{dx} T(x) &= q_0 \frac{2L}{\pi} \sin \left( \frac{\pi \, x}{2L} \right) + c_1 \\
+  \label{eq:var_cond_3}
+  \alpha T(x) \frac{d}{dx} T(x) - k_0 \frac{d}{dx} T(x) &= q_0 \frac{2L}{\pi} \sin \left( \frac{\pi \, x}{2L} \right) + c_1
+\end{align}
+Again, \eref{eq:var_cond_3} is integrated with respect to $x$.
+\begin{align}
+  \int \left( \alpha T(x) \frac{d}{dx} T(x) - k_0 \frac{d}{dx} T(x) \right) \; dx     &= \int \left( q_0 \frac{2L}{\pi} \sin \left( \frac{\pi \, x}{2L} \right) + c_1 \right) \; dx \\
+  \label{eq:var_cond_4}
+  \int \alpha T(x) \frac{d}{dx} T(x) \; dx - \int k_0 \frac{d}{dx} T(x) \; dx &= \int \left( q_0 \frac{2L}{\pi} \sin \left( \frac{\pi \, x}{2L} \right) + c_1 \right) \; dx
+\end{align}
+The first integral in the left-hand-side of \eref{eq:var_cond_4} can be evaluated using integration-by-parts and the second integral can be evaluated using the fundamental theory of calculus.
+The resulting equation is
+\begin{equation}
+  \label{eq:var_cond_5}
+  -\frac{\alpha}{2} T^2(x) + k_0 T(x) = q_0 \left( \frac{2L}{\pi} \right)^2 \cos \left( \frac{\pi \, x}{2L} \right) + c_1 x + c_2
+\end{equation}
+where $c_2$ is a constant of integration.
+The quadratic equation can be used to evaluate \eref{eq:var_cond_5} to obtain a solution for $T(x)$.
+\begin{equation}
+  \label{eq:var_cond_sol}
+  T(x) = \frac{1}{\alpha} \left( k_0 \pm \sqrt{k_0^2 - 2 \alpha \left( q_0 \left( \frac{2L}{\pi} \right)^2 \cos \left( \frac{\pi \, x}{2L} \right) + c_1 x + c_2 \right)} \right)
+\end{equation}
+For realistic calculations, the requirement that $T(x) > 0$ can be imposed in which case, the $\pm$ in \eref{eq:var_cond_sol} should be replaced with a minus-sign.
+
+The constants of integration can be obtained by evaluating the boundary conditions.
+First, consider the boundary condition at $x=0$ from \eref{eq:var_cond_T0}.
+\begin{align}
+  T(0) &= T_0 \\
+  &= \frac{1}{\alpha} \left( k_0 \pm \sqrt{k_0^2 - 2 \alpha \left( q_0 \left( \frac{2L}{\pi} \right)^2 + c_2 \right)}\right) \\
+  \alpha T_0 &= k_0 \pm \sqrt{k_0^2 - 2 \alpha \left( q_0 \left( \frac{2L}{\pi} \right)^2 + c_2 \right)} \\
+  \alpha T_0 - k_0 &= \pm \sqrt{k_0^2 - 2 \alpha \left( q_0 \left( \frac{2L}{\pi} \right)^2 + c_2 \right)} \\
+  (\alpha T_0 - k_0)^2 &= k_0^2 - 2 \alpha \left( q_0 \left( \frac{2L}{\pi} \right)^2 + c_2 \right) \\
+  k_0^2 - (\alpha T_0 - k_0)^2 &= 2 \alpha \left( q_0 \left( \frac{2L}{\pi} \right)^2 + c_2 \right) \\
+  \frac{1}{2\alpha} (k_0^2 - (\alpha T_0 - k_0)^2) &= q_0 \left( \frac{2L}{\pi} \right)^2 + c_2 \\
+  \label{eq:var_cond_c2}
+  \therefore c_2 &= \frac{1}{2\alpha} (k_0^2 - (\alpha T_0 - k_0)^2) - q_0 \left( \frac{2L}{\pi} \right)^2
+\end{align}
+A similar procedure can be followed to show that
+\begin{equation}
+  \label{eq:var_cond_c1}
+  c_1 = \frac{1}{L} \left( \frac{1}{2\alpha} (k_0^2 - (\alpha T_L - k_0)^2) + c_2 \right).
+\end{equation}
+Finally, the solution to this heat conduction problem with variable thermal conductivity is given by \eref{eq:var_cond_sol} with the constants of integration given by \eref{eq:var_cond_c2} and \eref{eq:var_cond_c1}.
+
+Similar to the derivation from \sref{sec:oned}, an analytic solution can be obtained for this problem assuming that thermal conductivity is constant at some effective thermal conductivity $\kbar$.
+\begin{equation}
+  \that(x) = \frac{q_0}{\kbar} \left( \frac{2L}{\pi} \right)^2 \left( \cos \left( \frac{\pi \, x}{2L} \right) + \frac{x}{L} - 1 \right) + \frac{T_L-T_0}{L} \, x + T_0
+\end{equation}
+
+Using the values in \tref{tab:var_cond}, an example solution is plotted in \fref{fig:var_cond}.
+Numeric integration is used to obtain the effective thermal conductivity, $\kbar$, for this problem and the difference between the constant thermal conductivity and variable thermal conductivity solutions is also plotted in \fref{fig:linear}.
+
+\begin{table}
+  \centering
+  \caption{One-Dimension Cartesian Heat Conduction with Variable Thermal Conductivity Constants.}
+  \label{tab:var_cond}
+  \begin{tabular}{cc}
+    \toprule
+    Variable & Value \\
+    \midrule
+    $T_0$ & $600$ \\
+    $T_L$ & $300$ \\
+    $L$   & $5$ \\
+    $q_0$ & $200$ \\
+    $k_0$ & $10$ \\
+    $\alpha$ & $0.01$ \\
+    $\kbar$ & $5.100360$ \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}
+  \centering
+  \begin{subfigure}{0.45\textwidth}
+    \includegraphics[width=\textwidth]{../figs/var_cond_temperature}
+    \caption{Temperature.}
+    \label{fig:var_cond_temperature}
+  \end{subfigure}
+  \begin{subfigure}{0.45\textwidth}
+    \includegraphics[width=\textwidth]{../figs/var_cond_diff}
+    \caption{Temperature Difference.}
+    \label{fig:var_cond_diff}
+  \end{subfigure}
+  \begin{subfigure}{0.45\textwidth}
+    \includegraphics[width=\textwidth]{../figs/var_cond_conductivity}
+    \caption{Thermal Conductivity.}
+    \label{fig:var_cond_conductivity}
+  \end{subfigure}
+  \caption{One-Dimension Cartesian Heat Conduction with Variable Thermal Conductivity Constants.}
+  \label{fig:var_cond}
 \end{figure}
 
 \end{document}
