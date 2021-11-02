@@ -6,6 +6,14 @@ userxs finite_cyl.xs
 
 [MATERIAL]
 
+name m1
+MAT1 1.0
+exact_area_volume -1.
+
+name m2
+MAT1 1.0
+exact_area_volume -1.
+
 [STATE]
 solver conduction_linear
 
