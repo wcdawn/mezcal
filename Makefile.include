@@ -58,6 +58,34 @@ AMGX_DIR = /home/wcdawn/projects/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR  = $(AMGX_DIR)/base/include
 
+else ifeq ($(MACH),LASSEN)
+
+STD = c++11
+MPICXX = mpicxx
+H5_DIR = $(HDF5)/lib
+
+MPI_DIR = $(MPI_ROOT)
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi_ibm
+
+WORKSPACE = /usr/workspace/dawn1/container
+MFEM_DIR = $(WORKSPACE)/mfem
+HYPRE_DIR = $(WORKSPACE)/hypre/src/hypre
+METIS_DIR = $(WORKSPACE)/metis-5.1.0
+METIS_LIB = -L$(METIS_DIR)/lib -lmetis
+
+CUDA_DIR = $(CUDA_HOME)
+CUDA_ARCH = -arch=sm_70
+
+PETSC_DIR = $(WORKSPACE)/petsc/arch-llnl-lassen-opt
+SLEPC_DIR = $(WORKSPACE)/slepc/arch-llnl-lassen-opt
+
+CXXFLAGS += -DGPU_AWARE_MPI
+CXXFLAGS += -DAMGX_AVAILABLE
+
+AMGX_DIR = $(WORKSPACE)/amgx
+AMGX_LIB_DIR = $(AMGX_DIR)/build
+AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
+
 else
 
 $(error Invalid MACH)
