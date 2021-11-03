@@ -233,41 +233,51 @@ void XSLibrary::read_hdf5xs(const string& fname, const string& lib_name)
   // catch failure caused by the H5File operations
   catch (const H5::FileIException& error)
   {
-    error.printErrorStack();
+    // only available in newer versions of HDF5
+    // error.printErrorStack();
+    MFEM_ABORT("H5::FileIException");
     throw;
   }
 
   // catch failure caused by the Group operations
   catch (const H5::GroupIException& error)
   {
-    error.printErrorStack();
+    // only available in newer versions of HDF5
+    // error.printErrorStack();
+    MFEM_ABORT("H5::GroupIException");
     throw;
   }
 
   // catch failure caused by the DataSet operations
   catch (const H5::DataSetIException& error)
   {
-    error.printErrorStack();
+    // only available in newer versions of HDF5
+    // error.printErrorStack();
+    MFEM_ABORT("H5::DataSetIException");
     throw;
   }
 
   // catch failure caused by the DataSpace operations
   catch (const H5::DataSpaceIException& error)
   {
-    error.printErrorStack();
+    // only available in newer versions of HDF5
+    // error.printErrorStack();
+    MFEM_ABORT("H5::DataSpaceIException");
     throw;
   }
 
   // catch failure caused by the DataType operations
   catch (const H5::DataTypeIException& error)
   {
-    error.printErrorStack();
+    // only available in newer versions of HDF5
+    // error.printErrorStack();
+    MFEM_ABORT("H5::DataTypeIException");
     throw;
   }
 
   catch (...)
   {
-    cerr << "Caught an unexpected error.\n";
+    MFEM_ABORT("Unexpected H5 error.");
     throw;
   }
 }
