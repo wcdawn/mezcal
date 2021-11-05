@@ -27,7 +27,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   constexpr bool use_dsa{true};
 
   constexpr bool restart{false};
-  constexpr bool restart_out{true};
+  constexpr bool restart_out{false};
 
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
   const int myid{scalar_flux_fespace->GetMyRank()};
