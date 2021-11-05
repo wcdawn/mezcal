@@ -62,7 +62,7 @@ else ifeq ($(MACH),LASSEN)
 
 STD = c++11
 MPICXX = mpicxx
-H5_DIR = $(HDF5)/lib
+H5_DIR=/usr/lib64
 
 MPI_DIR = $(MPI_ROOT)
 MPI_LIB = -L$(MPI_DIR)/lib -lmpi_ibm
@@ -117,7 +117,6 @@ METIS_INCLUDE = -I$(METIS_DIR)/include
 
 CUDA_INCLUDE = -I$(CUDA_DIR)/include
 CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
-CUDA_ARCH = -arch=sm_75
 
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
