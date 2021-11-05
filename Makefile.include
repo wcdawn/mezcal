@@ -51,6 +51,7 @@ METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 CUDA_DIR = /opt/cuda
 PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
 SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+CUDA_ARCH = -arch=sm_75
 
 CXXFLAGS += -DAMGX_AVAILABLE
 
@@ -62,12 +63,12 @@ else ifeq ($(MACH),LASSEN)
 
 STD = c++11
 MPICXX = mpicxx
-H5_DIR = $(HDF5)/lib
+H5_DIR = /usr/lib64
 
 MPI_DIR = $(MPI_ROOT)
 MPI_LIB = -L$(MPI_DIR)/lib -lmpi_ibm
 
-WORKSPACE = /usr/workspace/dawn1/container
+WORKSPACE = /usr/workspace/dawn1/container_pumi
 MFEM_DIR = $(WORKSPACE)/mfem
 HYPRE_DIR = $(WORKSPACE)/hypre/src/hypre
 METIS_DIR = $(WORKSPACE)/metis-5.1.0
@@ -85,6 +86,32 @@ CXXFLAGS += -DAMGX_AVAILABLE
 AMGX_DIR = $(WORKSPACE)/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
+
+PUMI_DIR = $(WORKSPACE)/core
+PUMI_INCLUDE = -I$(PUMI_DIR)/pumi \
+			   -I$(PUMI_DIR)/apf \
+			   -I$(PUMI_DIR)/can \
+			   -I$(PUMI_DIR)/mds \
+			   -I$(PUMI_DIR)/gmi \
+			   -I$(PUMI_DIR)/pcu \
+			   -I$(PUMI_DIR)/crv \
+			   -I$(PUMI_DIR)/ma \
+			   -I$(PUMI_DIR)/mth \
+			   -I$(PUMI_DIR)/spr
+PUMI_LIB = -L$(PUMI_DIR)/build/pumi -lpumi \
+		   -L$(PUMI_DIR)/build/crv -lcrv \
+		   -L$(PUMI_DIR)/build/ma -lma \
+		   -L$(PUMI_DIR)/build/mds -lmds \
+		   -L$(PUMI_DIR)/build/apf -lapf \
+		   -L$(PUMI_DIR)/build/pcu -lpcu \
+		   -L$(PUMI_DIR)/build/gmi -lgmi \
+		   -L$(PUMI_DIR)/build/parma -lparma \
+		   -L$(PUMI_DIR)/build/lion -llion \
+		   -L$(PUMI_DIR)/build/mth -lmth \
+		   -L$(PUMI_DIR)/build/apf_zoltan -lzoltan \
+		   -L$(PUMI_DIR)/build/spr -lspr \
+		   -L$(PUMI_DIR)/../zoltan/build/src -lzoltan \
+		   -L$(PUMI_DIR)/../parmetis-4.0.3/build/Linux-ppc64le/libparmetis -lparmetis -lmetis
 
 else
 
@@ -117,7 +144,6 @@ METIS_INCLUDE = -I$(METIS_DIR)/include
 
 CUDA_INCLUDE = -I$(CUDA_DIR)/include
 CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
-CUDA_ARCH = -arch=sm_75
 
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
 PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
@@ -130,5 +156,5 @@ AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
 MPI_INCLUDE = -I$(MPI_DIR)/include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE) $(PUMI_INCLUDE)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB) $(PUMI_LIB)
