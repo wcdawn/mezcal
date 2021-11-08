@@ -31,6 +31,7 @@ CPP_FILES = main.cpp \
 			stability_tau_coefficient.cpp \
 			thermal_conductivity_coefficient.cpp \
 			timer.cpp \
+			vector_incoming_flux_coefficient.cpp \
 			vector_integrator_wrapper.cpp \
 			vector_product_coefficient.cpp \
 			vector_pwconst_coefficient.cpp \
@@ -69,6 +70,7 @@ HPP_FILES = analytic.hpp \
 			stability_tau_coefficient.hpp \
 			thermal_conductivity_coefficient.hpp \
 			timer.hpp \
+			vector_incoming_flux_coefficient.hpp \
 			vector_integrator_wrapper.hpp \
 			vector_product_coefficient.hpp \
 			vector_pwconst_coefficient.hpp \
@@ -147,7 +149,6 @@ version.hpp :
 #	@echo "}" >> version.cpp
 
 clean :
-	#$(RM) $(OBJ) $(EXEC) version.cpp version.hpp
 	$(RM) $(OBJ) $(EXEC) version.hpp
 	$(MAKE) -C $(ADDON_DIR) clean
 
@@ -191,5 +192,6 @@ saaf_void_tau_coefficient.o : $(MFEM_HEADER) saaf_void_tau_coefficient.hpp mater
 vector_product_coefficient.o : $(MFEM_HEADER) vector_product_coefficient.hpp
 nda_boundary_factor_coefficient.o : $(MFEM_HEADER) nda_boundary_factor_coefficient.hpp quadrature.hpp material_library.hpp
 nda_diffusion_coefficient.o : $(MFEM_HEADER) nda_diffusion_coefficient.hpp quadrature.hpp material_library.hpp
-solver_saaf_angle_power_iteration.o : $(MFEM_HEADER) solver_saaf_angle_power_iteration.hpp input.hpp make_unique.hpp material_library.hpp quadrature.hpp result.hpp timer.hpp vector_pwconst_coefficient.hpp ../addon/mfem_addon.hpp ../addon/tensor.hpp
+solver_saaf_angle_power_iteration.o : $(MFEM_HEADER) solver_saaf_angle_power_iteration.hpp input.hpp make_unique.hpp material_library.hpp quadrature.hpp result.hpp timer.hpp vector_pwconst_coefficient.hpp ../addon/mfem_addon.hpp ../addon/tensor.hpp vector_incoming_flux_coefficient.hpp
 solver_saaf_true_slepc_vector.o : $(MFEM_HEADER) solver_saaf_true_slepc_vector.hpp input.hpp make_unique.hpp material_library.hpp matrix_pwconst_coefficient.hpp memory.hpp quadrature.hpp result.hpp timer.hpp vector_pwconst_coefficient.hpp ../addon/mfem_addon.hpp ../addon/tensor.hpp
+vector_incoming_flux_coefficient.o : $(MFEM_HEADER) quadrature.hpp

@@ -6,6 +6,7 @@
 #include "../addon/tensor.hpp"
 
 #include "vector_pwconst_coefficient.hpp"
+#include "vector_incoming_flux_coefficient.hpp"
 
 #include <cmath>
 #include <vector>
@@ -403,12 +404,34 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     saaf_src_quad_func.emplace_back(saaf_selfscatter_quad);
   }
 
+  std::vector<VectorIncomingFluxCoefficient> vector_incoming_flux_coeff;
+  vector_incoming_flux_coeff.reserve(mat_lib.ngroup());
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+    vector_incoming_flux_coeff.emplace_back(*angular_flux[g], *quad);
+
+  Tensor<Vector> tensor_omega;
+  tensor_omega.reserve(quad->nd());
+  for (int n{0}; n < quad->nd(); ++n)
+    tensor_omega.AddElement(quad->omega(n), n);
+  VectorTensorConstantCoefficient omega_term{quad->nd(), tensor_omega};
+
+  Array<int> reflective_condition(pmesh->bdr_attributes.Max());
+  reflective_condition = 0;
+  for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < pmesh->bdr_attributes.Max()); ++i)
+  {
+    if (inp.boundary_conditions[i] == 0) // zero represents reflective
+      reflective_condition[i] = 1;
+  }
+
   std::vector<std::unique_ptr<ParLinearForm>> lf_self_scatter(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
+    lf_self_scatter[g]->AddBdrFaceIntegrator(
+      new VectorBoundaryFlowIntegrator{vector_incoming_flux_coeff[g], omega_term, -1.0},
+      reflective_condition);
   }
 
 ////////////////////////////////////////////////////////////////////////////////
