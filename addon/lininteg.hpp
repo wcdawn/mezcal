@@ -10,6 +10,7 @@
 namespace mfem
 {
 
+#if 0
 class VectorDomainLFGradIntegrator : public LinearFormIntegrator
 {
 private:
@@ -30,6 +31,7 @@ public:
                                        Vector &elvect) override;
    using LinearFormIntegrator::AssembleRHSElementVect;
 };
+#endif
 
 class VectorBoundaryFlowIntegrator : public LinearFormIntegrator
 {

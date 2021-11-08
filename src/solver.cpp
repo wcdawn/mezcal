@@ -2477,7 +2477,9 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
 
     ParLinearForm b{fespace};
     b.AddDomainIntegrator(new VectorDomainLFIntegrator{benchmark_source_func});
+#if 0
     b.AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_benchmark_source_func});
+#endif
     b.Assemble();
     std::unique_ptr<HypreParVector> bhypre{b.ParallelAssemble()};
 
