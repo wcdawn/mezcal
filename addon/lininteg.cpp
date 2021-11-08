@@ -5,6 +5,7 @@
 namespace mfem
 {
 
+#if 0
 void VectorDomainLFGradIntegrator::AssembleRHSElementVect(
    const FiniteElement &el, ElementTransformation &Tr, Vector &elvect)
 {
@@ -52,12 +53,12 @@ void VectorDomainLFGradIntegrator::AssembleRHSElementVect(
       {
          Vector x(vdim);
          VQ->Eval(x, Tr, ip);
+         x *= ip.weight * Tr.Weight();
          for (int idx{0}; idx < vdim/spaceDim; ++idx)
          {
             Vector part_x(spaceDim);
             for (int jdx{0}; jdx < spaceDim; ++jdx)
                part_x(jdx) = x(idx*spaceDim+jdx);
-            part_x *= ip.weight * Tr.Weight();
             dshape.Mult(part_x, pelvect);
             for (int j{0}; j < dof; ++j)
             {
@@ -71,6 +72,7 @@ void VectorDomainLFGradIntegrator::AssembleRHSElementVect(
       }
    }
 }
+#endif
 
 void VectorBoundaryFlowIntegrator::AssembleRHSElementVect(
    const FiniteElement &el, ElementTransformation &Tr, Vector &elvect)
@@ -134,7 +136,8 @@ void VectorBoundaryFlowIntegrator::AssembleRHSElementVect(
       // Use Tr.Elem1 transformation for u so that it matches the coefficient
       // used with the ConvectionIntegrator and/or the DGTraceIntegrator.
       u->Eval(u_data, row_idx, col_idx, *Tr.Elem1, eip);
-      f->Eval(f_data, *Tr.Elem1, eip);
+      //f->Eval(f_data, *Tr.Elem1, eip);
+      f->Eval(f_data, Tr, eip);
 
       for (int idx{0}; idx < row_idx.Size(); ++idx)
       {
