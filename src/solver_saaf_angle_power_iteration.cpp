@@ -26,6 +26,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   constexpr bool use_gpu{false};
   constexpr bool use_dsa{true};
+  constexpr bool use_full_assembly{true};
 
   constexpr bool restart{false};
   constexpr bool restart_out{false};
@@ -429,9 +430,19 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
-    lf_self_scatter[g]->AddBdrFaceIntegrator(
-      new VectorBoundaryFlowIntegrator{vector_incoming_flux_coeff[g], omega_term, -1.0},
-      reflective_condition);
+    if (use_full_assembly)
+    {
+      MFEM_VERIFY(reflective_condition.Max() == 0,
+        "VectorBoundaryFlowIntegrator (required for reflective bcs) is "
+        "incompatible with LinearAssemblyLevel::FULL.");
+      lf_self_scatter[g]->SetAssemblyLevel(LinearAssemblyLevel::FULL);
+    }
+    else
+    {
+      lf_self_scatter[g]->AddBdrFaceIntegrator(
+        new VectorBoundaryFlowIntegrator{vector_incoming_flux_coeff[g], omega_term, -1.0},
+        reflective_condition);
+    }
   }
 
 ////////////////////////////////////////////////////////////////////////////////
