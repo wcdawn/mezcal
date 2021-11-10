@@ -13,22 +13,15 @@
 
 using namespace mfem;
 
-double par_normlinf(const double *x, const size_t size)
+namespace 
 {
-  double local_norm{0.0}, norm{0.0};
-  for (size_t i{0}; i < size; ++i)
-    local_norm = std::max(local_norm, std::abs(x[i]));
-  MPI_Allreduce(&local_norm, &norm, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  return norm;
-}
-
-double par_sum(const double *x, const size_t size)
-{
-  double local_sum{0.0}, sum{0.0};
-  for (size_t i{0}; i < size; ++i)
-    local_sum += x[i];
-  MPI_Allreduce(&local_sum, &sum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  return sum;
+  double par_norml2(const Vector &x)
+  {
+    const double local_norm{std::pow(x.Norml2(),2)};
+    double norm{0.0};
+    MPI_Allreduce(&local_norm, &norm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    return std::sqrt(norm);
+  }
 }
 
 void saaf_angle_power_iteration(const Quadrature* const quad,
@@ -499,22 +492,23 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   {
     lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
     lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
+    if (use_full_assembly) lf_dsa[g]->SetAssemblyLevel(LinearAssemblyLevel::FULL);
   }
 
 ////////////////////////////////////////////////////////////////////////////////
 
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    angular_flux[g]->UseDevice(false);
-    scalar_flux[g]->UseDevice(false);
-    lf_self_scatter[g]->UseDevice(false);
-    lf_dsa[g]->UseDevice(false);
+    angular_flux[g]->UseDevice(true);
+    scalar_flux[g]->UseDevice(true);
+    lf_self_scatter[g]->UseDevice(true);
+    lf_dsa[g]->UseDevice(true);
 
     fiss_upscatter_quad[g].UseDevice(true);
     saaf_fiss_upscatter_quad[g].UseDevice(true);
   }
 
-  dsa_phi_old.UseDevice(false);
+  dsa_phi_old.UseDevice(true);
   dnscatter_quad.UseDevice(true);
   saaf_dnscatter_quad.UseDevice(true);
   selfscatter_quad.UseDevice(true);
@@ -575,14 +569,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         (scattering_conv > inp.tol.scatter); ++scattering_iter)
       {
 
-        //dsa_phi_old = *scalar_flux[g]; // (k)
-
-        {
-          double *dsa = dsa_phi_old.HostWrite();
-          const double *sf = scalar_flux[g]->HostRead();
-          for (int i{0}; i < scalar_flux[g]->Size(); ++i)
-            dsa[i] = sf[i];
-        }
+        dsa_phi_old = *scalar_flux[g]; // (k)
 
         time.start("calc_selfscatter_vector");
         calc_selfscatter_vector(g, *scalar_flux[g], mat_lib, quad,
@@ -596,12 +583,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         time.start("b_assemble");
         lf_self_scatter[g]->Assemble();
         std::unique_ptr<HypreParVector> b{lf_self_scatter[g]->ParallelAssemble()};
-        b->UseDevice(false);
+        b->UseDevice(true);
         time.stop("b_assemble");
 
         time.start("Amult");
         std::unique_ptr<HypreParVector> x{angular_flux[g]->ParallelAssemble()};
-        x->UseDevice(false);
+        x->UseDevice(true);
         Asol[g]->Mult(*b, *x);
         angular_flux[g]->Distribute(*x);
         time.stop("Amult");
@@ -614,14 +601,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         {
 
           ParGridFunction pgf_dphi{*scalar_flux[g]};
-          pgf_dphi.UseDevice(false);
+          pgf_dphi.UseDevice(true);
 
           time.start("b_dsa_assemble");
           lf_dsa[g]->Assemble();
           std::unique_ptr<HypreParVector> f{lf_dsa[g]->ParallelAssemble()};
           std::unique_ptr<HypreParVector> dphi{pgf_dphi.ParallelAssemble()};
-          f->UseDevice(false);
-          dphi->UseDevice(false);
+          f->UseDevice(true);
+          dphi->UseDevice(true);
           time.stop("b_dsa_assemble");
 
           time.start("Dmult");
@@ -635,17 +622,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
         ++solve_counter;
 
-        //dsa_phi_old -= *scalar_flux[g];
+        dsa_phi_old -= *scalar_flux[g];
 
-        {
-          double *dsa = dsa_phi_old.HostReadWrite();
-          const double *sf = scalar_flux[g]->HostRead();
-          for (int i{0}; i < scalar_flux[g]->Size(); ++i)
-            dsa[i] -= sf[i];
-        }
-
-        scattering_conv = par_normlinf(dsa_phi_old.HostRead(), dsa_phi_old.Size()) /
-          par_normlinf(scalar_flux[g]->HostRead(), scalar_flux[g]->Size());
+        scattering_conv = par_norml2(dsa_phi_old)/par_norml2(*scalar_flux[g]);
 
         if (myid == 0)
           std::cout << "..."
@@ -671,15 +650,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     QuadratureFunction fiss_src_quad{&qspace};
     fiss_src_quad.UseDevice(true);
     calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
-    const double fiss_sum{par_sum(fiss_src_quad.HostRead(), fiss_src_quad.Size())};
+    const double local_fiss_sum{fiss_src_quad.Sum()};
+    double fiss_sum;
+    MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     time.stop("fisssum");
 
     time.start("phiconv");
     fiss_src_quad_old -= fiss_src_quad;
-    
-    phi_conv = par_normlinf(fiss_src_quad_old.HostRead(), fiss_src_quad_old.Size()) /
-      par_normlinf(fiss_src_quad.HostRead(), fiss_src_quad.Size());
-
+    phi_conv = par_norml2(fiss_src_quad_old)/par_norml2(fiss_src_quad);
     time.stop("phiconv");
 
     if (iter > 0) keff *= fiss_sum / fiss_sum_old;
@@ -695,7 +673,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (restart_out) *keff_ofs << keff << std::endl;
     }
 
-    if ((keff < 0.0) || (keff > 1e10) || std::isnan(keff))
+    if ((keff < 0.0) || (keff > 1e3) || std::isnan(keff))
     {
       if (myid == 0) std::cout << "INVALID VALUE FOR KEFF" << std::endl;
       return;
@@ -774,7 +752,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
         for (int g{0}; g < mat_lib.ngroup(); ++g)
         {
           Vector locvec(dofs.Size());
-          scalar_flux[g]->GetSubVector(dofs, locvec);
+          scalar_flux[g]->GetSubVector(dofs, locvec.HostWrite());
           spectrum[g] = dofval*locvec;
         }
 
@@ -831,7 +809,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
               if (spectrum[gprime] < 0.0)
               {
                 Vector locvec(dofs.Size());
-                scalar_flux[gprime]->GetSubVector(dofs, locvec);
+                scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
                 spectrum[gprime] = dofval*locvec;
               }
               val(g) += scat_dat(gidx)*spectrum[gprime];
@@ -935,7 +913,7 @@ void calc_downscatter_vector(const int g,
         if (gprime >= g) break;
 
         Vector locvec(dofs.Size());
-        scalar_flux[gprime]->GetSubVector(dofs, locvec);
+        scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
         const double flux{dofval*locvec};
 
         val += scat_dat(gidx)*flux;
@@ -1004,8 +982,8 @@ void calc_selfscatter_vector(const int g,
       // this will eventually be temperautre dependent
       const double scat{rec.sigma_s.Elem(g,g)};
       const double tot{rec.sigma_t[g]};
-
-      const double val{scat*scalar_flux.GetValue(e, ip)};
+      const double flux{scalar_flux.GetValue(e, ip)};
+      const double val{scat*flux};
 
       for (int n{0}; n < quad->nd(); ++n)
       {
@@ -1043,14 +1021,15 @@ void calc_scalar_flux_vector(const ParGridFunction &angular_flux,
   const int ndofs{fespace->GetNDofs()};
   const int vdim{quad->nd()};
 
-  scalar_flux = 0.0;
-
   double *sf = scalar_flux.HostWrite();
   const double *af = angular_flux.HostRead();
 
   for (int i{0}; i < ndofs; ++i)
+  {
+    sf[i] = 0.0;
     for (int n{0}; n < quad->nd(); ++n)
       sf[i] += af[n+i*vdim] * quad->weight(n);
+  }
 
   return;
 }
@@ -1103,7 +1082,7 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
         Vector locvec(dofs.Size());
-        scalar_flux[gprime]->GetSubVector(dofs, locvec);
+        scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
         const double flux{dofval*locvec};
         fiss[idx] += nusf[gprime]*flux;
       }
