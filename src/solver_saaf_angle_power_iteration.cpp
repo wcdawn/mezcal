@@ -43,7 +43,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 {
 
   constexpr bool use_gpu{false};
-  constexpr bool use_dsa{false};
+  constexpr bool use_dsa{true};
   constexpr bool use_full_assembly{true};
 
   constexpr bool restart{false};
@@ -510,20 +510,20 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     lf_self_scatter[g]->UseDevice(false);
     lf_dsa[g]->UseDevice(false);
 
-    fiss_upscatter_quad[g].UseDevice(false);
-    saaf_fiss_upscatter_quad[g].UseDevice(false);
+    fiss_upscatter_quad[g].UseDevice(true);
+    saaf_fiss_upscatter_quad[g].UseDevice(true);
   }
 
   dsa_phi_old.UseDevice(false);
-  dnscatter_quad.UseDevice(false);
-  saaf_dnscatter_quad.UseDevice(false);
-  selfscatter_quad.UseDevice(false);
-  saaf_selfscatter_quad.UseDevice(false);
+  dnscatter_quad.UseDevice(true);
+  saaf_dnscatter_quad.UseDevice(true);
+  selfscatter_quad.UseDevice(true);
+  saaf_selfscatter_quad.UseDevice(true);
 
 ////////////////////////////////////////////////////////////////////////////////
 
   QuadratureFunction fiss_src_quad_old{&qspace};
-  fiss_src_quad_old.UseDevice(false);
+  fiss_src_quad_old.UseDevice(true);
   fiss_src_quad_old = 1.0;
   double k_conv{inp.tol.k * 1e1 + 1e-6};
   double phi_conv{inp.tol.phi * 1e1 + 1e-6};
@@ -669,7 +669,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
     time.start("fisssum");
     QuadratureFunction fiss_src_quad{&qspace};
-    fiss_src_quad.UseDevice(false);
+    fiss_src_quad.UseDevice(true);
     calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
     const double fiss_sum{par_sum(fiss_src_quad.HostRead(), fiss_src_quad.Size())};
     time.stop("fisssum");
@@ -873,12 +873,6 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
 
   }
 
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    fiss_upscatter_quad[g].Read();
-    saaf_fiss_upscatter_quad[g].Read();
-  }
-
   return;
 }
 
@@ -969,9 +963,6 @@ void calc_downscatter_vector(const int g,
 
   }
 
-  dnscatter_quad.Read();
-  saaf_dnscatter_quad.Read();
-
   return;
 }
 
@@ -1036,9 +1027,6 @@ void calc_selfscatter_vector(const int g,
     }
   }
 
-  selfscatter_quad.Read();
-  saaf_selfscatter_quad.Read();
-
   return;
 }
 
@@ -1063,9 +1051,6 @@ void calc_scalar_flux_vector(const ParGridFunction &angular_flux,
   for (int i{0}; i < ndofs; ++i)
     for (int n{0}; n < quad->nd(); ++n)
       sf[i] += af[n+i*vdim] * quad->weight(n);
-
-  scalar_flux.Read();
-  angular_flux.Read();
 
   return;
 }
@@ -1127,8 +1112,6 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
     }
 
   }
-
-  fiss_src.Read();
 
   return;
 }
