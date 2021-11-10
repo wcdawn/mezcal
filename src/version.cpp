@@ -13,7 +13,7 @@ void version(std::ostream& os)
  " |_|  |_|______/_____\\_____/_/    \\_\\______|      __..:::::::::::::::..__ \n";
 
   os << logo;
-  os << "         Microreactor eZ CALculation" << "\n";
+  os << "    Microreactor Exascale eZ CALculation " << "\n";
   os << "\n";
 
   os << "git version   = " << Version::git_version   << "\n";
