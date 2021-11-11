@@ -416,7 +416,8 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
                           int numfunctions)
 {
 
-  constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
+  //constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
+  constexpr Operator::Type petsc_format{Operator::PETSC_MATHYPRE};
 
   const PetscParMatrix A{Ahypre, petsc_format};
   const PetscParMatrix M{Mhypre, petsc_format};
@@ -430,7 +431,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   }
   */
 
-  constexpr bool slepc_amgx{true};
+  constexpr bool slepc_amgx{false};
   constexpr bool slepc_ksp{false};
   constexpr bool slepc_hypre{false};
 
