@@ -54,13 +54,15 @@ namespace slepc_hypre
 } // namespace slepc_hypre
 
 mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   const Quadrature* const quad,
-                                   mfem::ParFiniteElementSpace* fespace);
+                                    Timer &time,
+                                    const Material_library &mat_lib,
+                                    const Quadrature* const quad,
+                                    mfem::ParFiniteElementSpace* fespace);
 mfem::HypreParMatrix* saaf_m_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   const Quadrature* const quad,
-                                   mfem::ParFiniteElementSpace* fespace);
+                                    Timer &time,
+                                    const Material_library &mat_lib,
+                                    const Quadrature* const quad,
+                                    mfem::ParFiniteElementSpace* fespace);
 
 void slepc_initialize(const Input& inp);
 void slepc_solver_wrapper(mfem::HypreParMatrix* A, mfem::HypreParMatrix* M, const Input& inp, Timer& time, Result& res, int numfunctions=1);

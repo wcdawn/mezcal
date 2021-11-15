@@ -45,8 +45,12 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
 
   time.start(time.matrix_assembly);
 
-  std::unique_ptr<HypreParMatrix> Ahypre{saaf_a_matrix(inp, mat_lib, quad, fespace)};
-  std::unique_ptr<HypreParMatrix> Mhypre{saaf_m_matrix(inp, mat_lib, quad, fespace)};
+  time.start("Amat");
+  std::unique_ptr<HypreParMatrix> Ahypre{saaf_a_matrix(inp, time, mat_lib, quad, fespace)};
+  time.stop("Amat");
+  time.start("Mmat");
+  std::unique_ptr<HypreParMatrix> Mhypre{saaf_m_matrix(inp, time, mat_lib, quad, fespace)};
+  time.stop("Mmat");
 
   slepc_hypre::inp = &inp;
   slepc_hypre::mat_lib = &mat_lib;
@@ -189,9 +193,10 @@ namespace slepc_hypre
 } // namespace slepc_hypre
 
 mfem::HypreParMatrix* saaf_a_matrix(const Input &inp, 
-                                   const Material_library &mat_lib,
-                                   const Quadrature* const quad,
-                                   ParFiniteElementSpace* fespace)
+                                    Timer &time,
+                                    const Material_library &mat_lib,
+                                    const Quadrature* const quad,
+                                    ParFiniteElementSpace* fespace)
 {
 
   const ParMesh* pmesh{fespace->GetParMesh()};
@@ -288,14 +293,23 @@ mfem::HypreParMatrix* saaf_a_matrix(const Input &inp,
     new TransposeIntegrator{
     new VectorConvectionIntegrator{scattering_saaf_func}});
 
+  time.start("a_assemble");
   sink_bilinear.Assemble(skip_zeros);
-  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
+  time.stop("a_assemble");
 
-  return sink_bilinear.ParallelAssemble();
+  time.start("a_finalize");
+  sink_bilinear.Finalize(skip_zeros); // no essential boundary conditions (maybe)
+  time.stop("a_finalize");
+
+  time.start("a_parallel_assemble");
+  HypreParMatrix *A = sink_bilinear.ParallelAssemble();
+  time.stop("a_parallel_assemble");
+  return A;
 
 }
 
-HypreParMatrix* saaf_m_matrix(const Input &inp, 
+HypreParMatrix* saaf_m_matrix(const Input &inp,
+                              Timer &time,
                               const Material_library &mat_lib,
                               const Quadrature* const quad,
                               ParFiniteElementSpace* fespace)
@@ -354,10 +368,18 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
     new TransposeIntegrator{
     new VectorConvectionIntegrator{fiss_saaf_func}});
 
+  time.start("m_assemble");
   fiss_bilinear.Assemble(skip_zeros);
-  fiss_bilinear.Finalize(skip_zeros);
+  time.stop("m_assemble");
 
-  return fiss_bilinear.ParallelAssemble();
+  time.start("m_finalize");
+  fiss_bilinear.Finalize(skip_zeros);
+  time.stop("m_finalize");
+
+  time.start("m_parallel_assemble");
+  HypreParMatrix *M = fiss_bilinear.ParallelAssemble();
+  time.stop("m_parallel_assemble");
+  return M;
 
 }
 
@@ -422,7 +444,8 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
   const PetscParMatrix A{Ahypre, petsc_format};
   const PetscParMatrix M{Mhypre, petsc_format};
 
-  /* This seems incompatible with the GMRES setup...
+  /*
+  // This seems incompatible with the GMRES setup...
   if (numfunctions > 1)
   {
     PetscErrorCode ierr;
