@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
 
   const bool isPUMI{std::string(inp.mesh_file).compare(std::string(inp.mesh_file).size()-4, 4, ".smb") == 0};
 
-  apf::Mesh2 *pumi_mesh{nullptr};
+  std::unique_ptr<apf::Mesh2> pumi_mesh;
   if (isPUMI)
   {
     PCU_Comm_Init();
@@ -129,7 +129,7 @@ int main(int argc, char* argv[])
     gmi_register_null();
 
     const char* model_file = ".null";
-    pumi_mesh = apf::loadMdsMesh(model_file, inp.mesh_file);
+    pumi_mesh.reset(apf::loadMdsMesh(model_file, inp.mesh_file));
     pumi_mesh->verify();
   }
 
@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
   }
   else if (isPUMI)
   {
-    pmesh = std::make_unique<ParPumiMesh>(MPI_COMM_WORLD, pumi_mesh);
+    pmesh = std::make_unique<ParPumiMesh>(MPI_COMM_WORLD, pumi_mesh.get());
   }
   else
   {
@@ -618,7 +618,7 @@ int main(int argc, char* argv[])
   if (isPUMI)
   {
     pumi_mesh->destroyNative();
-    apf::destroyMesh(pumi_mesh);
+    apf::destroyMesh(pumi_mesh.get());
     PCU_Comm_Free();
   }
 
