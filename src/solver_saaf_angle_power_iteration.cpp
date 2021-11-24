@@ -24,6 +24,18 @@ namespace
   }
 }
 
+template<class T> char * as_bytes(T &i)
+{
+  void *addr = &i;
+  return static_cast<char*>(addr);
+}
+
+template<class T> const char * as_bytes(const T &i)
+{
+  const void *addr = &i;
+  return static_cast<const char*>(addr);
+}
+
 void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Timer& time,
                                 Input& inp,
@@ -37,10 +49,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   constexpr bool use_gpu{false};
   constexpr bool use_dsa{true};
-  constexpr bool use_full_assembly{true};
+  constexpr bool use_full_assembly{false};
 
   constexpr bool restart{false};
-  constexpr bool restart_out{false};
+  constexpr bool restart_out{true};
 
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
   const int myid{scalar_flux_fespace->GetMyRank()};
@@ -51,14 +63,21 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      angular_flux[g].reset();
-      const std::string fname{MakeParFilename(inp.input_file_stub() + "_g" + std::to_string(g) + "_restart", myid, ".sol")};
-      std::ifstream ifs{fname};
-      angular_flux[g] = std::make_unique<ParGridFunction>(pmesh, ifs);
+      std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
+      sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", inp.input_file_stub().c_str(), g, myid);
+
+      std::ifstream ifs{fname.get(), std::ios_base::binary};
+      int af_size;
+      ifs.read(as_bytes(af_size), sizeof(int));
+      MFEM_VERIFY(af_size == angular_flux[g]->Size(), "inconsistent restart size");
+      double *af = angular_flux[g]->HostWrite();
+      for (int i{0}; i < angular_flux[g]->Size(); ++i)
+        ifs.read(as_bytes(af[i]), sizeof(double));
+
       calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]);
     }
 
-    const std::string keff_fname{inp.input_file_stub() + "_keff_restart.out"};
+    const std::string keff_fname{inp.input_file_stub() + "_restart_keff.out"};
     std::ifstream keff_ifs{keff_fname};
     while (keff_ifs.good())
       keff_ifs >> keff;
@@ -528,7 +547,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::unique_ptr<std::ofstream> keff_ofs;
   if (restart_out)
   {
-    const std::string keff_fname{inp.input_file_stub() + "_keff_restart.out"};
+    const std::string keff_fname{inp.input_file_stub() + "_restart_keff.out"};
     keff_ofs = std::make_unique<std::ofstream>(keff_fname);
     *keff_ofs << std::setprecision(20);
   }
@@ -638,9 +657,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (restart_out)
       {
         time.start("restart_out");
-        const std::string fname{MakeParFilename(inp.input_file_stub() + "_g" + std::to_string(g) + "_restart", myid, ".sol")};
-        std::ofstream ofs{fname};
-        angular_flux[g]->Save(ofs);
+        std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
+        sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", inp.input_file_stub().c_str(), g, myid);
+
+        const int size = angular_flux[g]->Size();
+        std::ofstream ofs{fname.get(), std::ios_base::binary};
+        ofs.write(as_bytes(size), sizeof(int));
+        const double *af = angular_flux[g]->HostRead();
+        for (int i{0}; i < size; ++i)
+          ofs.write(as_bytes(af[i]), sizeof(double));
+
         time.stop("restart_out");
       }
 
