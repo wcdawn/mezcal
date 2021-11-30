@@ -39,7 +39,7 @@ void version(std::ostream& os); // forward declaration
 int main(int argc, char* argv[])
 {
 
-  constexpr bool restart{false};
+  constexpr bool restart{true};
   constexpr bool restart_out{false};
 
   Timer time;
@@ -139,7 +139,7 @@ int main(int argc, char* argv[])
   std::unique_ptr<ParMesh> pmesh;
   if (restart)
   {
-    const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".mesh")};
+    const std::string fname{MakeParFilename(std::string(inp.mesh_file) + ".", myid)};
     std::ifstream ifs{fname};
     MFEM_VERIFY(ifs.good(), "Restart mesh file " << fname << " not found.");
     pmesh = std::make_unique<ParMesh>(MPI_COMM_WORLD, ifs);
@@ -175,8 +175,6 @@ int main(int argc, char* argv[])
   //    Lagrange finite elements of the specified order. If order < 1, we
   //    instead use an isoparametric/isogeometric space.
   FiniteElementCollection* fec{nullptr};
-  // only worry about FEC if this is not a restart problem
-  // for restart problems, FEC is created and owned by PGF
   if (inp.order > 0)
   {
     fec = new H1_FECollection(inp.order, dim);
@@ -609,7 +607,7 @@ int main(int argc, char* argv[])
 
   //total_xs_plot(&pmesh, mat_lib, inp.input_file_stub()+"_total_xs");
 
-  if (myid == 0) time.Print(cout);
+  if (myid == 0) time.Print(std::cout);
 
   // 15. Free the used memory.
 
