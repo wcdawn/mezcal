@@ -19,17 +19,25 @@ struct Tolerance_control
   double phi{1e-5};
 
   int max_inner{1000};
-  double inner_rel{1e-8};
-  double inner_abs{1e-10};
+  double inner_rel{1e-7};
+  double inner_abs{1e-8};
 
-  int max_scatter{500};
+  int max_scatter{100};
   double scatter{1e-6};
+  bool use_dsa{true};
 
   int temp_max_outer{100};
   double temp{1.0};
   int temp_max_inner{1000};
   double temp_inner_rel{1e-6};
   double temp_inner_abs{1e-6};
+};
+
+struct Restart_control
+{
+  bool flux{false}; // run a restart problem in solver_saaf_angle_power_iteration
+  bool out{true}; // write restart files in solver_saaf_angle_power_iteration
+  bool mesh{false}; // use a restart (pre-partitioned) mesh
 };
 
 struct Input
@@ -102,6 +110,8 @@ public:
 
   // STATE
   Tolerance_control tol;
+  Restart_control restart;
+  bool use_full_assembly{false};
   const char* solver{"lobpcg"};
   bool flux_free_chi{false};
   int spn{1};

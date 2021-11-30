@@ -39,9 +39,6 @@ void version(std::ostream& os); // forward declaration
 int main(int argc, char* argv[])
 {
 
-  constexpr bool restart{true};
-  constexpr bool restart_out{false};
-
   Timer time;
 
   // Initialize MPI
@@ -119,6 +116,7 @@ int main(int argc, char* argv[])
 
   time.start("Mesh processing");
 
+  // check file extension to determine if this is a PUMI mesh
   const bool isPUMI{std::string(inp.mesh_file).compare(std::string(inp.mesh_file).size()-4, 4, ".smb") == 0};
 
   std::unique_ptr<apf::Mesh2> pumi_mesh;
@@ -137,7 +135,7 @@ int main(int argc, char* argv[])
   //    quadrilateral, tetrahedral, hexahedral, surface and volume meshes with
   //    the same code.
   std::unique_ptr<ParMesh> pmesh;
-  if (restart)
+  if (inp.restart.mesh)
   {
     const std::string fname{MakeParFilename(std::string(inp.mesh_file) + ".", myid)};
     std::ifstream ifs{fname};
@@ -157,16 +155,9 @@ int main(int argc, char* argv[])
 
     // create a parallel mesh and refine as necessary
     pmesh = std::make_unique<ParMesh>(MPI_COMM_WORLD, mesh);
-    for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh->UniformRefinement();
-
-    if (restart_out)
-    {
-      const std::string fname{MakeParFilename(inp.input_file_stub() + "_restart", myid, ".mesh")};
-      std::ofstream ofs{fname};
-      pmesh->ParPrint(ofs);
-    }
   }
 
+  for (int lvl{0}; lvl < inp.refine_parallel; ++lvl) pmesh->UniformRefinement();
   const int dim = pmesh->SpaceDimension();
 
   time.stop();

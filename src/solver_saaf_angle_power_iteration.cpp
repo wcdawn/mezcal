@@ -47,18 +47,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                                 ParGridFunction &temperature)
 {
 
-  constexpr bool use_gpu{false};
-  constexpr bool use_dsa{true};
-  constexpr bool use_full_assembly{false};
-
-  constexpr bool restart{false};
-  constexpr bool restart_out{true};
-
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
   const int myid{scalar_flux_fespace->GetMyRank()};
   ParMesh *pmesh = scalar_flux_fespace->GetParMesh();
 
-  if (restart)
+  if (inp.restart.flux)
   {
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -330,6 +323,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   } // streaming+collision
 
+  if (inp.tol.use_dsa)
   { // DSA operator
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -357,7 +351,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       d.Finalize(skip_zeros);
       Dmat[g].reset(d.ParallelAssemble());
 
-      if (use_gpu)
+      if (linear_solver == LINEAR_SOLVER::amgx)
       {
 
 #ifdef AMGX_AVAILABLE
@@ -460,7 +454,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
     lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
-    if (use_full_assembly)
+    if (inp.use_full_assembly)
     {
       MFEM_VERIFY(reflective_condition.Max() == 0,
         "VectorBoundaryFlowIntegrator (required for reflective bcs) is "
@@ -483,7 +477,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     scalar_flux_func.emplace_back(scalar_flux[g].get());
 
-  ParGridFunction dsa_phi_old{scalar_flux_fespace};    // (k)
+  ParGridFunction dsa_phi_old{scalar_flux_fespace}; // (k)
   GridFunctionCoefficient dsa_phi_old_func{&dsa_phi_old};
 
   std::vector<SumCoefficient> dsa_flux_func;
@@ -507,11 +501,14 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     dsa_src.emplace_back(self_scatter_func[g], dsa_flux_func[g]);
 
   std::vector<std::unique_ptr<ParLinearForm>> lf_dsa(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  if (inp.tol.use_dsa)
   {
-    lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
-    lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
-    if (use_full_assembly) lf_dsa[g]->SetAssemblyLevel(LinearAssemblyLevel::FULL);
+    for (int g{0}; g < mat_lib.ngroup(); ++g)
+    {
+      lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
+      lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
+      if (inp.use_full_assembly) lf_dsa[g]->SetAssemblyLevel(LinearAssemblyLevel::FULL);
+    }
   }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -521,7 +518,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     angular_flux[g]->UseDevice(true);
     scalar_flux[g]->UseDevice(true);
     lf_self_scatter[g]->UseDevice(true);
-    lf_dsa[g]->UseDevice(true);
+    if (inp.tol.use_dsa) lf_dsa[g]->UseDevice(true);
 
     fiss_upscatter_quad[g].UseDevice(true);
     saaf_fiss_upscatter_quad[g].UseDevice(true);
@@ -545,7 +542,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   int solve_counter{0};
 
   std::unique_ptr<std::ofstream> keff_ofs;
-  if (restart_out)
+  if (inp.restart.out)
   {
     const std::string keff_fname{inp.input_file_stub() + "_restart_keff.out"};
     keff_ofs = std::make_unique<std::ofstream>(keff_fname);
@@ -616,7 +613,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]); // (k+1/2)
         time.start("scalar_flux");
 
-        if (use_dsa)
+        if (inp.tol.use_dsa)
         {
 
           ParGridFunction pgf_dphi{*scalar_flux[g]};
@@ -654,7 +651,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
       } // scattering_iter
 
-      if (restart_out)
+      if (inp.restart.out)
       {
         time.start("restart_out");
         std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
@@ -696,7 +693,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                 << " dk=" << k_conv
                 << " dphi=" << phi_conv
                 << std::endl;
-      if (restart_out) *keff_ofs << keff << std::endl;
+      if (inp.restart.out) *keff_ofs << keff << std::endl;
     }
 
     if ((keff < 0.0) || (keff > 1e3) || std::isnan(keff))

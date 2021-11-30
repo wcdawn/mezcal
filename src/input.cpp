@@ -48,6 +48,15 @@ void Input::read_core()
       mesh_file_str = stub + mesh_file_str;
       mesh_file     = mesh_file_str.c_str();
     }
+    else if (card == "restart_mesh")
+    {
+      restart.mesh = read_bool(ifs);
+    }
+    else if (card == "use_full_assembly")
+    { 
+      // tensor assembly of ParLinearForm in solver_saaf_angle_power_iteration
+      use_full_assembly = read_bool(ifs);
+    }
     else if (card == "boundary_conditions")
     {
       read_vector(ifs, boundary_conditions);
@@ -208,11 +217,23 @@ void Input::read_state()
     {
       ifs >> tol.scatter;
     }
+    else if (card == "use_dsa")
+    {
+      tol.use_dsa = read_bool(ifs);
+    }
     else if (card == "solver")
     {
       ifs >> solver_str;
       sol    = solver_choice_str_to_enum(solver_str);
       solver = solver_str.c_str();
+    }
+    else if (card == "restart_out")
+    {
+      restart.out = read_bool(ifs);
+    }
+    else if (card == "restart_flux")
+    {
+      restart.flux = read_bool(ifs);
     }
     else if (card == "flux_free_chi")
     {
