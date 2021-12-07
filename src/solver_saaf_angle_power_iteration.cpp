@@ -132,12 +132,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   // transport streaming+collision operator
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
-  std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(mat_lib.ngroup()); // could be HypreSolver
+  std::vector<std::unique_ptr<HypreSolver>> Aprec(mat_lib.ngroup());
   std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
 
   // dsa streaming+removal operator
   std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
-  std::vector<std::unique_ptr<HypreBoomerAMG>> Dprec(mat_lib.ngroup()); // could be HypreSolver
+  std::vector<std::unique_ptr<HypreSolver>> Dprec(mat_lib.ngroup());
   std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
 
   time.start(time.matrix_assembly);
@@ -202,10 +202,12 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           break;
         default:
         {
-          std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-          amg->SetPrintLevel(1);
-          HYPRE_BoomerAMGSetNumFunctions(*amg, quad->nd());
-          Aprec[g] = std::move(amg);
+
+          std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
+          prec->SetPrintLevel(1);
+          HYPRE_BoomerAMGSetNumFunctions(*prec, quad->nd());
+
+          Aprec[g] = std::move(prec);
         }
       }
 
@@ -382,9 +384,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        std::unique_ptr<HypreBoomerAMG> amg{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
-        amg->SetPrintLevel(0);
-        Dprec[g] = std::move(amg);
+        std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
+        prec->SetPrintLevel(0);
+
+        Dprec[g] = std::move(prec);
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
         this_sol->SetPreconditioner(*Dprec[g]);
@@ -572,6 +575,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
+
+      if (myid == 0) std::cout << "BEGIN_GROUP " << g << std::endl;
 
       time.start("calc_downscatter_vector");
       calc_downscatter_vector(g, scalar_flux, mat_lib, quad,
