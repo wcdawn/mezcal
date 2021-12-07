@@ -20,9 +20,9 @@ public:
   Timer() = default;
 
   void start(const std::string& time_name);
-  //void restart(const std::string& time_name);
   void stop(const std::string& time_name);
   void stop();
+  double elapsed(); // return elapsed time in seconds
 
   void Print(std::ostream& os = std::cout);
 

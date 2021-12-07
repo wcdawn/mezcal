@@ -82,12 +82,8 @@ void Timer::Print(std::ostream& os)
      << '\n';
 }
 
-/*
-std::vector<Timer::Time_record>::iterator
-Timer::find_record(const std::string& time_name)
+double Timer::elapsed()
 {
-  return std::find_if(
-  times.begin(), times.end(),
-  [&time_name](const Time_record& tr) { return tr.name() == time_name; });
+  const double seconds{std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - init_clock).count() / 1e3};
+  return seconds;
 }
-*/

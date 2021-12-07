@@ -38,6 +38,7 @@ struct Restart_control
   bool flux{false}; // run a restart problem in solver_saaf_angle_power_iteration
   bool out{true}; // write restart files in solver_saaf_angle_power_iteration
   bool mesh{false}; // use a restart (pre-partitioned) mesh
+  double runtime{0.0}; // permitted runtime (in minutes) before the restart files are written and cleanup performed
 };
 
 struct Input

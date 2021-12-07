@@ -656,20 +656,25 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
       } // scattering_iter
 
-      if (inp.restart.out)
+      // check the clock and decide if we should cleanup
+      if ((inp.restart.out) && (time.elapsed()/60. > inp.restart.runtime))
       {
         time.start("restart_out");
         std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
-        sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", inp.input_file_stub().c_str(), g, myid);
+        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
+        {
+          sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", inp.input_file_stub().c_str(), gprime, myid);
 
-        const int size = angular_flux[g]->Size();
-        std::ofstream ofs{fname.get(), std::ios_base::binary};
-        ofs.write(as_bytes(size), sizeof(int));
-        const double *af = angular_flux[g]->HostRead();
-        for (int i{0}; i < size; ++i)
-          ofs.write(as_bytes(af[i]), sizeof(double));
+          const int size = angular_flux[gprime]->Size();
+          std::ofstream ofs{fname.get(), std::ios_base::binary};
+          ofs.write(as_bytes(size), sizeof(int));
+          const double *af = angular_flux[gprime]->HostRead();
+          for (int i{0}; i < size; ++i)
+            ofs.write(as_bytes(af[i]), sizeof(double));
+        }
 
         time.stop("restart_out");
+        return; // leave here and cleanup
       }
 
     } // ngroup

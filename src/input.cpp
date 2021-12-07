@@ -235,6 +235,10 @@ void Input::read_state()
     {
       restart.flux = read_bool(ifs);
     }
+    else if (card == "restart_runtime")
+    {
+      ifs >> restart.runtime;
+    }
     else if (card == "flux_free_chi")
     {
       flux_free_chi = read_bool(ifs);
