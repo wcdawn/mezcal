@@ -41,16 +41,16 @@ H5_DIR = /usr/lib
 
 MPI_LIB = -L/usr/lib/openmpi -lmpi -lmpi_cxx
 
-MICROREACTOR_DIR = /home/wcdawn/projects/container
+MICROREACTOR_DIR = /home/wcdawn/work/microreactor
 MFEM_DIR = $(MICROREACTOR_DIR)/mfem
 HYPRE_DIR = $(MICROREACTOR_DIR)/hypre/src/hypre
-METIS_DIR = $(MICROREACTOR_DIR)/parmetis-4.0.3/metis
+METIS_DIR = $(MICROREACTOR_DIR)/metis
 
-METIS_LIB = $(METIS_DIR)/../build/Linux-x86_64/libparmetis/libmetis.a
+METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 CUDA_DIR = /opt/cuda
-PETSC_DIR = /home/wcdawn/projects/container/petsc/arch-linux-c-opt
-SLEPC_DIR = /home/wcdawn/projects/container/slepc/arch-linux-c-opt
+PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
+SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
 CUDA_ARCH = -arch=sm_75
 
 CXXFLAGS += -DAMGX_AVAILABLE
@@ -58,8 +58,6 @@ CXXFLAGS += -DAMGX_AVAILABLE
 AMGX_DIR = /home/wcdawn/projects/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR  = $(AMGX_DIR)/base/include
-
-PUMI_DIR = /home/wcdawn/projects/container/core
 
 else ifeq ($(MACH),LASSEN)
 
@@ -90,19 +88,6 @@ AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
 
 PUMI_DIR = $(WORKSPACE)/core
-
-else
-
-$(error Invalid MACH)
-
-endif
-
-ifeq ($(METHOD), dbg)
-CXXFLAGS += -O0 -g
-else
-CXXFLAGS += -O3
-endif
-
 PUMI_INCLUDE = -I$(PUMI_DIR)/pumi \
 			   -I$(PUMI_DIR)/apf \
 			   -I$(PUMI_DIR)/can \
@@ -126,7 +111,19 @@ PUMI_LIB = -L$(PUMI_DIR)/build/pumi -lpumi \
 		   -L$(PUMI_DIR)/build/apf_zoltan -lzoltan \
 		   -L$(PUMI_DIR)/build/spr -lspr \
 		   -L$(PUMI_DIR)/../zoltan/build/src -lzoltan \
-		   -L$(PUMI_DIR)/../parmetis-4.0.3/build/Linux-x86_64/libparmetis -lparmetis -lmetis
+		   -L$(PUMI_DIR)/../parmetis-4.0.3/build/Linux-ppc64le/libparmetis -lparmetis -lmetis
+
+else
+
+$(error Invalid MACH)
+
+endif
+
+ifeq ($(METHOD), dbg)
+CXXFLAGS += -O0 -g
+else
+CXXFLAGS += -O3
+endif
 
 MPICXXFLAGS = $(CXXFLAGS)
 

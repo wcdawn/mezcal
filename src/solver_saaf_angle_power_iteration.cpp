@@ -659,7 +659,6 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       // check the clock and decide if we should cleanup
       if ((inp.restart.out) && (time.elapsed()/60. > inp.restart.runtime))
       {
-        if (myid == 0) std::cout << "RESTART_CLEANUP" << std::endl;
         time.start("restart_out");
         std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
         for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
