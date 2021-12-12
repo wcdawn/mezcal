@@ -1,6 +1,7 @@
 [CORE]
 mesh_file wagner_poison_pin.mesh
 boundary_conditions 0 0 0 0
+#boundary_conditions 1 1 1 1
 
 userxs wagner_poison_pin.xs
 
@@ -9,6 +10,22 @@ name M1 M1 1.0
 name M2 M2 1.0
 
 [STATE]
-# default options
-solver slepc_vector
-spn 1
+
+solver power_iteration
+spn 3
+
+solver saaf_angle_power_iteration
+quadrature level_symmetric
+quad_order 8
+
+k_tol 1e-10
+phi_tol 1e-9
+max_outer 100
+
+linear_solver hypre_pcg
+inner_abs_tol 1e-11
+inner_rel_tol 1e-11
+max_inner 1000
+
+scatter_tol 1e-10
+max_scatter 30

@@ -1,5 +1,8 @@
 [CORE]
+
 mesh_file bwr.mesh
+
+#boundary_conditions 1 1 1 1
 boundary_conditions 0 0 0 0
 
 userxs bwr.xs
@@ -15,16 +18,21 @@ name C20 C20 1.0
 
 [STATE]
 
+
+#solver power_iteration
+#spn 7
+
 #solver saaf_power_iteration
 solver saaf_angle_power_iteration
-#solver saaf_angle_jacobi_power_iteration
-#solver saaf_angle_nda_slepc
 quadrature level_symmetric
 quad_order 4
 
-inner_abs_tol 0.0
-#inner_rel_tol 1e-6
+linear_solver hypre_pcg
+inner_abs_tol 1e-10
+inner_rel_tol 1e-7
 k_tol 1e-6
-phi_tol 1e-6
+phi_tol 1e-5
+scatter_tol 1e-4
+max_scatter 10
 
-max_outer 100
+max_outer 20
