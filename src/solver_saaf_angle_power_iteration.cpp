@@ -423,14 +423,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   QuadratureFunction selfscatter_quad{&qspace, quad->nd()};
   QuadratureFunction saaf_selfscatter_quad{&qspace, quad->dim()*quad->nd()};
 
-  std::vector<VectorQuadratureFunctionCoefficient> src_quad_func, saaf_src_quad_func;
-  src_quad_func.reserve(mat_lib.ngroup());
-  saaf_src_quad_func.reserve(mat_lib.ngroup());
-  for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    src_quad_func.emplace_back(selfscatter_quad);
-    saaf_src_quad_func.emplace_back(saaf_selfscatter_quad);
-  }
+  VectorQuadratureFunctionCoefficient src_quad_func{selfscatter_quad}, saaf_src_quad_func{saaf_selfscatter_quad};
 
   std::vector<VectorIncomingFluxCoefficient> vector_incoming_flux_coeff;
   vector_incoming_flux_coeff.reserve(mat_lib.ngroup());
@@ -455,8 +448,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
     lf_self_scatter[g] = std::make_unique<ParLinearForm>(angular_flux_fespace);
-    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func[g]});
-    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func[g]});
+    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFIntegrator{src_quad_func});
+    lf_self_scatter[g]->AddDomainIntegrator(new VectorDomainLFGradIntegrator{saaf_src_quad_func});
     if (inp.use_full_assembly)
     {
       MFEM_VERIFY(reflective_condition.Max() == 0,
