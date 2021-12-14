@@ -103,12 +103,15 @@ int main(int argc, char* argv[])
   XSLibrary xs;
   switch (inp.xs_format)
   {
-    case (XSLibrary::userxs): xs.read_userxs(inp.xs_file); break;
+    case (XSLibrary::userxs):
+      xs.read_userxs(inp.xs_file);
+      break;
     case (XSLibrary::hdf5xs):
       xs.read_hdf5xs(inp.xs_file, inp.hdf5xs_lib_name);
       break;
     default: cerr << "Invalid xs format" << endl; return 1;
   }
+  xs.calc_tcp0();
 
   // core block is finished, you can read the material block
   Material_library mat_lib{xs};

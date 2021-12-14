@@ -56,6 +56,7 @@ public:
   void read_hdf5xs(const std::string& fname, const std::string& lib_name);
 
   void Print(std::ostream& os);
+  void calc_tcp0();
 
   class Invalid_input_card : std::exception
   {

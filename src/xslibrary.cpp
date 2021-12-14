@@ -481,3 +481,18 @@ void XSLibrary::initialize_records()
   rec.reserve(N);
   for (int i{0}; i < N; ++i) rec.push_back(XSRecord(G));
 }
+
+void XSLibrary::calc_tcp0()
+{
+  for (int n{0}; n < N; ++n)
+  {
+    XSRecord &record{rec[n]};
+    for (int g{0}; g < G; ++g)
+    {
+      double sigma_s_hat = record.sigma_s.Elem(g,g) + 
+        (record.sigma_tr[g] - record.sigma_t[g]);
+      record.sigma_s.Elem(g,g) = sigma_s_hat;
+    }
+  }
+  return;
+}
