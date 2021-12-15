@@ -493,6 +493,10 @@ void XSLibrary::calc_tcp0()
         (record.sigma_tr[g] - record.sigma_t[g]);
       record.sigma_s.Elem(g,g) = sigma_s_hat;
     }
+    // really just need
+    // sigma_t=sigma_tr
+    // but store the old total xs in the transport xs array in case we want it later
+    std::swap(record.sigma_t, record.sigma_tr);
   }
   return;
 }
