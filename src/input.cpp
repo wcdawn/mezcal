@@ -288,6 +288,10 @@ void Input::read_state()
     {
       ifs >> str_linear_solver;
     }
+    else if (card == "linear_preconditioner")
+    {
+      ifs >> str_linear_preconditioner;
+    }
     else if (card == "[STATE]")
     {
       // prepare to head into another state block

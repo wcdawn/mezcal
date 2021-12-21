@@ -130,6 +130,25 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     linear_solver = LINEAR_SOLVER::hypre_pcg;
   }
 
+  enum class LINEAR_PRECONDITIONER
+  {
+    invalid=-1,
+    amg,
+    jacobi
+  };
+  LINEAR_PRECONDITIONER linear_preconditioner{LINEAR_PRECONDITIONER::invalid};
+  const std::string inp_linear_preconditioner{inp.get_linear_preconditioner()};
+  if (inp_linear_preconditioner == "amg")
+    linear_preconditioner = LINEAR_PRECONDITIONER::amg;
+  else if (inp_linear_preconditioner == "jacobi")
+    linear_preconditioner = LINEAR_PRECONDITIONER::jacobi;
+  else
+  {
+    if (myid == 0) std::cout << "WARNING: unknown (or no) linear preconditioner specified = *" << inp_linear_preconditioner << "*" << std::endl;
+    if (myid == 0) std::cout << "Using default (amg) linear preconditioner." << std::endl;
+    linear_preconditioner = LINEAR_PRECONDITIONER::amg;
+  }
+
   // transport streaming+collision operator
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
   std::vector<std::unique_ptr<HypreSolver>> Aprec(mat_lib.ngroup());
@@ -195,23 +214,32 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       Amat[g].reset(a.ParallelAssemble());
 
       // precconditioner
-      // everything uses HypreBoomerAMG except for amgx
-      switch (linear_solver)
+      // everything uses a hypre preconditioenr except for amgx
+      if (linear_solver != LINEAR_SOLVER::amgx)
       {
-        case (LINEAR_SOLVER::amgx):
-          break;
-        default:
+        switch (linear_preconditioner)
         {
-
-          std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-          prec->SetPrintLevel(1);
-          HYPRE_BoomerAMGSetNumFunctions(*prec, quad->nd());
-
-          Aprec[g] = std::move(prec);
+          case (LINEAR_PRECONDITIONER::amg):
+          {
+            std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
+            prec->SetPrintLevel(1);
+            HYPRE_BoomerAMGSetNumFunctions(*prec, quad->nd());
+            Aprec[g] = std::move(prec);
+            break;
+          }
+          case (LINEAR_PRECONDITIONER::jacobi):
+          {
+            std::unique_ptr<HypreDiagScale> prec{std::make_unique<HypreDiagScale>(*Amat[g])};
+            Aprec[g] = std::move(prec);
+            break;
+          }
+          default:
+            if (myid == 0) std::cout << "invalid linear preconditioner" << std::endl;
+            return;
         }
       }
 
-      // solver
+      // tolver
       switch (linear_solver)
       {
         case (LINEAR_SOLVER::amgx):
@@ -384,10 +412,25 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       else
       {
 
-        std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
-        prec->SetPrintLevel(0);
-
-        Dprec[g] = std::move(prec);
+        switch (linear_preconditioner)
+        {
+          case (LINEAR_PRECONDITIONER::amg):
+          {
+            std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
+            prec->SetPrintLevel(0);
+            Dprec[g] = std::move(prec);
+            break;
+          }
+          case (LINEAR_PRECONDITIONER::jacobi):
+          {
+            std::unique_ptr<HypreDiagScale> prec{std::make_unique<HypreDiagScale>(*Dmat[g])};
+            Dprec[g] = std::move(prec);
+            break;
+          }
+          default:
+            if (myid == 0) std::cout << "invalid linear preconditioner" << std::endl;
+            return;
+        }
 
         std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
         this_sol->SetPreconditioner(*Dprec[g]);
