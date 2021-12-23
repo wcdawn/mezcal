@@ -449,7 +449,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   time.stop(time.matrix_assembly);
 
   const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
-  QuadratureSpace qspace{scalar_flux_fespace->GetParMesh(), integration_order};
+  QuadratureSpace qspace{pmesh, integration_order};
 
   std::vector<QuadratureFunction> fiss_upscatter_quad, saaf_fiss_upscatter_quad;
   fiss_upscatter_quad.reserve(mat_lib.ngroup());
@@ -749,7 +749,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (inp.restart.out) *keff_ofs << keff << std::endl;
     }
 
-    if ((keff < 0.0) || (keff > 1e3) || std::isnan(keff))
+    if ((keff < 0.0) || (keff > 20.0) || std::isnan(keff))
     {
       if (myid == 0) std::cout << "INVALID VALUE FOR KEFF" << std::endl;
       return;
@@ -861,7 +861,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
           fiss_sum += nusf[gprime]*spectrum[gprime];
 
         for (int g{0}; g < mat_lib.ngroup(); ++g)
-          val(g) += chi[g]*fiss_sum;
+          val(g) = chi[g]*fiss_sum;
 
         val /= keff;
 

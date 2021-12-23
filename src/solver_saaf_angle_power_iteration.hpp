@@ -50,7 +50,7 @@ void calc_scalar_flux_vector(const mfem::ParGridFunction &angular_flux,
 
 /* 
  * WARNING
- * This is duplicated in solver.[ch]pp.
+ * This is *NO LONGER A DUPLICATE* of the function of the same name from in solver.[ch]pp.
  * WARNING
  */
 static void calc_fiss_src(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux, 
