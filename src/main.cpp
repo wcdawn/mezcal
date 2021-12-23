@@ -206,6 +206,7 @@ int main(int argc, char* argv[])
     (inp.sol == Solver_choice::sfent_power_iteration) ||
     (inp.sol == Solver_choice::saaf_power_iteration) ||
     (inp.sol == Solver_choice::saaf_angle_power_iteration) ||
+    (inp.sol == Solver_choice::saaf_efficient_power_iteration) ||
     (inp.sol == Solver_choice::saaf_angle_nda_slepc) ||
     (inp.sol == Solver_choice::saaf_angle_jacobi_power_iteration) ||
     (inp.sol == Solver_choice::saaf_slepc_vector) ||
@@ -304,6 +305,7 @@ int main(int argc, char* argv[])
       dof *= mat_lib.ngroup();
       break;
     case (Solver_choice::saaf_power_iteration):
+    case (Solver_choice::saaf_efficient_power_iteration):
     case (Solver_choice::sfent_power_iteration):
     case (Solver_choice::epdo_power_iteration):
       dof *= mat_lib.ngroup()*quad->nd();
@@ -352,6 +354,7 @@ int main(int argc, char* argv[])
       moment_angle_length = 1;
       break;
     case (Solver_choice::saaf_power_iteration):
+    case (Solver_choice::saaf_efficient_power_iteration):
     case (Solver_choice::sfent_power_iteration):
     case (Solver_choice::epdo_power_iteration):
       moment_angle_length = quad->nd();
@@ -434,6 +437,10 @@ int main(int argc, char* argv[])
           break;
         case (Solver_choice::saaf_angle_power_iteration):
           saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
+          res.keff = scalar_flux.keff;
+          break;
+        case (Solver_choice::saaf_efficient_power_iteration):
+          saaf_efficient_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff);
           res.keff = scalar_flux.keff;
           break;
         case (Solver_choice::saaf_angle_jacobi_power_iteration):

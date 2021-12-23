@@ -413,4 +413,47 @@ void calc_current_vector_vector(const mfem::ParGridFunction &angular_flux,
                                 const Quadrature * const quad,
                                 mfem::ParGridFunction &current);
 
+/******************************************************************************/
+
+void saaf_efficient_power_iteration(const Quadrature * const quad,
+                                    Timer &time,
+                                    Input &inp,
+                                    const Material_library &mat_lib,
+                                    std::vector<std::unique_ptr<mfem::ParGridFunction>> &angular_flux,
+                                    std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+                                    double &keff);
+
+void calc_fiss_upscatter_efficient(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+                                   const Material_library &mat_lib,
+                                   const Quadrature * const quad,
+                                   std::vector<mfem::QuadratureFunction> &fiss_upscatter_quad,
+                                   std::vector<mfem::QuadratureFunction> &saaf_fiss_upscatter_quad,
+                                   const double keff,
+                                   const bool flux_free_chi=false);
+
+void calc_downscatter_efficient(const int g,
+                                const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                mfem::QuadratureFunction &dnscatter_quad,
+                                std::vector<mfem::QuadratureFunction> &saaf_dnscatter_quad);
+
+void calc_selfscatter_efficient(const int g,
+                                const mfem::ParGridFunction &scalar_flux,
+                                const Material_library &mat_lib,
+                                const Quadrature * const quad,
+                                mfem::QuadratureFunction &selfscatter_quad,
+                                std::vector<mfem::QuadratureFunction> &saaf_selfscatter_quad);
+
+void calc_scalar_flux_efficient(const int g,
+                                const std::vector<std::unique_ptr<mfem::ParGridFunction>> &angular_flux,
+                                const Quadrature * const quad,
+                                mfem::ParGridFunction &scalar_flux);
+
+void calc_fiss_src_efficient(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+                             const Material_library &mat_lib,
+                             mfem::QuadratureFunction &fiss_src);
+
+/******************************************************************************/
+
 #endif
