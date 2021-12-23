@@ -6548,13 +6548,17 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
         Amat[idx].reset(a.ParallelAssemble());
 
         std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[idx])};
-        //prec->SetPrintLevel(1);
-        prec->SetPrintLevel(0);
+        if (inp.verbose)
+          prec->SetPrintLevel(1);
+        else
+          prec->SetPrintLevel(0);
         Aprec[idx] = std::move(prec);
         
         std::unique_ptr<HyprePCG> sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-        //sol->SetPrintLevel(2);
-        sol->SetPrintLevel(0);
+        if (inp.verbose)
+          sol->SetPrintLevel(2);
+        else
+          sol->SetPrintLevel(0);
         sol->SetPreconditioner(*Aprec[idx]);
         sol->SetOperator(*Amat[idx]);
         sol->SetTol(inp.tol.inner_rel);
@@ -6706,9 +6710,7 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
     {
       const int idx = n + g*quad->nd();
       saaf_fiss_upscatter_quad[idx].UseDevice(true);
-
       angular_flux[idx]->UseDevice(true);
-      lf[idx]->UseDevice(true);
     }
   }
 
@@ -6716,6 +6718,7 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
   {
     saaf_dnscatter_quad[n] = 0.0;
     saaf_selfscatter_quad[n] = 0.0;
+    lf[n]->UseDevice(true);
   }
 
   phi_old.UseDevice(true);
@@ -6776,10 +6779,12 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
           std::unique_ptr<HypreParVector> b{lf[n]->ParallelAssemble()};
           b->UseDevice(true);
 
-          std::unique_ptr<HypreParVector> x{angular_flux[n+g*quad->nd()]->ParallelAssemble()};
+          const int idx = n+g*quad->nd();
+
+          std::unique_ptr<HypreParVector> x{angular_flux[idx]->ParallelAssemble()};
           x->UseDevice(true);
-          Asol[n+g*quad->nd()]->Mult(*b, *x);
-          angular_flux[n]->Distribute(*x);
+          Asol[idx]->Mult(*b, *x);
+          angular_flux[idx]->Distribute(*x);
 
         }
         time.stop("Amult_loop");
@@ -7176,11 +7181,17 @@ void calc_scalar_flux_efficient(const int g,
                                 const Quadrature * const quad,
                                 ParGridFunction &scalar_flux)
 {
-  scalar_flux = 0.0;
+
+  double *sf = scalar_flux.HostWrite();
+
+  for (int i = 0; i < scalar_flux.Size(); ++i)
+    sf[i] = 0.0;
+
   for (int n = 0; n < quad->nd(); ++n)
   {
+    const double *af = angular_flux[n+g*quad->nd()]->HostRead();
     for (int i = 0; i < scalar_flux.Size(); ++i)
-      scalar_flux(i) += quad->weight(n) * (*angular_flux[n+g*quad->nd()])(i);
+      sf[i] += quad->weight(n) * af[i];
   }
   return;
 }
