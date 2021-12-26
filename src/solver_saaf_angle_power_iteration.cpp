@@ -222,7 +222,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
           case (LINEAR_PRECONDITIONER::amg):
           {
             std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-            prec->SetPrintLevel(1);
+            if (inp.verbose)
+              prec->SetPrintLevel(1);
+            else
+              prec->SetPrintLevel(0);
             HYPRE_BoomerAMGSetNumFunctions(*prec, quad->nd());
             Aprec[g] = std::move(prec);
             break;
@@ -273,7 +276,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         case (LINEAR_SOLVER::hypre_pcg):
         {
           std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(2);
+          if (inp.verbose)
+            this_sol->SetPrintLevel(2);
+          else
+            this_sol->SetPrintLevel(0);
           this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
           this_sol->SetOperator(*Amat[g]);
           this_sol->SetTol(inp.tol.inner_rel);
