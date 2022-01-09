@@ -6,7 +6,7 @@
 enum class Solver_choice
 {
   invalid = -1,
-  power_iteration,
+  power_iteration_shift,
   amgx_power_iteration,
   lobpcg,
   slepc_vector,
@@ -30,6 +30,7 @@ enum class Solver_choice
   dg_spn_power_iteration,
   dg_transport_power_iteration,
   spn_partial_assembly_power_iteration,
+  spn_power_iteration,
   conduction_linear, // TODO move this into "analytic"
   conduction_radial, // TODO move this into "analytic"
   conduction_var_cond,

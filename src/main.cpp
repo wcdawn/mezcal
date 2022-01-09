@@ -8,6 +8,7 @@
 #include "solver_amgx.h"
 #include "solver_saaf_angle_power_iteration.hpp"
 #include "solver_saaf_true_slepc_vector.hpp"
+#include "solver_spn_power_iteration.hpp"
 
 #include "conduction.hpp"
 
@@ -409,8 +410,8 @@ int main(int argc, char* argv[])
         case (Solver_choice::lobpcg):
           diffusion_hypre_lobpcg(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
-        case (Solver_choice::power_iteration):
-          spn_power_iteration(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
+        case (Solver_choice::power_iteration_shift):
+          spn_power_iteration_shift(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
           break;
         case (Solver_choice::amgx_power_iteration):
           spn_amgx_power_iteration(time, inp, mat_lib, ess_bdr, pmesh.get(), &fespace, res);
@@ -438,6 +439,9 @@ int main(int argc, char* argv[])
         case (Solver_choice::saaf_angle_power_iteration):
           saaf_angle_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
           res.keff = scalar_flux.keff;
+          break;
+        case (Solver_choice::spn_power_iteration):
+          spn_power_iteration(time, inp, mat_lib, res, res.keff);
           break;
         case (Solver_choice::saaf_efficient_power_iteration):
           saaf_efficient_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff);

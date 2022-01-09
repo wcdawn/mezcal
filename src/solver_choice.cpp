@@ -6,7 +6,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
 {
   switch (solver)
   {
-    case (Solver_choice::power_iteration): return "power_iteration";
+    case (Solver_choice::power_iteration_shift): return "power_iteration_shift";
     case (Solver_choice::amgx_power_iteration): return "amgx_power_iteration";
     case (Solver_choice::lobpcg):          return "lobpcg";
     case (Solver_choice::slepc_vector):    return "slepc_vector";
@@ -30,6 +30,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
     case (Solver_choice::dg_spn_power_iteration): return "dg_spn_power_iteration";
     case (Solver_choice::dg_transport_power_iteration): return "dg_transport_power_iteration";
     case (Solver_choice::spn_partial_assembly_power_iteration): return "spn_partial_assembly_power_iteration";
+    case (Solver_choice::spn_power_iteration): return "spn_power_iteration";
     case (Solver_choice::conduction_linear): return "conduction_linear";
     case (Solver_choice::conduction_radial): return "conduction_radial";
     case (Solver_choice::conduction_var_cond): return "conduction_var_cond";
@@ -40,7 +41,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
 
 Solver_choice solver_choice_str_to_enum(const string& solver)
 {
-  if (solver == "power_iteration") return Solver_choice::power_iteration;
+  if (solver == "power_iteration_shift") return Solver_choice::power_iteration_shift;
   if (solver == "amgx_power_iteration") return Solver_choice::amgx_power_iteration;
   if (solver == "lobpcg")          return Solver_choice::lobpcg;
   if (solver == "slepc_vector")    return Solver_choice::slepc_vector;
@@ -64,6 +65,7 @@ Solver_choice solver_choice_str_to_enum(const string& solver)
   if (solver == "dg_spn_power_iteration") return Solver_choice::dg_spn_power_iteration;
   if (solver == "dg_transport_power_iteration") return Solver_choice::dg_transport_power_iteration;
   if (solver == "spn_partial_assembly_power_iteration") return Solver_choice::spn_partial_assembly_power_iteration;
+  if (solver == "spn_power_iteration") return Solver_choice::spn_power_iteration;
   if (solver == "conduction_linear") return Solver_choice::conduction_linear;
   if (solver == "conduction_radial") return Solver_choice::conduction_radial;
   if (solver == "conduction_var_cond") return Solver_choice::conduction_var_cond;

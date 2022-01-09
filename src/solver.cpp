@@ -190,11 +190,11 @@ void diffusion_hypre_lobpcg(Timer& time, const Input& inp,
 
 }
 
-void spn_power_iteration(Timer& time, const Input& inp,
-                         Material_library& mat_lib,
-                         Array<int>& ess_bdr,
-                         const ParMesh* const pmesh,
-                         ParFiniteElementSpace* const fespace, Result& res)
+void spn_power_iteration_shift(Timer& time, const Input& inp,
+                               Material_library& mat_lib,
+                               Array<int>& ess_bdr,
+                               const ParMesh* const pmesh,
+                               ParFiniteElementSpace* const fespace, Result& res)
 {
 
   constexpr bool isWielandt{false};

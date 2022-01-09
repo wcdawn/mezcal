@@ -27,6 +27,7 @@ CPP_FILES = main.cpp \
 			solver_choice.cpp \
 			solver_saaf_angle_power_iteration.cpp \
 			solver_saaf_true_slepc_vector.cpp \
+			solver_spn_power_iteration.cpp \
 			spn_source_coefficient.cpp \
 			stability_tau_coefficient.cpp \
 			thermal_conductivity_coefficient.cpp \
@@ -66,6 +67,7 @@ HPP_FILES = analytic.hpp \
 			solver_choice.hpp \
 			solver_saaf_angle_power_iteration.hpp \
 			solver_saaf_true_slepc_vector.hpp \
+			solver_spn_power_iteration.hpp \
 			spn_source_coefficient.hpp \
 			stability_tau_coefficient.hpp \
 			thermal_conductivity_coefficient.hpp \
@@ -195,3 +197,4 @@ nda_diffusion_coefficient.o : $(MFEM_HEADER) nda_diffusion_coefficient.hpp quadr
 solver_saaf_angle_power_iteration.o : $(MFEM_HEADER) solver_saaf_angle_power_iteration.hpp input.hpp make_unique.hpp material_library.hpp quadrature.hpp result.hpp timer.hpp vector_pwconst_coefficient.hpp ../addon/mfem_addon.hpp ../addon/tensor.hpp vector_incoming_flux_coefficient.hpp
 solver_saaf_true_slepc_vector.o : $(MFEM_HEADER) solver_saaf_true_slepc_vector.hpp input.hpp make_unique.hpp material_library.hpp matrix_pwconst_coefficient.hpp memory.hpp quadrature.hpp result.hpp timer.hpp vector_pwconst_coefficient.hpp ../addon/mfem_addon.hpp ../addon/tensor.hpp
 vector_incoming_flux_coefficient.o : $(MFEM_HEADER) quadrature.hpp
+solver_spn_power_iteration.o : $(MFEM_HEADER) solver_spn_power_iteration.hpp input.hpp material_library.hpp result.hpp timer.hpp
