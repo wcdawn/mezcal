@@ -34,9 +34,23 @@ void spn_power_iteration(Timer &time,
   for (int i = 0; ((i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size())); ++i)
     ess_bdr[i] = inp.boundary_conditions[i];
 
-  bool is_essential = false;
+  Array<int> vacuum_condition(pmesh->bdr_attributes.Max());
+  vacuum_condition = 0;
+  bool is_zero_flux = false;
+  bool is_vacuum = false;
   for (int i = 0; i < ess_bdr.Size(); ++i)
-    is_essential = (is_essential || (ess_bdr[i] == 1));
+  {
+    switch (ess_bdr[i])
+    {
+      case (1):
+        is_zero_flux = true;
+        break;
+      case (2):
+        is_vacuum = true;
+        vacuum_condition[i] = 1;
+        break;
+    }
+  }
 
   Array<int> ess_tdof_list;
   fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
@@ -56,11 +70,65 @@ void spn_power_iteration(Timer &time,
 
   keff = 1.0;
 
+  std::vector<PWConstCoefficient> vacuum_bc_func;
+  vacuum_bc_func.reserve(mat_lib.ngroup()*inp.spn_eq()*inp.spn_eq());
+  for (int g = 0; g < mat_lib.ngroup(); ++g)
+  {
+    for (int n = 0; n < inp.spn_eq(); ++n)
+    {
+      for (int nprime = 0; nprime < inp.spn_eq(); ++nprime)
+      {
+
+        Vector val(pmesh->attributes.Max());
+        val = 0.0;
+        for (int nsum = 0; nsum < (inp.spn_eq()-n); ++nsum)
+        {
+
+          const int rem_idx = 2*(n+nsum)+1;
+          const double coeff = spn_bc_mat[n](nprime,nsum);
+
+          for (int i = 0; i < pmesh->attributes.Max(); ++i)
+          {
+            const double rem = mat_lib.mat[i].rec.sigma_r(g,rem_idx);
+            val(i) += coeff*rem;
+          }
+
+        }
+        vacuum_bc_func.emplace_back(val);
+
+      }
+    }
+  }
+
+  std::vector<PWConstCoefficient> leakage_func;
+  leakage_func.reserve(vdim);
+  for (int n = 0; n < inp.spn_eq(); ++n)
+  {
+
+    const double dble_n = 2.0*n;
+    const double xnext = (dble_n+1.0)*(dble_n+1.0)/((2.0*dble_n+1.0)*(2.0*dble_n+3.0));
+    const double xprev = dble_n*dble_n/((2.0*dble_n+1.0)*(2.0*dble_n-1.0));
+
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+
+      Vector leakage(pmesh->attributes.Max());
+      for (int i = 0; i < pmesh->attributes.Max(); ++i)
+      {
+        leakage(i) = xnext / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        if (n > 0)
+          leakage(i) += xprev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+      }
+      leakage_func.emplace_back(leakage);
+
+    }
+
+  }
+
+
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(vdim);
   std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(vdim);
   std::vector<std::unique_ptr<HyprePCG>> Asol(vdim);
-
-  std::vector<std::unique_ptr<ParBilinearForm>> Apbf(vdim);
 
   time.start(time.matrix_assembly);
   {
@@ -68,41 +136,30 @@ void spn_power_iteration(Timer &time,
     for (int n = 0; n < inp.spn_eq(); ++n)
     {
 
-      const double dble_n = 2.0*n;
-      const double xnext = (dble_n+1.0)*(dble_n+1.0)/((2.0*dble_n+1.0)*(2.0*dble_n+3.0));
-      const double xprev = dble_n*dble_n/((2.0*dble_n+1.0)*(2.0*dble_n-1.0));
-
       for (int g = 0; g < mat_lib.ngroup(); ++g)
       {
 
         const int idx = g + n*mat_lib.ngroup();
-
-        Vector leakage(pmesh->attributes.Max());
-        for (int i = 0; i < pmesh->attributes.Max(); ++i)
-        {
-          leakage(i) = xnext / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
-          if (n > 0)
-            leakage(i) += xprev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
-        }
-        PWConstCoefficient leakage_func{leakage};
+        const int bc_idx = n + n*inp.spn_eq() + g*inp.spn_eq()*inp.spn_eq();
 
         Vector removal(pmesh->attributes.Max());
         for (int i = 0; i < pmesh->attributes.Max(); ++i)
           removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
         PWConstCoefficient removal_func{removal};
 
-        std::unique_ptr<ParBilinearForm> a{std::make_unique<ParBilinearForm>(fespace)};
-        a->AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
-        a->AddDomainIntegrator(new MassIntegrator{removal_func});
+        ProductCoefficient intermediate_vacuum_bc_product_func{
+          leakage_func[idx], vacuum_bc_func[bc_idx]};
+        ProductCoefficient vacuum_bc_product_func{-1.0, intermediate_vacuum_bc_product_func};
 
-        // TODO vacuum boundary conditions
+        std::unique_ptr<ParBilinearForm> a{std::make_unique<ParBilinearForm>(fespace)};
+        a->AddDomainIntegrator(new DiffusionIntegrator{leakage_func[idx]});
+        a->AddDomainIntegrator(new MassIntegrator{removal_func});
+        a->AddBoundaryIntegrator(new MassIntegrator{vacuum_bc_product_func}, vacuum_condition);
 
         a->Assemble(skip_zeros);
-        if (is_essential) a->EliminateEssentialBCDiag(ess_bdr, 1.0);
+        if (is_zero_flux) a->EliminateEssentialBCDiag(ess_bdr, 1.0);
         a->Finalize(skip_zeros);
         Amat[idx].reset(a->ParallelAssemble());
-
-        if (is_essential) Apbf[idx] = std::move(a);
 
         Aprec[idx] = std::make_unique<HypreBoomerAMG>(*Amat[idx]);
         Aprec[idx]->SetPrintLevel(0);
@@ -162,6 +219,76 @@ void spn_power_iteration(Timer &time,
     }
   }
 
+  std::vector<GridFunctionCoefficient> phi_func;
+  std::vector<GradientGridFunctionCoefficient> dphi_func;
+  phi_func.reserve(vdim);
+  dphi_func.reserve(vdim);
+  for (int n = 0; n < inp.spn_eq(); ++n)
+  {
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+      const int idx = g + n*mat_lib.ngroup();
+      phi_func.emplace_back(phi[idx].get());
+      dphi_func.emplace_back(phi[idx].get());
+    }
+  }
+
+  std::vector<PWConstCoefficient> inv_removal_func;
+  inv_removal_func.reserve(mat_lib.ngroup()*(inp.spn_order()+1));
+  for (int n = 0; n < inp.spn_order()+1; ++n)
+  {
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+
+      Vector inv_removal(pmesh->attributes.Max());
+      for (int i = 0; i < pmesh->attributes.Max(); ++i)
+        inv_removal(i) = 1.0 / mat_lib.mat[i].rec.sigma_r(g,n);
+      inv_removal_func.emplace_back(inv_removal);
+
+    }
+  }
+
+  std::vector<ConstantCoefficient> spn_src_xnext_func, spn_src_xprev_func;
+  spn_src_xnext_func.reserve(inp.spn_eq());
+  spn_src_xprev_func.reserve(inp.spn_eq());
+  for (int n = 0; n < inp.spn_eq(); ++n)
+  {
+    const double dble_n = 2.0*n;
+    const double xnext = (dble_n+1.0)*(dble_n+2.0)/((2.0*dble_n+1.0)*(2.0*dble_n+3.0));
+    const double xprev = (dble_n)*(dble_n-1.0)/((2.0*dble_n+1.0)*(2.0*dble_n-1.0));
+    spn_src_xnext_func.emplace_back(xnext);
+    spn_src_xprev_func.emplace_back(xprev);
+  }
+
+  std::vector<ProductCoefficient> spn_intermediate_src_xnext_func, spn_intermediate_src_xprev_func;
+  spn_intermediate_src_xnext_func.reserve(vdim);
+  spn_intermediate_src_xprev_func.reserve(vdim);
+  for (int n = 0; n < inp.spn_eq(); ++n)
+  {
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+      spn_intermediate_src_xnext_func.emplace_back(spn_src_xnext_func[n], inv_removal_func[g+(2*n+1)*mat_lib.ngroup()]);
+      spn_intermediate_src_xprev_func.emplace_back(spn_src_xprev_func[n], inv_removal_func[g+(2*n-1)*mat_lib.ngroup()]);
+    }
+  }
+
+  std::vector<ScalarVectorProductCoefficient> spn_src_next_func, spn_src_prev_func;
+  spn_src_next_func.reserve(vdim);
+  spn_src_prev_func.reserve(vdim);
+  for (int n = 0; n < inp.spn_eq(); ++n)
+  {
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+      const int i = g + n*mat_lib.ngroup();
+      const int inext = g + (n+1)*mat_lib.ngroup();
+      const int iprev = g + (n-1)*mat_lib.ngroup();
+      spn_src_next_func.emplace_back(spn_intermediate_src_xnext_func[i], dphi_func[inext]);
+      spn_src_prev_func.emplace_back(spn_intermediate_src_xprev_func[i], dphi_func[iprev]);
+    }
+  }
+
+  std::vector<ProductCoefficient> spn_lf_bc_func;
+  spn_lf_bc_func.reserve(2*mat_lib.ngroup()*(inp.spn_eq()-1)*inp.spn_eq());
   std::vector<std::unique_ptr<ParLinearForm>> lf(vdim);
   for (int n = 0; n < inp.spn_eq(); ++n)
   {
@@ -175,11 +302,33 @@ void spn_power_iteration(Timer &time,
         lf[idx]->AddDomainIntegrator(new DomainLFIntegrator{src_quad_func});
 
       if (n > 0)
+      {
         lf[idx]->AddDomainIntegrator(new DomainLFGradIntegrator{spn_prev_quad_func});
+        if (is_vacuum)
+          lf[idx]->AddBoundaryIntegrator(new BoundaryNormalLFIntegrator{spn_src_prev_func[idx]},
+            vacuum_condition);
+      }
 
       if ((n+1) < inp.spn_eq())
       {
         lf[idx]->AddDomainIntegrator(new DomainLFGradIntegrator{spn_next_quad_func[idx]});
+        if (is_vacuum)
+          lf[idx]->AddBoundaryIntegrator(new BoundaryNormalLFIntegrator{spn_src_next_func[idx]},
+            vacuum_condition);
+      }
+
+      if (is_vacuum)
+      {
+        for (int nprime = 0; nprime < inp.spn_eq(); ++nprime)
+        {
+          if (nprime == n) continue;
+          const int idx_prime = g + nprime*mat_lib.ngroup();
+          const int bc_idx_prime = nprime + n*inp.spn_eq() + g*inp.spn_eq()*inp.spn_eq();
+          spn_lf_bc_func.emplace_back(leakage_func[idx], vacuum_bc_func[bc_idx_prime]);
+          spn_lf_bc_func.emplace_back(spn_lf_bc_func.back(), phi_func[idx_prime]);
+          // TODO this adds a lot of integrators which is potentially slow
+          lf[idx]->AddBoundaryIntegrator(new BoundaryLFIntegrator{spn_lf_bc_func.back()}, vacuum_condition);
+        }
       }
 
     }
@@ -239,7 +388,7 @@ void spn_power_iteration(Timer &time,
         lf[idx]->Assemble();
         time.stop("lf_assemble");
 
-        if (is_essential)
+        if (is_zero_flux)
         {
           lf[idx]->SetSubVector(ess_tdof_list, 0.0);
           phi[idx]->SetSubVector(ess_tdof_list, 0.0);
