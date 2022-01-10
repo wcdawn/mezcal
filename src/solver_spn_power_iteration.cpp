@@ -29,12 +29,27 @@ void spn_power_iteration(Timer &time,
 
   mat_lib.set_nmoment(inp.spn_order()+1);
 
+  Array<int> ess_bdr(pmesh->bdr_attributes.Max());
+  ess_bdr = 1; // default is all essential
+  for (int i = 0; ((i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size())); ++i)
+    ess_bdr[i] = inp.boundary_conditions[i];
+
+  bool is_essential = false;
+  for (int i = 0; i < ess_bdr.Size(); ++i)
+    is_essential = (is_essential || (ess_bdr[i] == 1));
+
+  Array<int> ess_tdof_list;
+  fespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+  ConstantCoefficient zero{0.0};
+
   for (int n = 0; n < inp.spn_eq(); ++n)
   {
     for (int g = 0; g < mat_lib.ngroup(); ++g)
     {
       const int idx = g+n*mat_lib.ngroup();
-      *phi[idx] = 1.0;
+      *phi[idx] = (n == 0) ? 1.0 : 0.0;
+      phi[idx]->ProjectBdrCoefficient(zero, ess_bdr);
       phi[idx]->UseDevice(true);
     }
   }
@@ -44,6 +59,8 @@ void spn_power_iteration(Timer &time,
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(vdim);
   std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(vdim);
   std::vector<std::unique_ptr<HyprePCG>> Asol(vdim);
+
+  std::vector<std::unique_ptr<ParBilinearForm>> Apbf(vdim);
 
   time.start(time.matrix_assembly);
   {
@@ -74,15 +91,19 @@ void spn_power_iteration(Timer &time,
           removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
         PWConstCoefficient removal_func{removal};
 
-        ParBilinearForm a{fespace};
-        a.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
-        a.AddDomainIntegrator(new MassIntegrator{removal_func});
+        std::unique_ptr<ParBilinearForm> a{std::make_unique<ParBilinearForm>(fespace)};
+        a->AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
+        a->AddDomainIntegrator(new MassIntegrator{removal_func});
 
-        a.Assemble(skip_zeros);
-        a.Finalize(skip_zeros);
-        Amat[idx].reset(a.ParallelAssemble());
+        // TODO vacuum boundary conditions
 
-        // TODO boundary conditions
+        a->Assemble(skip_zeros);
+        if (is_essential) a->EliminateEssentialBCDiag(ess_bdr, 1.0);
+        a->Finalize(skip_zeros);
+        Amat[idx].reset(a->ParallelAssemble());
+
+        if (is_essential) Apbf[idx] = std::move(a);
+
         Aprec[idx] = std::make_unique<HypreBoomerAMG>(*Amat[idx]);
         Aprec[idx]->SetPrintLevel(0);
 
@@ -157,7 +178,9 @@ void spn_power_iteration(Timer &time,
         lf[idx]->AddDomainIntegrator(new DomainLFGradIntegrator{spn_prev_quad_func});
 
       if ((n+1) < inp.spn_eq())
+      {
         lf[idx]->AddDomainIntegrator(new DomainLFGradIntegrator{spn_next_quad_func[idx]});
+      }
 
     }
   }
@@ -179,10 +202,16 @@ void spn_power_iteration(Timer &time,
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
 
+    time.start("fiss_upscatter");
     spn_calc_fiss_upscatter(phi, keff, mat_lib, fiss_upscatter_quad, inp.flux_free_chi);
+    time.stop("fiss_upscatter");
 
     if (inp.spn_eq() > 1)
+    {
+      time.start("spn_next");
       spn_calc_spn_next(phi, inp.spn_eq(), mat_lib, spn_next_quad);
+      time.stop("spn_next");
+    }
 
     for (int n = 0; n < inp.spn_eq(); ++n)
     {
@@ -190,24 +219,39 @@ void spn_power_iteration(Timer &time,
       for (int g = 0; g < mat_lib.ngroup(); ++g)
       {
 
-        const int idx = g+n*mat_lib.ngroup();
+        const int idx = g + n*mat_lib.ngroup();
 
         if (n == 0)
         {
+          time.start("downscatter");
           spn_calc_downscatter(g, phi, mat_lib, dnscatter_quad);
           dnscatter_quad += fiss_upscatter_quad[g];
+          time.stop("downscatter");
         }
         else
         {
+          time.start("spn_prev");
           spn_calc_spn_prev(g, n, phi, mat_lib, spn_prev_quad);
+          time.stop("spn_prev");
         }
 
+        time.start("lf_assemble");
         lf[idx]->Assemble();
-        std::unique_ptr<HypreParVector> b{lf[idx]->ParallelAssemble()};
+        time.stop("lf_assemble");
 
+        if (is_essential)
+        {
+          lf[idx]->SetSubVector(ess_tdof_list, 0.0);
+          phi[idx]->SetSubVector(ess_tdof_list, 0.0);
+        }
+          
+        std::unique_ptr<HypreParVector> b{lf[idx]->ParallelAssemble()};
         std::unique_ptr<HypreParVector> x{phi[idx]->ParallelAssemble()};
+
+        time.start("Asol");
         Asol[idx]->Mult(*b, *x);
         phi[idx]->Distribute(*x);
+        time.stop("Asol");
 
         ++solve_counter;
 
@@ -215,9 +259,12 @@ void spn_power_iteration(Timer &time,
 
     } // n
 
+    time.start("fiss_src");
     QuadratureFunction fiss_src_quad{&qspace};
     fiss_src_quad.UseDevice(true);
     spn_calc_fiss_src(phi, mat_lib, fiss_src_quad);
+    time.stop("fiss_src");
+
     const double local_fiss_sum = fiss_src_quad.Sum();
     double fiss_sum;
     MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -243,9 +290,6 @@ void spn_power_iteration(Timer &time,
   }
 
   time.stop(time.solver);
-
-  QuadratureFunctionCoefficient qfc{fiss_src_quad_old};
-  phi[0]->ProjectCoefficient(qfc);
 
   return;
 }
@@ -406,14 +450,7 @@ void spn_calc_spn_next(const std::vector<std::unique_ptr<mfem::ParGridFunction>>
     const XSRecord &rec = mat.rec;
     const DenseMatrix &sigma_r = rec.sigma_r;
 
-    const FiniteElement * const fe = fespace->GetFE(e);
-    const int fe_dim = fe->GetDim();
-    const int fe_dof = fe->GetDof();
-
     ElementTransformation *T = fespace->GetElementTransformation(e);
-
-    Array<int> vdofs;
-    fespace->GetElementVDofs(e, vdofs);
 
     Vector grad_dat(dim*mat_lib.ngroup()*(spn_eq-1));
 
@@ -426,13 +463,9 @@ void spn_calc_spn_next(const std::vector<std::unique_ptr<mfem::ParGridFunction>>
       for (int g = 0; g < mat_lib.ngroup(); ++g)
       {
 
+        // TODO look into unrolling the call to GetGradient but it is hard
         Vector grad(dim);
-
-        DenseMatrix dshape(fe_dof, fe_dim);
-        Vector lval, gh(fe_dim);
-        phi[g+(n+1)*mat_lib.ngroup()]->GetSubVector(vdofs, lval); // TODO
-        dshape.MultTranspose(lval, gh);
-        T->InverseJacobian().MultTranspose(gh, grad);
+        phi[g+(n+1)*mat_lib.ngroup()]->GetGradient(*T, grad);
         grad *= -xmult;
 
         for (int d = 0; d < dim; ++d)
@@ -566,19 +599,17 @@ void spn_calc_spn_prev(int g, int n,
     phi[g+(n-1)*mat_lib.ngroup()]->GetGradient(*T, grad);
     grad *= -xmult;
 
+    const double *ggrad = grad.HostRead();
+
     for (int i = 0; i < ir.GetNPoints(); ++i)
     {
 
       const DenseMatrix &sigma_r = rec.sigma_r;
       const double xs_val = sigma_r(g,2*n-1);
-      Vector v{grad};
-      v /= xs_val;
-
-      const double *vv = v.HostRead();
 
       for (int d = 0; d < dim; ++d)
       {
-        pquad[idx] = vv[d];
+        pquad[idx] = ggrad[d]/xs_val;
         ++idx;
       }
     }
