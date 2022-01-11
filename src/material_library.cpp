@@ -251,9 +251,9 @@ void Material_library::set_nmoment(int m)
   }
 }
 
-double Material_record::thermal_conductivity(double T) const
+double Material_record::thermal_conductivity(Thermal_material k_mat_in, double T)
 {
-  switch (k_mat)
+  switch (k_mat_in)
   {
     case (Na):
       return 124.67 - 0.11381*T + 5.5226e-5*std::pow(T,2) - 1.1842e-8*std::pow(T,3);

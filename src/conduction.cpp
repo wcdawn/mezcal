@@ -10,7 +10,7 @@
 
 using namespace mfem;
 
-double linear_source(const Vector& v)
+double linear_source(const Vector &v)
 {
   const double x{v(0)-0.2};
   constexpr double L{1.0};
@@ -18,7 +18,7 @@ double linear_source(const Vector& v)
   return q0 * std::sin(M_PI * x / L);
 }
 
-double radial_source(const Vector& v)
+double radial_source(const Vector &v)
 {
   const double x{v(0)};
   const double y{v(1)};
@@ -31,7 +31,7 @@ double radial_source(const Vector& v)
   return q0 * (R_B - r) / (R_B - R_HP);
 }
 
-double var_cond_source(const Vector& v)
+double var_cond_source(const Vector &v)
 {
   const double x{v(0)-0.2};
   constexpr double L{5.0};
@@ -39,7 +39,7 @@ double var_cond_source(const Vector& v)
   return q0*std::cos(0.5*M_PI*x/L);
 }
 
-double linear_solution(const Vector& v)
+double linear_solution(const Vector &v)
 {
   const double x{v(0)-0.2};
 
@@ -58,7 +58,7 @@ double linear_solution(const Vector& v)
   return q0/k * std::pow(L/M_PI,2) * std::sin(M_PI * x / L) + c1*x + c2;
 }
 
-double radial_solution(const Vector& v)
+double radial_solution(const Vector &v)
 {
   const double x{v(0)};
   const double y{v(1)};
@@ -81,7 +81,7 @@ double radial_solution(const Vector& v)
   return q0/k / (R_B - R_HP) * (std::pow(r,3)/9. - 0.25*R_B*std::pow(r,2) + c1*std::log(r) + c2);
 }
 
-double var_cond_solution(const Vector& v)
+double var_cond_solution(const Vector &v)
 {
   const double x{v(0)-0.2};
 
@@ -106,10 +106,10 @@ double var_cond_solution(const Vector& v)
     q0*std::pow(2.0*L/M_PI, 2)*std::cos(0.5*M_PI*x/L) - c1*x - c2)))/alpha;
 }
 
-void temperature_heat_conduction(const Input& inp,
-                                 const Material_library& mat_lib,
-                                 const ParGridFunction& power,
-                                 ParGridFunction& temperature)
+void temperature_heat_conduction(const Input &inp,
+                                 const Material_library &mat_lib,
+                                 QuadratureFunction &power,
+                                 ParGridFunction &temperature)
 {
 
   // TODO need some other method for this...
@@ -117,8 +117,9 @@ void temperature_heat_conduction(const Input& inp,
   // vvercan 4 is poison rods
   constexpr int heat_pipe_id{1};
 
-  ParFiniteElementSpace* const parfespace{power.ParFESpace()};
-  const ParMesh* const pmesh{parfespace->GetParMesh()};
+  ParFiniteElementSpace * parfespace = temperature.ParFESpace();
+  const ParMesh * const pmesh = parfespace->GetParMesh();
+  QuadratureSpace *qspace = power.GetSpace();
 
   Array<int> ess_bdr, ess_tdof_list;
   ess_bdr.SetSize(pmesh->bdr_attributes.Max());
@@ -166,30 +167,17 @@ void temperature_heat_conduction(const Input& inp,
   temperature.ProjectCoefficient(heat_pipe_coeff); // heat pipe temperature is used as initial guess everywhere
   temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
 
-  ThermalConductivityCoefficient thermal_conductivity_coeff{mat_lib, &temperature};
-  ConstantCoefficient analytic_coeff{0.1}; // used for verification problems
-  Var_cond_conductivity var_cond_conductivity_coeff{temperature};
+  QuadratureFunction thermal_conductivity_quad{qspace};
+  QuadratureFunctionCoefficient thermal_conductivity_quad_func{thermal_conductivity_quad};
 
   ParBilinearForm a{parfespace};
-  switch (inp.sol)
-  {
-    case (Solver_choice::conduction_linear):
-    case (Solver_choice::conduction_radial):
-      a.AddDomainIntegrator(new DiffusionIntegrator{analytic_coeff});
-      break;
-    case (Solver_choice::conduction_var_cond):
-      a.AddDomainIntegrator(new DiffusionIntegrator{var_cond_conductivity_coeff});
-      break;
-    default:
-      a.AddDomainIntegrator(new DiffusionIntegrator{thermal_conductivity_coeff});
-      break;
-  }
+  a.AddDomainIntegrator(new DiffusionIntegrator{thermal_conductivity_quad_func});
   // For Robin bc, add BoundaryMassIntegrator
 
   FunctionCoefficient linear_source_coeff{linear_source};
   FunctionCoefficient radial_source_coeff{radial_source};
   FunctionCoefficient var_cond_source_coeff{var_cond_source};
-  GridFunctionCoefficient power_coeff{&power};
+  QuadratureFunctionCoefficient power_coeff{power};
 
   ParLinearForm b{parfespace};
   switch (inp.sol)
@@ -227,6 +215,9 @@ void temperature_heat_conduction(const Input& inp,
   {
 
     ParGridFunction temperature_old{temperature};
+
+    calc_thermal_conductivity(inp, mat_lib, temperature,
+      thermal_conductivity_quad);
 
     a.Update();
     a.Assemble();
@@ -281,7 +272,7 @@ void temperature_heat_conduction(const Input& inp,
   return;
 }
 
-void conduction_error_analysis(Coefficient& coeff, GridFunction& sol)
+void conduction_error_analysis(Coefficient &coeff, GridFunction &sol)
 {
   const double l2error{sol.ComputeL2Error(coeff)};
   const double lmaxerror{sol.ComputeMaxError(coeff)};
@@ -321,6 +312,63 @@ void conduction_error_analysis(Coefficient& coeff, GridFunction& sol)
        << nval_sol(i) - nval_exact(i) << std::endl;
   }
 
+
+  return;
+}
+
+void calc_thermal_conductivity(const Input &inp,
+                               const Material_library &mat_lib,
+                               const ParGridFunction &temperature,
+                               QuadratureFunction &thermal_conductivity_quad)
+{
+
+  constexpr double analytic_coeff = 0.1;
+
+  constexpr bool kconst = false;
+  constexpr double k0 = 10.0;
+  constexpr double alpha = 1e-2;
+  constexpr double kbar = 5.100359646753139;
+
+  const QuadratureSpace* const qspace = thermal_conductivity_quad.GetSpace();
+  const ParFiniteElementSpace* const fespace = temperature.ParFESpace();
+  const ParMesh* const mesh = fespace->GetParMesh();
+
+  switch (inp.sol)
+  {
+    case (Solver_choice::conduction_linear):
+    case (Solver_choice::conduction_radial):
+      thermal_conductivity_quad = analytic_coeff;
+      return;
+    default:
+      thermal_conductivity_quad = 0.0;
+  }
+
+  int idx = 0;
+
+  for (int e = 0; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const int attribute = mesh->GetAttribute(e) - 1;
+
+    std::function<double(double)> k_T;
+    if (inp.sol == Solver_choice::conduction_var_cond)
+      k_T = [k0, alpha](double T){return (kconst) ? kbar : (k0 - alpha*T);};
+    else
+    {
+      const Material_record::Thermal_material kmat = mat_lib.mat[attribute].k_mat;
+      k_T = [kmat](double T){ return Material_record::thermal_conductivity(kmat, T);} ;
+    }
+
+    for (int i = 0; i < ir.GetNPoints(); ++i)
+    {
+      const IntegrationPoint &ip = ir.IntPoint(i);
+      const double T = temperature.GetValue(e, ip);
+      thermal_conductivity_quad[idx] = k_T(T);
+      ++idx;
+    }
+
+  }
 
   return;
 }

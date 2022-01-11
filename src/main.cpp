@@ -501,8 +501,15 @@ int main(int argc, char* argv[])
         case (Solver_choice::conduction_radial):
         case (Solver_choice::conduction_linear):
         case (Solver_choice::conduction_var_cond):
-          temperature_heat_conduction(inp, mat_lib, power, temperature);
-          break;
+          {
+            // the power distriubtion is actually specified within the solver
+            // and unnecessary here
+            const int integration_order = scalar_flux_fespace.GetOrder(0)+1;
+            QuadratureSpace qspace{pmesh.get(), integration_order};
+            QuadratureFunction power_quad{&qspace};
+            temperature_heat_conduction(inp, mat_lib, power_quad, temperature);
+            break;
+          }
         case (Solver_choice::none):
           break; // do absolutely nothing
         default:
@@ -576,6 +583,7 @@ int main(int argc, char* argv[])
       }
       else
       {
+
         for (int g{0}; g < scalar_flux.ngroup(); ++g)
         {
           std::ostringstream scalar_flux_record;
@@ -584,6 +592,21 @@ int main(int argc, char* argv[])
                              << std::setw(group_width)
                              << g;
           output.RegisterField(scalar_flux_record.str(), &res(g));
+        }
+      }
+
+      for (int n = 0; n < inp.spn_eq(); ++n)
+      {
+        for (int g = 0; g < scalar_flux.ngroup(); ++g)
+        {
+          std::ostringstream scalar_flux_record;
+          scalar_flux_record << "phi_n"
+                             << std::to_string(2*n)
+                             << "_g"
+                             << std::setfill('0')
+                             << std::setw(group_width)
+                             << g;
+          output.RegisterField(scalar_flux_record.str(), &res(g,n));
         }
       }
 

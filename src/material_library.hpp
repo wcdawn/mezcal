@@ -66,7 +66,8 @@ struct Material_record
 
   Thermal_material k_mat{Thermal_material::HT9};
 
-  double thermal_conductivity(double temperature) const;
+  static double thermal_conductivity(Thermal_material k_mat_in, double temperature);
+  double thermal_conductivity(double temperature) const { return thermal_conductivity(k_mat, temperature); }
 
   double exact_area_volume{-1.0};
 

@@ -457,6 +457,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   const int integration_order{scalar_flux_fespace->GetOrder(0)+1};
   QuadratureSpace qspace{pmesh, integration_order};
 
+  QuadratureFunction power_quad{&qspace};
+
   std::vector<QuadratureFunction> fiss_upscatter_quad, saaf_fiss_upscatter_quad;
   fiss_upscatter_quad.reserve(mat_lib.ngroup());
   saaf_fiss_upscatter_quad.reserve(mat_lib.ngroup());
@@ -599,11 +601,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
 
-#if 0
     time.start("power");
-    calc_power(mat_lib, scalar_flux, inp.rxpwr, power);
+    calc_power_vector(mat_lib, scalar_flux, inp.rxpwr, power_quad);
     time.stop("power");
 
+#if 0
     time.start("temperature");
     temperature_heat_conduction(inp, mat_lib, power, temperature);
     time.stop("temperature");
@@ -723,6 +725,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         }
 
         time.stop("restart_out");
+
+        QuadratureFunctionCoefficient gfc{power_quad};
+        power.ProjectCoefficient(gfc);
+
         return; // leave here and cleanup
       }
 
@@ -774,6 +780,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     std::cout << "ITERATIONS FINISHED!!!" << std::endl;
     std::cout << "solve_counter= " << solve_counter << std::endl;
   }
+
+  QuadratureFunctionCoefficient gfc{power_quad};
+  power.ProjectCoefficient(gfc);
+
 
   return;
 }
@@ -1170,6 +1180,69 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
       }
 
       ++idx;
+    }
+
+  }
+
+  return;
+}
+
+void calc_power_vector(const Material_library &mat_lib,
+                       const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+                       const double rxpwr,
+                       QuadratureFunction &power_quad)
+{
+
+  constexpr double kappa_over_nu = 1.0; // TODO this should be group dependent
+  // TODO power normalization
+
+  const QuadratureSpace* const qspace = power_quad.GetSpace();
+  const ParFiniteElementSpace* const fespace = scalar_flux[0]->ParFESpace();
+  const ParMesh* const mesh = fespace->GetParMesh();
+
+  power_quad = 0.0; // [W/cc]
+  double *pquad = power_quad.HostReadWrite();
+
+  int idx = 0;
+
+  for (int e = 0; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const int attribute = mesh->GetAttribute(e) - 1;
+    const XSRecord &rec = mat_lib.mat[attribute].rec;
+
+    if (!rec.is_fiss)
+    {
+      idx += ir.GetNPoints();
+      continue;
+    }
+
+    std::vector<double> kappasf = rec.nusf; // copy
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+      kappasf[g] *= kappa_over_nu;
+
+    const FiniteElement *fe = fespace->GetFE(e);
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i = 0; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint &ip = ir.IntPoint(i);
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      for (int gprime = 0; gprime < mat_lib.ngroup(); ++gprime)
+      {
+        Vector locvec(dofs.Size());
+        scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
+        const double flux = dofval*locvec;
+        pquad[idx] += kappasf[gprime]*flux;
+      }
+
+      ++idx;
+
     }
 
   }

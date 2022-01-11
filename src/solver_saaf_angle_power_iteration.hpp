@@ -57,4 +57,9 @@ static void calc_fiss_src(const std::vector<std::unique_ptr<mfem::ParGridFunctio
                    const Material_library &mat_lib,
                    mfem::QuadratureFunction &fiss_src);
 
+void calc_power_vector(const Material_library &mat_lib,
+                       const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+                       const double rxpwr,
+                       mfem::QuadratureFunction &power_quad);
+
 #endif

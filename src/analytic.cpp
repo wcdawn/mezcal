@@ -20,7 +20,7 @@ Analytic::Analytic(const Reference ref, const Solver_choice sol, Result& res,
 
   if (reference_solution == oned_twog)
   {
-    if (solver == Solver_choice::power_iteration)
+    if (solver == Solver_choice::power_iteration_shift)
     {
       phi2 = &res(1,0);
     }
@@ -32,7 +32,7 @@ Analytic::Analytic(const Reference ref, const Solver_choice sol, Result& res,
   }
   else if (reference_solution == oned_oneg_spn)
   {
-    if (solver == Solver_choice::power_iteration)
+    if (solver == Solver_choice::power_iteration_shift)
     {
       phi2 = &res(0,1);
     }
