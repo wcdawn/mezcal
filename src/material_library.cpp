@@ -251,35 +251,52 @@ void Material_library::set_nmoment(int m)
   }
 }
 
+// returns value in [W/cm/K]
 double Material_record::thermal_conductivity(Thermal_material k_mat_in, double T)
 {
   switch (k_mat_in)
   {
-    case (Na):
-      return 124.67 - 0.11381*T + 5.5226e-5*std::pow(T,2) - 1.1842e-8*std::pow(T,3);
-    case (Pb):
-      return 15.8 + 0.011*(T-600.6);
-    case (PbBi):
-      return 9.350 + 0.014340*(T-398.0) + 3.305e-6*std::pow(T-398.0,2);
-    case (HT9):
-      return (T <= 1030.0) ? 17.622 + 2.428e-2*T - 1.696e-5*std::pow(T,2) : 12.027 + 1.281e-2*T;
-    case (U10Zr):
+    case (SS316):
+      return (-7.301e-6*std::pow(T,2) + 2.716e-2*T + 6.308)*1e-2;
+    case (NaK78):
+      return 2.75860242e-02 + 8.56037380e-04*T + -1.00784204e-06*std::pow(T,2) +
+        3.78618012e-10*std::pow(T,3);
+    case (BeO):
+      return 7.82844502e+00 + -3.19009906e-02*T + 5.58861707e-05*std::pow(T,2) +
+        -4.57107468e-08*std::pow(T,3) + 1.42900889e-11*std::pow(T,4);
+    case (air):
       {
-        constexpr double x{0.1};
-        const double k_U{21.73 + 1.911e-2*T + 5.906e-6*std::pow(T,2)};
-        const double k_Zr{8.853 + 7.082e-3*T + 2.533e-6*std::pow(T,2) + 2.992e3/T};
-        const double k_Zr_c{-102.0 + 200.1*x - 109.2*std::pow(x,2) + 9.435e-3*T + 3.459e-5*std::pow(T,2) - 0.02903*x*T};
-        const double k_U_Zr{(1.0-std::sqrt(1.0-x))*k_Zr + std::sqrt(1.0-x)*((1.0-x)*k_U + x*k_Zr_c)};
-        return k_U_Zr;
+        const double Tr = T/132.52;
+        const double Trc = std::cbrt(Tr);
+        constexpr double c_1 = 33.9729025;
+        constexpr double c_2 = -164.702679;
+        constexpr double c_3 = 262.108546;
+        constexpr double c_4 = -21.5346955;
+        constexpr double c_5 = -443.455815;
+        constexpr double c_6 = 607.339582;
+        constexpr double c_7 = -368.790121;
+        constexpr double c_8 = 111.296674;
+        constexpr double c_9 = -13.4122465;
+        const double lambda_or = c_1/Tr + c_2/std::pow(Trc,2) + c_3/Trc + c_4 +
+          c_5*Trc + c_6*std::pow(Trc,2) + c_7*Tr + c_8*std::pow(Trc,4) +
+          c_9*std::pow(Trc,5);
+        return lambda_or*4.358e-3*1e-2;
       }
-    case (UN):
+    case (Be):
       {
-        constexpr double porosity{0.15};
-        return 1.864 * std::exp(-2.14*porosity) * std::pow(T,0.361);
+        const double Tc = T - 273.15;
+        return (189.8 - 0.2964*Tc + 2.5429e-4*std::pow(Tc,2) - 1.0104e-7*std::pow(Tc,3))*1e-2;
       }
-    case (UO2):
-      return 100./(7.5408 + 17.692*(T*1e-3) + 3.6142*std::pow(T*1e-3,2)) + 
-        6400./std::pow(T*1e-3,2.5) * std::exp(-16.35/(T*1e-3));
+    case (B4C):
+      {
+        const double Tc = T - 273.15;
+        return 1.0/(6.87+0.0171*Tc)*4.184;
+      }
+    case(UZrH):
+      {
+        const double Tc = T - 273.15;
+        return (3.7267e-2 + 3.817e-5*Tc - 7.01e-8*std::pow(Tc,2) + 1.223e-10*std::pow(Tc,3) - 8.31e-14*std::pow(Tc,4))*4.184;
+      }
   }
   return -1e-3;
 }

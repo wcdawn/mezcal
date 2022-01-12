@@ -55,17 +55,18 @@ struct Material_record
 
   enum Thermal_material
   {
-    Na,
-    Pb,
-    PbBi,
-    HT9,
-    U10Zr,
-    UN,
-    UO2, // includes 5% porosity
+    SS316,
+    NaK78,
+    BeO,
+    air,
+    Be,
+    B4C,
+    UZrH,
   };
 
-  Thermal_material k_mat{Thermal_material::HT9};
+  Thermal_material k_mat{Thermal_material::SS316};
 
+  // returns value in [W/cm/K]
   static double thermal_conductivity(Thermal_material k_mat_in, double temperature);
   double thermal_conductivity(double temperature) const { return thermal_conductivity(k_mat, temperature); }
 
