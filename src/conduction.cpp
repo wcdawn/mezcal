@@ -112,29 +112,23 @@ void temperature_heat_conduction(const Input &inp,
                                  ParGridFunction &temperature)
 {
 
-  // TODO need some other method for this...
+  constexpr bool thermal_conductivity_plot = false;
+
   // bwr 5 is poison rods
   // vvercan 4 is poison rods
-  constexpr int heat_pipe_id{1};
+  // use 1 for analytic problems (default)
+  const int heat_pipe_id{inp.heat_pipe_idx};
 
-  ParFiniteElementSpace * parfespace = temperature.ParFESpace();
-  const ParMesh * const pmesh = parfespace->GetParMesh();
+  ParFiniteElementSpace *parfespace = temperature.ParFESpace();
+  ParMesh *pmesh = parfespace->GetParMesh();
   QuadratureSpace *qspace = power.GetSpace();
 
   Array<int> ess_bdr, ess_tdof_list;
   ess_bdr.SetSize(pmesh->bdr_attributes.Max());
 
-  /*
-  // all boundaries are essential (all external boundaries for now)
-  // if we want to solve a problem with reflective symmetry and impose
-  // reflective bcs, would need to do something about this
-  ess_bdr = 1;
-  */
-
-  // For now I'm allowing reflective (insulating) boundaries. This is nice for
-  // running the vvercan model. There is a potential problem that this system
-  // would have no solution if there is no essential boundary and also no heat
-  // pipes but... just don't let that happen...
+  // For now I'm allowing reflective (insulating) boundaries.There is a
+  // potential problem that this system would have no solution if there is no
+  // essential boundary and also no heat pipes but just don't let that happen...
   for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
     ess_bdr[i] = inp.boundary_conditions[i];
 
@@ -162,9 +156,9 @@ void temperature_heat_conduction(const Input &inp,
   for (int val : heat_pipe_set)
     ess_tdof_list.Append(val);
 
+  temperature.SetSubVector(ess_tdof_list, inp.temp_heat_pipe);
+
   ConstantCoefficient temp_boundary_coeff{inp.temp_boundary}; // constant temperature of boundary
-  ConstantCoefficient heat_pipe_coeff{inp.temp_heat_pipe}; // constant temperature of heat pipes
-  temperature.ProjectCoefficient(heat_pipe_coeff); // heat pipe temperature is used as initial guess everywhere
   temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
 
   QuadratureFunction thermal_conductivity_quad{qspace};
@@ -200,14 +194,14 @@ void temperature_heat_conduction(const Input &inp,
   b.Assemble();
 
   HypreBoomerAMG amg;
-  amg.SetPrintLevel(inp.hypre_print_level());
+  amg.SetPrintLevel(0);
 
   HyprePCG cg(MPI_COMM_WORLD);
   cg.SetPreconditioner(amg);
   cg.SetTol(inp.tol.temp_inner_rel);
   cg.SetAbsTol(inp.tol.temp_inner_abs);
   cg.SetMaxIter(inp.tol.temp_max_inner);
-  cg.SetPrintLevel(inp.hypre_print_level());
+  cg.SetPrintLevel(inp.verbose ? 2 : 0);
 
   double temp_conv{inp.tol.temp*1e2+1.0};
   for (int iter{0}; (iter < inp.tol.temp_max_outer) &&
@@ -219,20 +213,35 @@ void temperature_heat_conduction(const Input &inp,
     calc_thermal_conductivity(inp, mat_lib, temperature,
       thermal_conductivity_quad);
 
+    if (thermal_conductivity_plot)
+    {
+      ParGridFunction k{parfespace};
+      k.ProjectCoefficient(thermal_conductivity_quad_func);
+      ParaViewDataCollection out{"thermal_conductivity", pmesh};
+      out.RegisterField("thermal_conductivity", &k);
+      out.SetFormat(DataCollection::PARALLEL_FORMAT);
+      out.Save();
+    }
+
     a.Update();
     a.Assemble();
     a.Finalize();
+
+    std::unique_ptr<HypreParMatrix> Amat{a.ParallelAssemble()};
     
-    b.Assemble(); // necessary for bcs
+    std::unique_ptr<HypreParVector> B{b.ParallelAssemble()};
 
-    OperatorPtr A;
-    Vector B, X;
+    temperature.SetSubVector(ess_tdof_list, inp.temp_heat_pipe);
+    temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
+    std::unique_ptr<HypreParVector> X{temperature.ParallelAssemble()};
 
-    a.FormLinearSystem(ess_tdof_list, temperature, b, A, X, B);
-    amg.SetOperator(*A);
-    cg.SetOperator(*A);
-    cg.Mult(B, X);
-    a.RecoverFEMSolution(X, b, temperature);
+    Amat->EliminateRowsCols(ess_tdof_list, *X, *B);
+
+    amg.SetOperator(*Amat);
+    cg.SetOperator(*Amat);
+    cg.SetPreconditioner(amg);
+    cg.Mult(*B, *X);
+    temperature.Distribute(*X);
 
     temperature_old -= temperature;
     temperature_old.HostRead(); // necessary to sync memory for GPU problems
@@ -364,7 +373,8 @@ void calc_thermal_conductivity(const Input &inp,
     {
       const IntegrationPoint &ip = ir.IntPoint(i);
       const double T = temperature.GetValue(e, ip);
-      thermal_conductivity_quad[idx] = k_T(T);
+      const double k = k_T(T);
+      thermal_conductivity_quad[idx] = k;
       ++idx;
     }
 

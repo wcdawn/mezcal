@@ -124,9 +124,11 @@ public:
   Quadrature_choice quadrature_type{Quadrature_choice::level_symmetric};
 
   // THERMAL
+  bool feedback = false;
   double rxpwr{1.0}; // reactor power [W]
   double temp_boundary{273.15}; // boundary temperature [K]
   double temp_heat_pipe{300.}; // heat pipe constant temperature [K]
+  int heat_pipe_idx = 1;
 
   // GPU
   int ndevices{0}; // If (ndevices>0), use MPITeams. Else, use MPIExclusive.

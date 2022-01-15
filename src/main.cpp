@@ -441,7 +441,7 @@ int main(int argc, char* argv[])
           res.keff = scalar_flux.keff;
           break;
         case (Solver_choice::spn_power_iteration):
-          spn_power_iteration(time, inp, mat_lib, res, res.keff);
+          spn_power_iteration(time, inp, mat_lib, res, res.keff, power, temperature);
           break;
         case (Solver_choice::saaf_efficient_power_iteration):
           saaf_efficient_power_iteration(quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff);

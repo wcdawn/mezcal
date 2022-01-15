@@ -59,7 +59,9 @@ void spn_power_iteration(Timer &time,
                          Input &inp,
                          Material_library &mat_lib,
                          std::vector<std::unique_ptr<mfem::ParGridFunction>> &phi,
-                         double &keff);
+                         double &keff,
+                         mfem::ParGridFunction &power,
+                         mfem::ParGridFunction &temperature);
 
 void spn_calc_fiss_upscatter(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &phi,
                              double keff,
@@ -86,5 +88,10 @@ void spn_calc_spn_prev(int g, int n,
 void spn_calc_fiss_src(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &phi,
                        const Material_library &mat_lib,
                        mfem::QuadratureFunction &fiss_src_quad);
+
+void spn_calc_power(const Material_library &mat_lib,
+                    const std::vector<std::unique_ptr<mfem::ParGridFunction>> &phi,
+                    const double rxpwr,
+                    mfem::QuadratureFunction &power_quad);
 
 #endif

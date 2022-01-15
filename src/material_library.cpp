@@ -44,9 +44,14 @@ void Material_library::read_material(ifstream& ifs)
     }
     else if (card == "exact_area_volume")
     {
-      double val;
-      ifs >> val;
-      mat[mat_count].exact_area_volume = val;
+      ifs >> mat[mat_count].exact_area_volume;
+      continue;
+    }
+    else if (card == "thermal_material")
+    {
+      std::string str;
+      ifs >> str;
+      mat[mat_count].k_mat = Material_record::read_thermal_material(str);
       continue;
     }
 
@@ -254,6 +259,21 @@ void Material_library::set_nmoment(int m)
 // returns value in [W/cm/K]
 double Material_record::thermal_conductivity(Thermal_material k_mat_in, double T)
 {
+
+  constexpr double Tmax = 1500.0;
+  constexpr double Tmin = 200.0;
+
+  if (T > Tmax)
+  {
+    std::cout << "TEMPERATURE_ERROR: too hot! T=" << T << std::endl;
+    T = Tmax;
+  }
+  else if (T < Tmin)
+  {
+    std::cout << "TEMPERATURE_ERROR: too cold! T=" << T << std::endl;
+    T = Tmin;
+  }
+
   switch (k_mat_in)
   {
     case (SS316):
@@ -298,5 +318,30 @@ double Material_record::thermal_conductivity(Thermal_material k_mat_in, double T
         return (3.7267e-2 + 3.817e-5*Tc - 7.01e-8*std::pow(Tc,2) + 1.223e-10*std::pow(Tc,3) - 8.31e-14*std::pow(Tc,4))*4.184;
       }
   }
+
   return -1e-3;
+}
+
+Material_record::Thermal_material Material_record::read_thermal_material(const std::string &str)
+{
+
+  if (str == "SS316")
+    return Material_record::Thermal_material::SS316;
+  else if (str == "NaK78")
+    return Material_record::Thermal_material::NaK78;
+  else if (str == "BeO")
+    return Material_record::Thermal_material::BeO;
+  else if (str == "air")
+    return Material_record::Thermal_material::air;
+  else if (str == "Be")
+    return Material_record::Thermal_material::Be;
+  else if (str == "B4C")
+    return Material_record::Thermal_material::B4C;
+  else if (str == "UZrH")
+    return Material_record::Thermal_material::UZrH;
+
+  std::cout << "ERROR: invalid thermal material -- " << str << std::endl;
+  throw;
+  return Material_record::Thermal_material::SS316;
+
 }

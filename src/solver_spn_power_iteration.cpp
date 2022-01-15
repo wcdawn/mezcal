@@ -1,5 +1,7 @@
 #include "solver_spn_power_iteration.hpp"
 
+#include "conduction.hpp"
+
 using namespace mfem;
 
 namespace 
@@ -16,7 +18,9 @@ void spn_power_iteration(Timer &time,
                          Input &inp,
                          Material_library &mat_lib,
                          std::vector<std::unique_ptr<ParGridFunction>> &phi,
-                         double &keff)
+                         double &keff,
+                         ParGridFunction &power,
+                         ParGridFunction &temperature)
 {
 
   ParFiniteElementSpace *fespace = phi[0]->ParFESpace();
@@ -180,6 +184,8 @@ void spn_power_iteration(Timer &time,
 
   const int integration_order = fespace->GetOrder(0)+1;
   QuadratureSpace qspace{pmesh, integration_order};
+
+  QuadratureFunction power_quad{&qspace};
 
   std::vector<QuadratureFunction> fiss_upscatter_quad;
   fiss_upscatter_quad.reserve(mat_lib.ngroup());
@@ -347,9 +353,20 @@ void spn_power_iteration(Timer &time,
 
   time.start(time.solver);
 
+  temperature = inp.temp_boundary;
   for (int iter = 0; (iter < inp.tol.max_outer)
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
+
+    if (inp.feedback)
+    {
+      time.start("power");
+      spn_calc_power(mat_lib, phi, inp.rxpwr, power_quad);
+      time.stop("power");
+      time.start("temperature");
+      temperature_heat_conduction(inp, mat_lib, power_quad, temperature);
+      time.stop("temperature");
+    }
 
     time.start("fiss_upscatter");
     spn_calc_fiss_upscatter(phi, keff, mat_lib, fiss_upscatter_quad, inp.flux_free_chi);
@@ -439,6 +456,9 @@ void spn_power_iteration(Timer &time,
   }
 
   time.stop(time.solver);
+
+  QuadratureFunctionCoefficient qfc{power_quad};
+  power.ProjectCoefficient(qfc);
 
   return;
 }
@@ -778,7 +798,7 @@ void spn_calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &phi,
   const ParMesh * const pmesh = fespace->GetParMesh();
 
   fiss_src_quad = 0.0;
-  double *fiss = fiss_src_quad.HostWrite();
+  double *fiss = fiss_src_quad.HostReadWrite();
 
   int idx = 0;
 
@@ -824,6 +844,82 @@ void spn_calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &phi,
     }
 
   }
+
+  return;
+}
+
+void spn_calc_power(const Material_library &mat_lib,
+                    const std::vector<std::unique_ptr<ParGridFunction>> &phi,
+                    const double rxpwr,
+                    QuadratureFunction &power_quad)
+{
+
+  constexpr double kappa_over_nu = 1.0; // TODO
+
+  const QuadratureSpace * const qspace = power_quad.GetSpace();
+  const ParFiniteElementSpace * const fespace = phi[0]->ParFESpace();
+  const ParMesh * const pmesh = fespace->GetParMesh();
+
+  power_quad = 0.0;
+  double *pquad = power_quad.HostReadWrite();
+
+  int idx = 0;
+
+  for (int e = 0; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const int attribute = pmesh->GetAttribute(e)-1;
+    const Material_record &mat = mat_lib.mat[attribute];
+    const XSRecord &rec = mat.rec;
+
+    if (!rec.is_fiss)
+    {
+      idx += ir.GetNPoints();
+      continue;
+    }
+
+    const FiniteElement * const fe = fespace->GetFE(e);
+    Array<int> dofs;
+    fespace->GetElementDofs(e, dofs);
+
+    for (int i = 0; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint &ip = ir.IntPoint(i);
+      Vector dofval(dofs.Size());
+      fe->CalcShape(ip, dofval);
+
+      std::vector<double> kappasf = rec.nusf;
+      for (int g = 0; g < mat_lib.ngroup(); ++g)
+        kappasf[g] *= kappa_over_nu;
+
+      for (int gprime = 0; gprime < mat_lib.ngroup(); ++gprime)
+      {
+        Vector locvec(dofs.Size());
+        phi[gprime]->GetSubVector(dofs, locvec.HostWrite());
+        const double flux = dofval*locvec;
+        pquad[idx] += kappasf[gprime]*flux;
+      }
+
+      ++idx;
+    }
+  }
+
+  // calculate power normalization factor
+
+  ConstantCoefficient one{1.0};
+  ParLinearForm b{phi[0]->ParFESpace()};
+  b.AddDomainIntegrator(new DomainLFIntegrator{one});
+  b.Assemble();
+
+  QuadratureFunctionCoefficient power_func{power_quad};
+  ParGridFunction power{phi[0]->ParFESpace()};
+  power.ProjectCoefficient(power_func);
+
+  const double factor = rxpwr / b(power); // use the inner product in the space
+
+  power_quad *= factor;
 
   return;
 }

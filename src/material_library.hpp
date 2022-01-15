@@ -66,6 +66,8 @@ struct Material_record
 
   Thermal_material k_mat{Thermal_material::SS316};
 
+  static Thermal_material read_thermal_material(const std::string &str);
+
   // returns value in [W/cm/K]
   static double thermal_conductivity(Thermal_material k_mat_in, double temperature);
   double thermal_conductivity(double temperature) const { return thermal_conductivity(k_mat, temperature); }

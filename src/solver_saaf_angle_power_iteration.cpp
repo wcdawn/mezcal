@@ -8,6 +8,8 @@
 #include "vector_pwconst_coefficient.hpp"
 #include "vector_incoming_flux_coefficient.hpp"
 
+#include "conduction.hpp"
+
 #include <cmath>
 #include <vector>
 
@@ -596,20 +598,25 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     *keff_ofs << std::setprecision(20);
   }
 
+  temperature = inp.temp_heat_pipe;
+
   time.start(time.solver);
   for (int iter{0}; (iter < inp.tol.max_outer)
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
 
-    time.start("power");
-    calc_power_vector(mat_lib, scalar_flux, inp.rxpwr, power_quad);
-    time.stop("power");
+    if (inp.feedback)
+    {
 
-#if 0
-    time.start("temperature");
-    temperature_heat_conduction(inp, mat_lib, power, temperature);
-    time.stop("temperature");
-#endif
+      time.start("power");
+      calc_power_vector(mat_lib, scalar_flux, inp.rxpwr, power_quad);
+      time.stop("power");
+
+      time.start("temperature");
+      temperature_heat_conduction(inp, mat_lib, power_quad, temperature);
+      time.stop("temperature");
+
+    }
 
     time.start("calc_fiss_upscatter_vector");
     calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad,
@@ -1194,7 +1201,6 @@ void calc_power_vector(const Material_library &mat_lib,
 {
 
   constexpr double kappa_over_nu = 1.0; // TODO this should be group dependent
-  // TODO power normalization
 
   const QuadratureSpace* const qspace = power_quad.GetSpace();
   const ParFiniteElementSpace* const fespace = scalar_flux[0]->ParFESpace();
@@ -1244,8 +1250,22 @@ void calc_power_vector(const Material_library &mat_lib,
       ++idx;
 
     }
-
   }
+
+  // calculate power normalization factor
+
+  ConstantCoefficient one{1.0};
+  ParLinearForm b{scalar_flux[0]->ParFESpace()};
+  b.AddDomainIntegrator(new DomainLFIntegrator{one});
+  b.Assemble();
+
+  QuadratureFunctionCoefficient power_func{power_quad};
+  ParGridFunction power{scalar_flux[0]->ParFESpace()};
+  power.ProjectCoefficient(power_func);
+
+  const double factor = rxpwr / b(power); // use the inner product in the space
+
+  power_quad *= factor;
 
   return;
 }
