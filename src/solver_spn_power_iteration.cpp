@@ -27,7 +27,7 @@ void spn_power_iteration(Timer &time,
   const int myid = fespace->GetMyRank();
   ParMesh *pmesh = fespace->GetParMesh();
 
-  constexpr int skip_zeros = 2;
+  constexpr int skip_zeros = 1; // TODO
 
   const int vdim = mat_lib.ngroup()*inp.spn_eq();
 
@@ -130,56 +130,72 @@ void spn_power_iteration(Timer &time,
   }
 
 
+  std::vector<PWConstCoefficient> removal_func;
+  removal_func.reserve(vdim);
+  for (int n = 0; n < inp.spn_eq(); ++n)
+  {
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+
+      Vector removal(pmesh->attributes.Max());
+      for (int i = 0; i < pmesh->attributes.Max(); ++i)
+        removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
+      removal_func.emplace_back(removal);
+
+    }
+  }
+
+  std::vector<std::unique_ptr<ParBilinearForm>> Apbf(vdim);
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(vdim);
   std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(vdim);
   std::vector<std::unique_ptr<HyprePCG>> Asol(vdim);
 
   time.start(time.matrix_assembly);
+
+  std::vector<ProductCoefficient> vacuum_bc_product_func;
+  vacuum_bc_product_func.reserve(2*vdim);
+
+  for (int n = 0; n < inp.spn_eq(); ++n)
   {
 
-    for (int n = 0; n < inp.spn_eq(); ++n)
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
     {
 
-      for (int g = 0; g < mat_lib.ngroup(); ++g)
-      {
+      const int idx = g + n*mat_lib.ngroup();
+      const int bc_idx = n + n*inp.spn_eq() + g*inp.spn_eq()*inp.spn_eq();
 
-        const int idx = g + n*mat_lib.ngroup();
-        const int bc_idx = n + n*inp.spn_eq() + g*inp.spn_eq()*inp.spn_eq();
+      vacuum_bc_product_func.emplace_back(leakage_func[idx], vacuum_bc_func[bc_idx]);
+      vacuum_bc_product_func.emplace_back(-1.0, vacuum_bc_product_func.back());
 
-        Vector removal(pmesh->attributes.Max());
-        for (int i = 0; i < pmesh->attributes.Max(); ++i)
-          removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
-        PWConstCoefficient removal_func{removal};
+      std::unique_ptr<ParBilinearForm> a{std::make_unique<ParBilinearForm>(fespace)};
+      a->AddDomainIntegrator(new DiffusionIntegrator{leakage_func[idx]});
+      a->AddDomainIntegrator(new MassIntegrator{removal_func[idx]});
+      a->AddBoundaryIntegrator(new MassIntegrator{vacuum_bc_product_func.back()}, vacuum_condition);
 
-        ProductCoefficient intermediate_vacuum_bc_product_func{
-          leakage_func[idx], vacuum_bc_func[bc_idx]};
-        ProductCoefficient vacuum_bc_product_func{-1.0, intermediate_vacuum_bc_product_func};
+      a->Assemble(skip_zeros);
+      a->Finalize(skip_zeros);
 
-        std::unique_ptr<ParBilinearForm> a{std::make_unique<ParBilinearForm>(fespace)};
-        a->AddDomainIntegrator(new DiffusionIntegrator{leakage_func[idx]});
-        a->AddDomainIntegrator(new MassIntegrator{removal_func});
-        a->AddBoundaryIntegrator(new MassIntegrator{vacuum_bc_product_func}, vacuum_condition);
+      Amat[idx].reset(a->ParallelAssemble());
+      if (is_zero_flux)
+        std::unique_ptr<HypreParMatrix> Adummy{
+          Amat[idx]->EliminateRowsCols(ess_tdof_list)};
 
-        a->Assemble(skip_zeros);
-        if (is_zero_flux) a->EliminateEssentialBCDiag(ess_bdr, 1.0);
-        a->Finalize(skip_zeros);
-        Amat[idx].reset(a->ParallelAssemble());
+      Apbf[idx] = std::move(a);
 
-        Aprec[idx] = std::make_unique<HypreBoomerAMG>(*Amat[idx]);
-        Aprec[idx]->SetPrintLevel(0);
+      Aprec[idx] = std::make_unique<HypreBoomerAMG>(*Amat[idx]);
+      Aprec[idx]->SetPrintLevel(0);
 
-        Asol[idx] = std::make_unique<HyprePCG>(MPI_COMM_WORLD);
-        Asol[idx]->SetPrintLevel(inp.verbose ? 2 : 0);
-        Asol[idx]->SetPreconditioner(*Aprec[idx]);
-        Asol[idx]->SetOperator(*Amat[idx]);
-        Asol[idx]->SetTol(inp.tol.inner_rel);
-        Asol[idx]->SetAbsTol(inp.tol.inner_abs);
-        Asol[idx]->SetMaxIter(inp.tol.max_inner);
+      Asol[idx] = std::make_unique<HyprePCG>(MPI_COMM_WORLD);
+      Asol[idx]->SetPrintLevel(inp.verbose ? 2 : 0);
+      Asol[idx]->SetPreconditioner(*Aprec[idx]);
+      Asol[idx]->SetOperator(*Amat[idx]);
+      Asol[idx]->SetTol(inp.tol.inner_rel);
+      Asol[idx]->SetAbsTol(inp.tol.inner_abs);
+      Asol[idx]->SetMaxIter(inp.tol.max_inner);
 
-      }
     }
-
   }
+
   time.stop(time.matrix_assembly);
 
   const int integration_order = fespace->GetOrder(0)+1;
@@ -360,12 +376,38 @@ void spn_power_iteration(Timer &time,
 
     if (inp.feedback)
     {
+
       time.start("power");
       spn_calc_power(mat_lib, phi, inp.rxpwr, power_quad);
       time.stop("power");
+
       time.start("temperature");
       temperature_heat_conduction(inp, mat_lib, power_quad, temperature);
       time.stop("temperature");
+
+      for (int n = 0; n < inp.spn_eq(); ++n)
+      {
+        for (int g = 0; g < mat_lib.ngroup(); ++g)
+        {
+          const int idx = g + n*mat_lib.ngroup();
+
+          Apbf[idx]->Update();
+
+          Apbf[idx]->Assemble(skip_zeros);
+          Apbf[idx]->Finalize(skip_zeros);
+
+          Amat[idx].reset(Apbf[idx]->ParallelAssemble());
+          if (is_zero_flux)
+            std::unique_ptr<HypreParMatrix> Adummy{
+              Amat[idx]->EliminateRowsCols(ess_tdof_list)};
+
+          Aprec[idx]->SetOperator(*Amat[idx]);
+          Asol[idx]->SetOperator(*Amat[idx]);
+          Asol[idx]->SetPreconditioner(*Aprec[idx]);
+
+        }
+      }
+
     }
 
     time.start("fiss_upscatter");

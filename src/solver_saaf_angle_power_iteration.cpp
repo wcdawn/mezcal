@@ -15,6 +15,232 @@
 
 using namespace mfem;
 
+// note: the function signature may need to change
+double xscalc_sigma_t(const int g, const XSRecord &rec, const double T)
+{
+  return rec.sigma_t[g];
+}
+
+double xscalc_selfscatter(const int g, const XSRecord &rec, const double T)
+{
+  return rec.sigma_s.Elem(g,g);
+}
+
+double xscalc_nusf(const int g, const XSRecord &rec, const double T)
+{
+  return rec.nusf[g];
+}
+
+// returns a row of the scattering matrix
+void xscalc_sigma_s(const int g, const XSRecord &rec, const double T,
+    Array<int> &col_idx, Vector &dat)
+{
+
+  Array <int> c; // columns
+  Vector d; // data
+  rec.sigma_s.GetRow(g, c, d);
+
+  Vector v(rec.ngroup());
+  v = 0.0;
+  v.SetSubVector(c, d); // add other vectors to v for interpolating
+  
+  for (int g = 0; g < v.Size(); ++g)
+    if (std::abs(v(g)) > 0.0)
+      col_idx.Append(g);
+
+  dat.SetSize(col_idx.Size());
+  for (int i = 0; i < col_idx.Size(); ++i)
+    dat(i) = v(col_idx[i]);
+
+  return;
+}
+
+class DSARemovalCoefficient final : public Coefficient
+{
+public:
+  DSARemovalCoefficient(const int g_,
+                        const Material_library &mat_lib_,
+                        const ParGridFunction &temperature_)
+    : g{g_}, mat_lib{mat_lib_}, temperature{temperature_} {}
+  virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
+  {
+    const int attribute = T.Attribute-1;
+    const XSRecord &rec = mat_lib.mat[attribute].rec;
+    const double temp = temperature.GetValue(T, ip);
+    const double tot = xscalc_sigma_t(g, rec, temp);
+    const double scat = xscalc_selfscatter(g, rec, temp);
+    return tot - scat;
+  }
+private:
+  const int g;
+  const Material_library &mat_lib;
+  const ParGridFunction &temperature;
+};
+
+class DSADiffusiveCoefficient final : public Coefficient
+{
+public:
+  DSADiffusiveCoefficient(const int g_,
+                          const Material_library &mat_lib_,
+                          const ParGridFunction &temperature_)
+    : g{g_}, mat_lib{mat_lib_}, temperature{temperature_} {}
+  virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
+  {
+    const int attribute = T.Attribute-1;
+    const XSRecord &rec = mat_lib.mat[attribute].rec;
+    const double temp = temperature.GetValue(T, ip);
+    const double tot = xscalc_sigma_t(g, rec, temp);
+    return 1.0 / (3.0 * tot);
+  }
+private:
+  const int g;
+  const Material_library &mat_lib;
+  const ParGridFunction &temperature;
+};
+
+class SelfscatterCoefficient final : public Coefficient
+{
+public:
+  SelfscatterCoefficient(const int g_,
+                         const Material_library &mat_lib_,
+                         const ParGridFunction &temperature_)
+    : g{g_}, mat_lib{mat_lib_}, temperature{temperature_} {}
+  virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
+  {
+    const int attribute = T.Attribute-1;
+    const XSRecord &rec = mat_lib.mat[attribute].rec;
+    const double temp = temperature.GetValue(T, ip);
+    const double scat = xscalc_selfscatter(g, rec, temp);
+    return scat;
+  }
+private:
+  const int g;
+  const Material_library &mat_lib;
+  const ParGridFunction &temperature;
+};
+
+class SAAFTotalCoefficient final : public VectorCoefficient
+{
+public:
+  SAAFTotalCoefficient(const int g_,
+                       const Material_library &mat_lib_,
+                       const Quadrature * const quad_,
+                       const ParGridFunction &temperature_)
+    : VectorCoefficient(quad_->nd()), g{g_}, mat_lib{mat_lib_}, quad{quad_}, temperature{temperature_} {}
+  virtual void Eval(Vector &v, ElementTransformation &T, const IntegrationPoint &ip) override
+  {
+    const int attribute = T.Attribute-1;
+    const XSRecord &rec = mat_lib.mat[attribute].rec;
+    const double temp = temperature.GetValue(T, ip);
+    const double tot = xscalc_sigma_t(g, rec, temp);
+    v.SetSize(quad->nd());
+    v = tot;
+  }
+private:
+  const int g;
+  const Material_library &mat_lib;
+  const Quadrature * const quad;
+  const ParGridFunction &temperature;
+};
+
+class SAAFStreamingCoefficient final : public MatrixTensorCoefficient
+{
+public:
+  SAAFStreamingCoefficient(const int g_,
+                           const Material_library &mat_lib_,
+                           const Quadrature * const quad_,
+                           const ParGridFunction &temperature_)
+    : MatrixTensorCoefficient(quad_->nd()), g{g_}, mat_lib{mat_lib_}, quad{quad_}, temperature{temperature_} {}
+  virtual void Eval(std::vector<DenseMatrix> &data,
+                    Array<int> &row_idx,
+                    Array<int> &col_idx,
+                    ElementTransformation &T,
+                    const IntegrationPoint &ip) const override
+  {
+    const int attribute = T.Attribute-1;
+    const XSRecord &rec = mat_lib.mat[attribute].rec;
+    const double temp = temperature.GetValue(T, ip);
+    const double tot = xscalc_sigma_t(g, rec, temp);
+
+    data.reserve(quad->nd());
+    row_idx.SetSize(quad->nd());
+    col_idx.SetSize(quad->nd());
+
+    for (int n = 0; n < quad->nd(); ++n)
+    {
+      DenseMatrix omega_mat(quad->dim());
+      MultVVt(quad->omega(n), omega_mat);
+      omega_mat *= 1.0/tot;
+      data.emplace_back(omega_mat);
+      row_idx[n] = n;
+      col_idx[n] = n;
+    }
+
+    return;
+  }
+private:
+  const int g;
+  const Material_library &mat_lib;
+  const Quadrature * const quad;
+  const ParGridFunction &temperature;
+};
+
+HypreParMatrix * build_amat(const int g,
+                            const Material_library &mat_lib,
+                            const Quadrature * const quad,
+                            ParFiniteElementSpace *angular_flux_fespace,
+                            const ParGridFunction &temperature)
+{
+
+  constexpr int skip_zeros = 2;
+
+  Tensor<Vector> omega;
+  omega.reserve(quad->nd());
+  for(int n{0}; n < quad->nd(); ++n)
+  {
+    omega.AddElement(quad->omega(n), n);
+  }
+  VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
+
+  SAAFStreamingCoefficient streaming_func{g, mat_lib, quad, temperature};
+  SAAFTotalCoefficient total_func{g, mat_lib, quad, temperature};
+
+  ParBilinearForm a{angular_flux_fespace};
+  a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
+  a.AddDomainIntegrator(new TensorDiffusionIntegrator{streaming_func});
+  a.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
+
+  a.Assemble(skip_zeros);
+  a.Finalize(skip_zeros);
+  return a.ParallelAssemble();
+}
+
+
+HypreParMatrix * build_dmat(const int g,
+                           const Material_library &mat_lib,
+                           ParFiniteElementSpace *scalar_flux_fespace,
+                           const ParGridFunction &temperature)
+{
+
+  constexpr int skip_zeros = 2;
+
+  DSADiffusiveCoefficient dsa_diffusive_func{g, mat_lib, temperature};
+  DSARemovalCoefficient dsa_removal_func{g, mat_lib, temperature};
+
+  ConstantCoefficient albedo{0.5};
+
+  ParBilinearForm d{scalar_flux_fespace};
+  d.AddDomainIntegrator(new DiffusionIntegrator{dsa_diffusive_func});
+  d.AddDomainIntegrator(new MassIntegrator{dsa_removal_func});
+  d.AddBoundaryIntegrator(new MassIntegrator{albedo});
+
+  d.Assemble(skip_zeros);
+  d.Finalize(skip_zeros);
+
+  return d.ParallelAssemble();
+
+}
+
 namespace 
 {
   double par_norml2(const Vector &x)
@@ -93,273 +319,38 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux[0]->ParFESpace();
 
-  constexpr int skip_zeros{2};
-
-  enum class LINEAR_SOLVER
-  {
-    invalid=-1,
-    amgx,
-    hypre_pcg,
-    hypre_gmres,
-    mfem_cg,
-    mfem_gmres,
-    mfem_minres,
-    mfem_bicgstab
-  };
-  // Choose which solver will be used for the SAAF system.
-  // Except for AmgX, HypreBoomerAMG will always be used for preconditioner.
-  // DSA system will always be solved with HypreBoomerAMG+HyprePCG.
-  LINEAR_SOLVER linear_solver{LINEAR_SOLVER::invalid};
-  const std::string inp_linear_solver{inp.get_linear_solver()};
-  if (inp_linear_solver == "amgx")
-    linear_solver = LINEAR_SOLVER::amgx;
-  else if (inp_linear_solver == "hypre_pcg")
-    linear_solver = LINEAR_SOLVER::hypre_pcg;
-  else if (inp_linear_solver == "hypre_gmres")
-    linear_solver = LINEAR_SOLVER::hypre_gmres;
-  else if (inp_linear_solver == "mfem_cg")
-    linear_solver = LINEAR_SOLVER::mfem_cg;
-  else if (inp_linear_solver == "mfem_gmres")
-    linear_solver = LINEAR_SOLVER::mfem_gmres;
-  else if (inp_linear_solver == "mfem_minres")
-    linear_solver = LINEAR_SOLVER::mfem_minres;
-  else if (inp_linear_solver == "mfem_bicgstab")
-    linear_solver = LINEAR_SOLVER::mfem_bicgstab;
-  else
-  {
-    if (myid == 0) std::cout << "WARNING: unknown (or no) linear solver specified = *" << inp_linear_solver << "*" << std::endl;
-    if (myid == 0) std::cout << "Using default (hypre_pcg) linear solver." << std::endl;
-    linear_solver = LINEAR_SOLVER::hypre_pcg;
-  }
-
-  enum class LINEAR_PRECONDITIONER
-  {
-    invalid=-1,
-    amg,
-    jacobi
-  };
-  LINEAR_PRECONDITIONER linear_preconditioner{LINEAR_PRECONDITIONER::invalid};
-  const std::string inp_linear_preconditioner{inp.get_linear_preconditioner()};
-  if (inp_linear_preconditioner == "amg")
-    linear_preconditioner = LINEAR_PRECONDITIONER::amg;
-  else if (inp_linear_preconditioner == "jacobi")
-    linear_preconditioner = LINEAR_PRECONDITIONER::jacobi;
-  else
-  {
-    if (myid == 0) std::cout << "WARNING: unknown (or no) linear preconditioner specified = *" << inp_linear_preconditioner << "*" << std::endl;
-    if (myid == 0) std::cout << "Using default (amg) linear preconditioner." << std::endl;
-    linear_preconditioner = LINEAR_PRECONDITIONER::amg;
-  }
-
   // transport streaming+collision operator
   std::vector<std::unique_ptr<HypreParMatrix>> Amat(mat_lib.ngroup());
-  std::vector<std::unique_ptr<HypreSolver>> Aprec(mat_lib.ngroup());
-  std::vector<std::unique_ptr<Solver>> Asol(mat_lib.ngroup());
-
-  // dsa streaming+removal operator
-  std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
-  std::vector<std::unique_ptr<HypreSolver>> Dprec(mat_lib.ngroup());
-  std::vector<std::unique_ptr<Solver>> Dsol(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HypreBoomerAMG>> Aprec(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HyprePCG>> Asol(mat_lib.ngroup());
 
   time.start(time.matrix_assembly);
 
-  { // streaming+collision
+  for (int g{0}; g < mat_lib.ngroup(); ++g)
+  {
 
-    std::vector<DenseMatrix> omega_mat(quad->nd());
-    for (int n{0}; n < quad->nd(); ++n)
-    {
-      omega_mat[n].SetSize(quad->dim());
-      MultVVt(quad->omega(n), omega_mat[n]);
-    }
+    Amat[g].reset(build_amat(g, mat_lib, quad, angular_flux_fespace, temperature));
 
-    Tensor<Vector> omega;
-    omega.reserve(quad->nd());
-    for(int n{0}; n < quad->nd(); ++n)
-    {
-      omega.AddElement(quad->omega(n), n);
-    }
-    VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
-    
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
+    std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
+    prec->SetPrintLevel(inp.verbose ? 1 : 0);
+    HYPRE_BoomerAMGSetNumFunctions(*prec, quad->nd());
+    Aprec[g] = std::move(prec);
 
-      ParBilinearForm a{angular_flux_fespace};
+    std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+    this_sol->SetPrintLevel(inp.verbose ? 2 : 0);
+    this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
+    this_sol->SetOperator(*Amat[g]);
+    this_sol->SetTol(inp.tol.inner_rel);
+    this_sol->SetAbsTol(inp.tol.inner_abs);
+    this_sol->SetMaxIter(inp.tol.max_inner);
+    Asol[g] = std::move(this_sol);
 
-      std::vector<Vector> total(pmesh->attributes.Max());
-      std::vector<Tensor<DenseMatrix>> leakage(pmesh->attributes.Max());
-      for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+  } // g = 1,mat_lib.ngroup()
 
-        leakage[i].reserve(quad->nd());
-        for (int n{0}; n < quad->nd(); ++n)
-        {
-          const double val{1.0/tot};
-          omega_mat[n] *= val;
-          leakage[i].AddElement(omega_mat[n], n);
-          omega_mat[n] *= 1.0/val;
-        }
-        
-        total[i].SetSize(quad->nd());
-        total[i] = tot;
-
-      }
-
-      VectorPWConstCoefficient total_func{total};
-      MatrixTensorPWConstCoefficient leakage_func{quad->nd(), leakage};
-      a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
-      a.AddDomainIntegrator(new TensorDiffusionIntegrator{leakage_func});
-      a.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
-
-      a.Assemble(skip_zeros); // note: no essential bcs in saaf
-      a.Finalize(skip_zeros);
-      Amat[g].reset(a.ParallelAssemble());
-
-      // precconditioner
-      // everything uses a hypre preconditioenr except for amgx
-      if (linear_solver != LINEAR_SOLVER::amgx)
-      {
-        switch (linear_preconditioner)
-        {
-          case (LINEAR_PRECONDITIONER::amg):
-          {
-            std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
-            if (inp.verbose)
-              prec->SetPrintLevel(1);
-            else
-              prec->SetPrintLevel(0);
-            HYPRE_BoomerAMGSetNumFunctions(*prec, quad->nd());
-            Aprec[g] = std::move(prec);
-            break;
-          }
-          case (LINEAR_PRECONDITIONER::jacobi):
-          {
-            std::unique_ptr<HypreDiagScale> prec{std::make_unique<HypreDiagScale>(*Amat[g])};
-            Aprec[g] = std::move(prec);
-            break;
-          }
-          default:
-            if (myid == 0) std::cout << "invalid linear preconditioner" << std::endl;
-            return;
-        }
-      }
-
-      // tolver
-      switch (linear_solver)
-      {
-        case (LINEAR_SOLVER::amgx):
-        {
-
-#ifdef AMGX_AVAILABLE
-
-          std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
-          this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-          this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-
-          if (inp.ndevices > 0)
-            this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices); // use MPITeams
-          else
-            this_sol->InitExclusiveGPU(MPI_COMM_WORLD); // use MPI Exclusive
-
-          this_sol->SetOperator(*Amat[g]);
-          Asol[g] = std::move(this_sol);
-
-          // Amat no longer needs to be stored on cpu
-          Amat[g].reset();
-
-#else
-
-          MFEM_ABORT("solver not supported without amgx");
-
-#endif
-
-          break;
-        }
-        case (LINEAR_SOLVER::hypre_pcg):
-        {
-          std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-          if (inp.verbose)
-            this_sol->SetPrintLevel(2);
-          else
-            this_sol->SetPrintLevel(0);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::hypre_gmres):
-        {
-          std::unique_ptr<HypreGMRES> this_sol{std::make_unique<HypreGMRES>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(2);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_cg):
-        {
-          std::unique_ptr<CGSolver> this_sol{std::make_unique<CGSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_gmres):
-        {
-          std::unique_ptr<GMRESSolver> this_sol{std::make_unique<GMRESSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          this_sol->SetKDim(5); // Very small. Shouldn't be necessary for SPD systems.
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_minres):
-        {
-          std::unique_ptr<MINRESSolver> this_sol{std::make_unique<MINRESSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        case (LINEAR_SOLVER::mfem_bicgstab):
-        {
-          std::unique_ptr<BiCGSTABSolver> this_sol{std::make_unique<BiCGSTABSolver>(MPI_COMM_WORLD)};
-          this_sol->SetPrintLevel(1);
-          this_sol->SetPreconditioner(*Aprec[g]); // should be before operator
-          this_sol->SetOperator(*Amat[g]);
-          this_sol->SetRelTol(inp.tol.inner_rel);
-          this_sol->SetAbsTol(inp.tol.inner_abs);
-          this_sol->SetMaxIter(inp.tol.max_inner);
-          Asol[g] = std::move(this_sol);
-          break;
-        }
-        default:
-          if (myid==0) std::cout << "unsupported LINEAR_SOLVER" << std::endl;
-          return;
-      }
-
-    } // g = 1,mat_lib.ngroup()
-
-  } // streaming+collision
+  // dsa streaming+removal operator
+  std::vector<std::unique_ptr<HypreParMatrix>> Dmat(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HypreBoomerAMG>> Dprec(mat_lib.ngroup());
+  std::vector<std::unique_ptr<HyprePCG>> Dsol(mat_lib.ngroup());
 
   if (inp.tol.use_dsa)
   { // DSA operator
@@ -367,88 +358,19 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
 
-      Vector diffusive(pmesh->attributes.Max());
-      Vector removal(pmesh->attributes.Max());
-      for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      {
-        const XSRecord &rec{mat_lib.mat[i].rec};
-        diffusive(i) = 1.0 / (3.0*rec.sigma_t[g]);
-        removal(i)   = rec.sigma_t[g] - rec.sigma_s.Elem(g,g);
-      }
-      PWConstCoefficient diffusive_func{diffusive};
-      PWConstCoefficient removal_func{removal};
+      Dmat[g].reset(build_dmat(g, mat_lib, scalar_flux_fespace, temperature));
 
-      ConstantCoefficient albedo{0.5};
+      std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
+      prec->SetPrintLevel(0);
+      Dprec[g] = std::move(prec);
 
-      ParBilinearForm d{scalar_flux_fespace};
-      d.AddDomainIntegrator(new DiffusionIntegrator{diffusive_func});
-      d.AddDomainIntegrator(new MassIntegrator{removal_func});
-      d.AddBoundaryIntegrator(new MassIntegrator{albedo});
-
-      d.Assemble(skip_zeros);
-      d.Finalize(skip_zeros);
-      Dmat[g].reset(d.ParallelAssemble());
-
-      if (linear_solver == LINEAR_SOLVER::amgx)
-      {
-
-#ifdef AMGX_AVAILABLE
-
-        std::unique_ptr<AmgXSolver> this_sol{std::make_unique<AmgXSolver>()};
-        this_sol->DefaultParameters(AmgXSolver::SOLVER, inp.verbose);
-        this_sol->ReadParameters("amgxrc.json", AmgXSolver::EXTERNAL);
-
-        if (inp.ndevices > 0)
-          this_sol->InitMPITeams(MPI_COMM_WORLD, inp.ndevices);
-        else
-          this_sol->InitExclusiveGPU(MPI_COMM_WORLD);
-  
-
-        this_sol->SetOperator(*Dmat[g]);
-        Dsol[g] = std::move(this_sol);
-
-        // Dmat no longer needs to be stored on cpu
-        Dmat[g].reset();
-
-#else
-
-        MFEM_ABORT("solver not supported without amgx");
-
-#endif
-
-      }
-      else
-      {
-
-        switch (linear_preconditioner)
-        {
-          case (LINEAR_PRECONDITIONER::amg):
-          {
-            std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
-            prec->SetPrintLevel(0);
-            Dprec[g] = std::move(prec);
-            break;
-          }
-          case (LINEAR_PRECONDITIONER::jacobi):
-          {
-            std::unique_ptr<HypreDiagScale> prec{std::make_unique<HypreDiagScale>(*Dmat[g])};
-            Dprec[g] = std::move(prec);
-            break;
-          }
-          default:
-            if (myid == 0) std::cout << "invalid linear preconditioner" << std::endl;
-            return;
-        }
-
-        std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
-        this_sol->SetPreconditioner(*Dprec[g]);
-        this_sol->SetOperator(*Dmat[g]);
-        this_sol->SetTol(inp.tol.inner_rel);
-        this_sol->SetAbsTol(inp.tol.inner_abs);
-        this_sol->SetMaxIter(inp.tol.max_inner);
-        Dsol[g] = std::move(this_sol);
-
-      }
+      std::unique_ptr<HyprePCG> this_sol{std::make_unique<HyprePCG>(MPI_COMM_WORLD)};
+      this_sol->SetPreconditioner(*Dprec[g]);
+      this_sol->SetOperator(*Dmat[g]);
+      this_sol->SetTol(inp.tol.inner_rel);
+      this_sol->SetAbsTol(inp.tol.inner_abs);
+      this_sol->SetMaxIter(inp.tol.max_inner);
+      Dsol[g] = std::move(this_sol);
 
     } // g=1,mat_lib.ngroup()
 
@@ -534,15 +456,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
     dsa_flux_func.emplace_back(scalar_flux_func[g], dsa_phi_old_func, 1.0, -1.0);
 
-  std::vector<PWConstCoefficient> self_scatter_func;
+  std::vector<SelfscatterCoefficient> self_scatter_func;
   self_scatter_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-  {
-    Vector self_scatter(pmesh->attributes.Max());
-    for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      self_scatter(i) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
-    self_scatter_func.emplace_back(self_scatter);
-  }
+    self_scatter_func.emplace_back(g, mat_lib, temperature);
 
   std::vector<ProductCoefficient> dsa_src;
   dsa_src.reserve(mat_lib.ngroup());
@@ -609,19 +526,40 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     {
 
       time.start("power");
-      calc_power_vector(mat_lib, scalar_flux, inp.rxpwr, power_quad);
+      calc_power_vector(scalar_flux, mat_lib, inp.rxpwr, temperature, power_quad);
       time.stop("power");
 
       time.start("temperature");
       temperature_heat_conduction(inp, mat_lib, power_quad, temperature);
       time.stop("temperature");
 
+      time.start(time.matrix_assembly);
+
+      for (int g = 0; g < mat_lib.ngroup(); ++g)
+      {
+
+        Amat[g].reset(build_amat(g, mat_lib, quad, angular_flux_fespace, temperature));
+        Aprec[g]->SetOperator(*Amat[g]);
+        Asol[g]->SetOperator(*Amat[g]);
+        Asol[g]->SetPreconditioner(*Aprec[g]);
+
+        if (inp.tol.use_dsa)
+        {
+          Dmat[g].reset(build_dmat(g, mat_lib, scalar_flux_fespace, temperature));
+          Dprec[g]->SetOperator(*Dmat[g]);
+          Dsol[g]->SetOperator(*Dmat[g]);
+          Dsol[g]->SetPreconditioner(*Dprec[g]);
+        }
+
+      }
+
+      time.stop(time.matrix_assembly);
+
     }
 
     time.start("calc_fiss_upscatter_vector");
-    calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad,
-      fiss_upscatter_quad, saaf_fiss_upscatter_quad,
-      keff, inp.flux_free_chi);
+    calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad, temperature,
+      fiss_upscatter_quad, saaf_fiss_upscatter_quad, keff, inp.flux_free_chi);
     time.stop("calc_fiss_upscatter_vector");
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -630,7 +568,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (myid == 0) std::cout << "BEGIN_GROUP " << g << std::endl;
 
       time.start("calc_downscatter_vector");
-      calc_downscatter_vector(g, scalar_flux, mat_lib, quad,
+      calc_downscatter_vector(g, scalar_flux, mat_lib, quad, temperature,
         dnscatter_quad, saaf_dnscatter_quad);
       dnscatter_quad += fiss_upscatter_quad[g];
       saaf_dnscatter_quad += saaf_fiss_upscatter_quad[g];
@@ -644,7 +582,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         dsa_phi_old = *scalar_flux[g]; // (k)
 
         time.start("calc_selfscatter_vector");
-        calc_selfscatter_vector(g, *scalar_flux[g], mat_lib, quad,
+        calc_selfscatter_vector(g, *scalar_flux[g], mat_lib, quad, temperature,
           selfscatter_quad, saaf_selfscatter_quad);
         time.stop("calc_selfscatter_vector");
         time.start("calc_selfscatter_vector_sum");
@@ -744,7 +682,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     time.start("fisssum");
     QuadratureFunction fiss_src_quad{&qspace};
     fiss_src_quad.UseDevice(true);
-    calc_fiss_src(scalar_flux, mat_lib, fiss_src_quad);
+    calc_fiss_src(scalar_flux, mat_lib, temperature, fiss_src_quad);
     const double local_fiss_sum{fiss_src_quad.Sum()};
     double fiss_sum;
     MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -798,6 +736,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
                                 const Material_library &mat_lib,
                                 const Quadrature * const quad,
+                                const ParGridFunction &temperature,
                                 std::vector<QuadratureFunction> &fiss_upscatter_quad,
                                 std::vector<QuadratureFunction> &saaf_fiss_upscatter_quad,
                                 const double keff,
@@ -836,14 +775,22 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
+      Vector temp_locvec(dofs.Size());
+      temperature.GetSubVector(dofs, temp_locvec.HostWrite());
+      const double temp = dofval*temp_locvec;
+
       std::vector<double> spectrum(mat_lib.ngroup());
 
       // get all xs at this point
       // this will eventually be temperautre dependent
-      const std::vector<double> &nusf{rec.nusf};
-      const std::vector<double> &tot{rec.sigma_t};
-      const SparseMatrix &scat{rec.sigma_s};
-      std::vector<double> chi;
+
+      std::vector<double> tot(mat_lib.ngroup());
+      for (int g = 0; g < mat_lib.ngroup(); ++g)
+        tot[g] = xscalc_sigma_t(g, rec, temp);
+
+      // TODO
+      std::vector<double> chi; // to be populated later
+
       if (rec.is_fiss)
       {
 
@@ -881,7 +828,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
 
         double fiss_sum{0.0};
         for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-          fiss_sum += nusf[gprime]*spectrum[gprime];
+          fiss_sum += xscalc_nusf(gprime, rec, temp)*spectrum[gprime];
 
         for (int g{0}; g < mat_lib.ngroup(); ++g)
           val(g) = chi[g]*fiss_sum;
@@ -898,7 +845,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
 
           Array<int> col_idx;
           Vector scat_dat;
-          scat.GetRow(g, col_idx, scat_dat);
+          xscalc_sigma_s(g, rec, temp, col_idx, scat_dat);
 
           for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
           {
@@ -957,6 +904,7 @@ void calc_downscatter_vector(const int g,
                              const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
                              const Material_library &mat_lib,
                              const Quadrature * const quad,
+                             const ParGridFunction &temperature,
                              QuadratureFunction &dnscatter_quad,
                              QuadratureFunction &saaf_dnscatter_quad)
 {
@@ -993,14 +941,17 @@ void calc_downscatter_vector(const int g,
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
+      Vector temp_locvec(dofs.Size());
+      temperature.GetSubVector(dofs, temp_locvec.HostWrite());
+      const double temp = dofval*temp_locvec;
+
       // get all xs at this point
       // this will eventually be temperature dependent
-      const double &tot{rec.sigma_t[g]};
-      const SparseMatrix &scat{rec.sigma_s};
+      const double tot = xscalc_sigma_t(g, rec, temp);
 
       Array<int> col_idx;
       Vector scat_dat;
-      scat.GetRow(g, col_idx, scat_dat);
+      xscalc_sigma_s(g, rec, temp, col_idx, scat_dat);
 
       double val{0.0};
 
@@ -1047,6 +998,7 @@ void calc_selfscatter_vector(const int g,
                              const mfem::ParGridFunction &scalar_flux,
                              const Material_library &mat_lib,
                              const Quadrature * const quad,
+                             const ParGridFunction &temperature,
                              QuadratureFunction &selfscatter_quad,
                              QuadratureFunction &saaf_selfscatter_quad)
 {
@@ -1078,9 +1030,10 @@ void calc_selfscatter_vector(const int g,
       const IntegrationPoint &ip{ir.IntPoint(i)};
 
       // get all xs at this point
-      // this will eventually be temperautre dependent
-      const double scat{rec.sigma_s.Elem(g,g)};
-      const double tot{rec.sigma_t[g]};
+      const double temp = temperature.GetValue(e, ip);
+      const double scat = xscalc_selfscatter(g, rec, temp);
+      const double tot = xscalc_sigma_t(g, rec, temp);
+
       const double flux{scalar_flux.GetValue(e, ip)};
       const double val{scat*flux};
 
@@ -1140,6 +1093,7 @@ void calc_scalar_flux_vector(const ParGridFunction &angular_flux,
  */
 void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux, 
                    const Material_library &mat_lib,
+                   const ParGridFunction &temperature,
                    QuadratureFunction &fiss_src)
 {
 
@@ -1165,8 +1119,6 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
       continue;
     }
 
-    const std::vector<double>& nusf{rec.nusf};
-
     const FiniteElement* const fe{fespace->GetFE(e)};
     Array<int> dofs;
     fespace->GetElementDofs(e, dofs);
@@ -1178,12 +1130,16 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
+      Vector temp_locvec(dofs.Size());
+      temperature.GetSubVector(dofs, temp_locvec.HostWrite());
+      const double temp = dofval*temp_locvec;
+
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
         Vector locvec(dofs.Size());
         scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
         const double flux{dofval*locvec};
-        fiss[idx] += nusf[gprime]*flux;
+        fiss[idx] += xscalc_nusf(gprime, rec, temp)*flux;
       }
 
       ++idx;
@@ -1194,9 +1150,10 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
   return;
 }
 
-void calc_power_vector(const Material_library &mat_lib,
-                       const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+                       const Material_library &mat_lib,
                        const double rxpwr,
+                       const ParGridFunction &temperature,
                        QuadratureFunction &power_quad)
 {
 
@@ -1224,10 +1181,6 @@ void calc_power_vector(const Material_library &mat_lib,
       continue;
     }
 
-    std::vector<double> kappasf = rec.nusf; // copy
-    for (int g = 0; g < mat_lib.ngroup(); ++g)
-      kappasf[g] *= kappa_over_nu;
-
     const FiniteElement *fe = fespace->GetFE(e);
     Array<int> dofs;
     fespace->GetElementDofs(e, dofs);
@@ -1238,6 +1191,14 @@ void calc_power_vector(const Material_library &mat_lib,
       const IntegrationPoint &ip = ir.IntPoint(i);
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
+
+      Vector temp_locvec(dofs.Size());
+      temperature.GetSubVector(dofs, temp_locvec.HostWrite());
+      const double temp = dofval*temp_locvec;
+
+      std::vector<double> kappasf(mat_lib.ngroup());
+      for (int g = 0; g < mat_lib.ngroup(); ++g)
+        kappasf[g] = kappa_over_nu*xscalc_nusf(g, rec, temp);
 
       for (int gprime = 0; gprime < mat_lib.ngroup(); ++gprime)
       {

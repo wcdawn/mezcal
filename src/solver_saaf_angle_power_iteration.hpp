@@ -25,6 +25,7 @@ void saaf_angle_power_iteration(const Quadrature * const quad,
 void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
                                 const Material_library &mat_lib,
                                 const Quadrature * const quad,
+                                const mfem::ParGridFunction &temperature,
                                 std::vector<mfem::QuadratureFunction> &fiss_upscatter_quad,
                                 std::vector<mfem::QuadratureFunction> &saaf_fiss_upscatter_quad,
                                 const double keff,
@@ -34,6 +35,7 @@ void calc_downscatter_vector(const int g,
                              const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
                              const Material_library &mat_lib,
                              const Quadrature * const quad,
+                             const mfem::ParGridFunction &temperature,
                              mfem::QuadratureFunction &dnscatter_quad,
                              mfem::QuadratureFunction &saaf_dnscatter_quad);
 
@@ -41,6 +43,7 @@ void calc_selfscatter_vector(const int g,
                              const mfem::ParGridFunction &scalar_flux,
                              const Material_library &mat_lib,
                              const Quadrature * const quad,
+                             const mfem::ParGridFunction &temperature,
                              mfem::QuadratureFunction &selfscatter_quad,
                              mfem::QuadratureFunction &saaf_selfscatter_quad);
 
@@ -55,11 +58,13 @@ void calc_scalar_flux_vector(const mfem::ParGridFunction &angular_flux,
  */
 static void calc_fiss_src(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux, 
                    const Material_library &mat_lib,
+                   const mfem::ParGridFunction &temperature,
                    mfem::QuadratureFunction &fiss_src);
 
-void calc_power_vector(const Material_library &mat_lib,
-                       const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+void calc_power_vector(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux,
+                       const Material_library &mat_lib,
                        const double rxpwr,
+                       const mfem::ParGridFunction &temperature,
                        mfem::QuadratureFunction &power_quad);
 
 #endif

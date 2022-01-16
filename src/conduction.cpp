@@ -223,7 +223,7 @@ void temperature_heat_conduction(const Input &inp,
       out.Save();
     }
 
-    a.Update();
+    a.Update(); // dont understand but needs to be there
     a.Assemble();
     a.Finalize();
 
