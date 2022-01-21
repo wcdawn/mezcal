@@ -432,11 +432,9 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     }
     else
     {
-      /*
       lf_self_scatter[g]->AddBdrFaceIntegrator(
         new VectorBoundaryFlowIntegrator{vector_incoming_flux_coeff[g], omega_term, -1.0},
         reflective_condition);
-      */
     }
   }
 
