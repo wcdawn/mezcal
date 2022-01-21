@@ -313,11 +313,9 @@ void TensorDiffusionIntegrator::AssembleElementMatrix(
    vdim = (vdim <= 0) ? sdim : vdim;
    const bool square = (dim == sdim);
 
-   std::vector<DenseMatrix> mat_data;
-   Array<int> row_idx, col_idx;
-
    dshape.SetSize(dof, dim);
    dshapedxt.SetSize(dof, sdim);
+   dshapedxt_m.SetSize(dof, MTQ ? sdim : 0);
 
    elmat.SetSize(vdim * dof);
    pelmat.SetSize(dof);
@@ -342,15 +340,17 @@ void TensorDiffusionIntegrator::AssembleElementMatrix(
       // AdjugateJacobian = / adj(J),         if J is square
       //                    \ adj(J^t.J).J^t, otherwise
       Mult(dshape, Trans.AdjugateJacobian(), dshapedxt);
-
       if (MTQ)
       {
+         std::vector<DenseMatrix> mat_data;
+         Array<int> row_idx, col_idx;
          MTQ->Eval(mat_data, row_idx, col_idx, Trans, ip);
          for (int idx{0}; idx < row_idx.Size(); ++idx)
          {
+            pelmat = 0.0;
             mat_data[idx] *= w;
-            Mult(dshapedxt, mat_data[idx], dshape);
-            MultABt(dshape, dshapedxt, pelmat);
+            Mult(dshapedxt, mat_data[idx], dshapedxt_m);
+            MultABt(dshapedxt_m, dshapedxt, pelmat);
             elmat.AddMatrix(pelmat, row_idx[idx]*dof, col_idx[idx]*dof);
          }
       }

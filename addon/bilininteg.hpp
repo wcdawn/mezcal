@@ -68,7 +68,7 @@ protected:
   MatrixTensorCoefficient *MTQ = NULL;
 private:
   int vdim{-1};
-  DenseMatrix dshape, dshapedxt, pelmat;
+  DenseMatrix dshape, dshapedxt, dshapedxt_m, pelmat;
 public:
   TensorDiffusionIntegrator(MatrixTensorCoefficient& mtq)
     : MTQ{&mtq}, vdim{mtq.GetVDim()} {}
