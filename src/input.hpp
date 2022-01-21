@@ -12,6 +12,12 @@
 #include <string>
 #include <vector>
 
+struct Pin
+{
+  double x = 0.0, y = 0.0; // center
+  double radius = 0.0; // radius
+};
+
 struct Tolerance_control
 {
   int max_outer{100};
@@ -129,6 +135,9 @@ public:
   double temp_boundary{273.15}; // boundary temperature [K]
   double temp_heat_pipe{300.}; // heat pipe constant temperature [K]
   int heat_pipe_idx = 1;
+
+  // PIN POWER
+  std::vector<Pin> pins;
 
   // GPU
   int ndevices{0}; // If (ndevices>0), use MPITeams. Else, use MPIExclusive.

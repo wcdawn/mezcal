@@ -2,6 +2,8 @@
 
 #include "conduction.hpp"
 
+#include "output.hpp"
+
 using namespace mfem;
 
 namespace 
@@ -502,6 +504,9 @@ void spn_power_iteration(Timer &time,
   QuadratureFunctionCoefficient qfc{power_quad};
   power.ProjectCoefficient(qfc);
 
+  if (inp.pins.size() > 0)
+    calc_pin_power(power_quad, inp.pins);
+
   return;
 }
 
@@ -907,6 +912,8 @@ void spn_calc_power(const Material_library &mat_lib,
 
   int idx = 0;
 
+  double pwr_sum = 0.0;
+
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
@@ -925,10 +932,17 @@ void spn_calc_power(const Material_library &mat_lib,
     Array<int> dofs;
     fespace->GetElementDofs(e, dofs);
 
+    ElementTransformation *T = fespace->GetElementTransformation(e);
+
     for (int i = 0; i < ir.GetNPoints(); ++i)
     {
 
       const IntegrationPoint &ip = ir.IntPoint(i);
+      const double i_weight = ip.weight;
+      
+      T->SetIntPoint(&ip);
+      const double t_weight = T->Weight();
+
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
@@ -944,22 +958,14 @@ void spn_calc_power(const Material_library &mat_lib,
         pquad[idx] += kappasf[gprime]*flux;
       }
 
+      pwr_sum += t_weight*i_weight*pquad[idx];
+
       ++idx;
     }
   }
 
   // calculate power normalization factor
-
-  ConstantCoefficient one{1.0};
-  ParLinearForm b{phi[0]->ParFESpace()};
-  b.AddDomainIntegrator(new DomainLFIntegrator{one});
-  b.Assemble();
-
-  QuadratureFunctionCoefficient power_func{power_quad};
-  ParGridFunction power{phi[0]->ParFESpace()};
-  power.ProjectCoefficient(power_func);
-
-  const double factor = rxpwr / b(power); // use the inner product in the space
+  const double factor = rxpwr / pwr_sum;
 
   power_quad *= factor;
 

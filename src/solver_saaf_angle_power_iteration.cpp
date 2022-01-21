@@ -5,10 +5,10 @@
 #include "../addon/mfem_addon.hpp"
 #include "../addon/tensor.hpp"
 
-#include "vector_pwconst_coefficient.hpp"
 #include "vector_incoming_flux_coefficient.hpp"
 
 #include "conduction.hpp"
+#include "output.hpp"
 
 #include <cmath>
 #include <vector>
@@ -196,18 +196,16 @@ HypreParMatrix * build_amat(const int g,
 
   Tensor<Vector> omega;
   omega.reserve(quad->nd());
-  for(int n{0}; n < quad->nd(); ++n)
-  {
+  for(int n = 0; n < quad->nd(); ++n)
     omega.AddElement(quad->omega(n), n);
-  }
   VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
 
   SAAFStreamingCoefficient streaming_func{g, mat_lib, quad, temperature};
   SAAFTotalCoefficient total_func{g, mat_lib, quad, temperature};
 
   ParBilinearForm a{angular_flux_fespace};
-  a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
   a.AddDomainIntegrator(new TensorDiffusionIntegrator{streaming_func});
+  a.AddDomainIntegrator(new VectorMassIntegrator{total_func});
   a.AddBdrFaceIntegrator(new VectorDGTraceIntegrator{omega_func, 1.0});
 
   a.Assemble(skip_zeros);
@@ -412,7 +410,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   VectorTensorConstantCoefficient omega_term{quad->nd(), tensor_omega};
 
   Array<int> reflective_condition(pmesh->bdr_attributes.Max());
-  reflective_condition = 0;
+  reflective_condition = 0; // vacuum by default
   for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < pmesh->bdr_attributes.Max()); ++i)
   {
     if (inp.boundary_conditions[i] == 0) // zero represents reflective
@@ -434,9 +432,11 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     }
     else
     {
+      /*
       lf_self_scatter[g]->AddBdrFaceIntegrator(
         new VectorBoundaryFlowIntegrator{vector_incoming_flux_coeff[g], omega_term, -1.0},
         reflective_condition);
+      */
     }
   }
 
@@ -729,6 +729,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   QuadratureFunctionCoefficient gfc{power_quad};
   power.ProjectCoefficient(gfc);
 
+  if (inp.pins.size() > 0)
+    calc_pin_power(power_quad, inp.pins);
 
   return;
 }
@@ -1168,6 +1170,8 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
 
   int idx = 0;
 
+  double pwr_sum = 0.0;
+
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
@@ -1185,10 +1189,17 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
     Array<int> dofs;
     fespace->GetElementDofs(e, dofs);
 
+    ElementTransformation *T = fespace->GetElementTransformation(e);
+
     for (int i = 0; i < ir.GetNPoints(); ++i)
     {
 
       const IntegrationPoint &ip = ir.IntPoint(i);
+      const double i_weight = ip.weight;
+
+      T->SetIntPoint(&ip);
+      const double t_weight = T->Weight();
+
       Vector dofval(dofs.Size());
       fe->CalcShape(ip, dofval);
 
@@ -1208,23 +1219,15 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
         pquad[idx] += kappasf[gprime]*flux;
       }
 
+      pwr_sum += t_weight*i_weight*pquad[idx];
+
       ++idx;
 
     }
   }
 
   // calculate power normalization factor
-
-  ConstantCoefficient one{1.0};
-  ParLinearForm b{scalar_flux[0]->ParFESpace()};
-  b.AddDomainIntegrator(new DomainLFIntegrator{one});
-  b.Assemble();
-
-  QuadratureFunctionCoefficient power_func{power_quad};
-  ParGridFunction power{scalar_flux[0]->ParFESpace()};
-  power.ProjectCoefficient(power_func);
-
-  const double factor = rxpwr / b(power); // use the inner product in the space
+  const double factor = rxpwr / pwr_sum;
 
   power_quad *= factor;
 

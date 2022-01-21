@@ -189,3 +189,67 @@ void mesh_stats(ParMesh *pmesh,
 
   return;
 }
+
+void calc_pin_power(const QuadratureFunction &power_quad,
+                    const std::vector<Pin> &pins)
+{
+
+  const QuadratureSpace * const qspace = power_quad.GetSpace();
+  Mesh *mesh = qspace->GetMesh();
+    
+  const double * pquad = power_quad.HostRead();
+
+  int idx = 0;
+
+  Vector pin_power(pins.size());
+  pin_power = 0.0;
+
+  for (int e = 0; e < qspace->GetNE(); ++e)
+  {
+
+    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    ElementTransformation *T = mesh->GetElementTransformation(e);
+    
+    for (int i = 0; i < ir.GetNPoints(); ++i)
+    {
+
+      const IntegrationPoint &ip = ir.IntPoint(i);
+      const double i_weight = ip.weight;
+
+      T->SetIntPoint(&ip);
+      const double t_weight = T->Weight();
+
+      Vector r(3);
+      T->Transform(ip, r);
+
+      const double p = pquad[idx];
+
+      if (p > 0.0)
+      {
+        for (int j = 0; j < pin_power.Size(); ++j)
+        {
+
+          const double dist = std::sqrt( std::pow(r(0)-pins[j].x,2) +
+            std::pow(r(1)-pins[j].y,2) );
+
+          if (dist < pins[j].radius)
+          {
+            pin_power(j) += p*i_weight*t_weight;
+            break;
+          }
+
+        }
+      }
+
+      ++idx;
+
+    }
+
+  }
+
+  // NOTE: some pins may be fractional so need to do normalization outside
+  std::cout << "pin_power" << std::endl;
+  pin_power.Print();
+
+  return;
+}

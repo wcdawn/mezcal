@@ -82,7 +82,6 @@ void Input::read_core()
     else if (card == "hdf5xs")
     {
       ifs >> hdf5xs_lib_name >> xs_file;
-      ;
       xs_file   = stub + xs_file;
       xs_format = XSLibrary::hdf5xs;
     }
@@ -104,6 +103,17 @@ void Input::read_core()
     else if (card == "verbose")
     {
       verbose = read_bool(ifs);
+    }
+    else if (card == "pin")
+    {
+      double x, y, r;
+      ifs >> x;
+      ifs >> y;
+      ifs >> r;
+      pins.emplace_back();
+      pins.back().x = x;
+      pins.back().y = y;
+      pins.back().radius = r;
     }
     else if (card == "[MATERIAL]")
     {

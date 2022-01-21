@@ -23,4 +23,7 @@ void mesh_stats(mfem::ParMesh *pmesh,
                 std::ostream &os = std::cout,
                 Material_library * = nullptr);
 
+void calc_pin_power(const mfem::QuadratureFunction &power_quad,
+                    const std::vector<Pin> &pins);
+
 #endif

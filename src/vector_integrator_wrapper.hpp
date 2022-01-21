@@ -13,7 +13,7 @@ public:
                          const mfem::Array<int>& row_assign,
                          const mfem::Array<int>& col_assign,
                          const mfem::Array<bool>& own_assign=mfem::Array<bool>())
-    : vdim{_vdim}, bfi{_bfi}, row_idx{row_assign}, col_idx{col_assign}
+    : vdim{_vdim}, bfi{_bfi}, row_idx{row_assign}, col_idx{col_assign}, own_idx{own_assign}
   {
     MFEM_VERIFY((bfi.Size() == row_idx.Size()) && (bfi.Size() == col_idx.Size()), 
       "invalid size of row or column index array");
