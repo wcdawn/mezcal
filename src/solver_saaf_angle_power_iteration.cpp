@@ -55,6 +55,26 @@ void xscalc_sigma_s(const int g, const XSRecord &rec, const double T,
   return;
 }
 
+// returns the fisssion spectrum (chi)
+std::vector<double> xscalc_chi(const std::vector<double> &spectrum,
+                               const Material_library &mat_lib,
+                               const Material_record &mat,
+                               const XSRecord &rec,
+                               const double T,
+                               const bool flux_free_chi=false)
+{
+
+  if (flux_free_chi)
+    return rec.chi;
+  
+  if (mat_lib.rx_wide_chi)
+    return mat_lib.chi;
+
+  // TODO this is where the interpolation will be implemented
+  return mat.calculate_chi(spectrum);
+
+}
+
 class DSARemovalCoefficient final : public Coefficient
 {
 public:
@@ -788,7 +808,6 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
       for (int g = 0; g < mat_lib.ngroup(); ++g)
         tot[g] = xscalc_sigma_t(g, rec, temp);
 
-      // TODO
       std::vector<double> chi; // to be populated later
 
       if (rec.is_fiss)
@@ -802,14 +821,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
           spectrum[g] = dofval*locvec;
         }
 
-        // set chi appropriately
-        chi.resize(mat_lib.ngroup());
-        if (flux_free_chi)
-          chi = rec.chi;
-        else if (mat_lib.rx_wide_chi)
-          chi = mat_lib.chi;
-        else
-          chi = mat.calculate_chi(spectrum);
+        chi = xscalc_chi(spectrum, mat_lib, mat, rec, temp, flux_free_chi);
 
       }
       else
