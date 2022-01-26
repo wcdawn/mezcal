@@ -14,8 +14,8 @@ using std::string;
 
 using std::vector;
 
-Material_library::Material_library(const XSLibrary& xslib)
-  : xs{xslib}, G{xs.ngroup()}, M{xs.nmoment()}
+Material_library::Material_library(const std::vector<XSLibrary> &xslib)
+  : xs{xslib}, G{xs[0].ngroup()}, M{xs[0].nmoment()}, NT{static_cast<int>(xs.size())}
 {
 }
 
@@ -39,7 +39,7 @@ void Material_library::read_material(ifstream& ifs)
       mat.push_back(Material_record{});
       ++mat_count;
       mat[mat_count].name = name;
-      mat[mat_count].G    = xs.ngroup();
+      mat[mat_count].G    = G;
       continue;
     }
     else if (card == "exact_area_volume")
@@ -57,28 +57,27 @@ void Material_library::read_material(ifstream& ifs)
 
     // determine if the card is an isotope name
     int iso_idx{0};
-    for (iso_idx = 0; iso_idx < xs.niso(); ++iso_idx)
-      if (card == xs.rec[iso_idx].name) break;
+    for (iso_idx = 0; iso_idx < xs[0].niso(); ++iso_idx)
+      if (card == xs[0].rec[iso_idx].name) break;
 
     if (card[0] == comment_char)
     {
       // eat until newline
-      for (char c{0}; (ifs.get(c)) && (c != '\n');)
-        ;
+      for (char c{0}; (ifs.get(c)) && (c != '\n');) ;
     }
-    else if (iso_idx < xs.niso())
+    else if (iso_idx < xs[0].niso())
     {
       // this is an isotope
       double nden;
       ifs >> nden;
       mat[mat_count].iso.push_back(
-      Material_isotope{card, nden, iso_idx, xs.rec[iso_idx]});
+      Material_isotope{card, nden, iso_idx, xs[0].rec[iso_idx]});
     }
     else if (card == "chi")
     {
       rx_wide_chi = true;
-      chi.reserve(xs.ngroup());
-      for (int g{0}; g < xs.ngroup(); ++g)
+      chi.reserve(G);
+      for (int g{0}; g < G; ++g)
       {
         double tmp;
         ifs >> tmp;

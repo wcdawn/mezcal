@@ -99,23 +99,8 @@ int main(int argc, char* argv[])
   if (device.IsEnabled()) device.SetGPUAwareMPI();
 #endif
 
-  // core block is finished, you can read cross sections from file
-  // xs.read_userxs(inp.xs_file);
-  XSLibrary xs;
-  switch (inp.xs_format)
-  {
-    case (XSLibrary::userxs):
-      xs.read_userxs(inp.xs_file);
-      break;
-    case (XSLibrary::hdf5xs):
-      xs.read_hdf5xs(inp.xs_file, inp.hdf5xs_lib_name);
-      break;
-    default: cerr << "Invalid xs format" << endl; return 1;
-  }
-  xs.calc_tcp0();
-
   // core block is finished, you can read the material block
-  Material_library mat_lib{xs};
+  Material_library mat_lib{inp.xs};
   mat_lib.read_material(inp.ifs);
 
   time.start("Mesh processing");
@@ -529,12 +514,8 @@ int main(int argc, char* argv[])
 
     if (inp.ref != Analytic::invalid)
     {
-      Result* gf{nullptr};
-      if (is_transport)
-        gf = &scalar_flux;
-      else
-        gf = &res;
-      Analytic anal(inp.ref, inp.sol, *gf, xs, pmesh.get());
+      Result* gf = (is_transport) ? &scalar_flux : &res;
+      Analytic anal(inp.ref, inp.sol, *gf, inp.xs[0], pmesh.get());
       anal.analyze(cout);
       ostringstream analysis_fname;
       analysis_fname << "out_" << setfill('0') << setw(6) << myid << ".csv";
@@ -550,7 +531,7 @@ int main(int argc, char* argv[])
     output.RegisterField("temperature", &temperature);
     output.RegisterField("power", &power);
 
-    const size_t group_width{std::to_string(xs.ngroup()).length()};
+    const size_t group_width{std::to_string(mat_lib.ngroup()).length()};
 
     if (is_transport)
     {

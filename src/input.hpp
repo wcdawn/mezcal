@@ -58,7 +58,6 @@ public:
   void read_state();
   int nstate();
   void reconcile_enums();
-  void echo(std::ostream& os) const;
 
   int hypre_print_level() const { return verbose ? 1 : 0; };
   int mfem_print_level() const { return verbose ? 1 : 0; };
@@ -108,12 +107,9 @@ public:
   const char* device{"cpu"};
   bool static_condensation{false};
   bool verbose{false};
-  std::string xs_file;
-  std::string hdf5xs_lib_name;
 
   // actual enum value
   Analytic::Reference ref{Analytic::invalid};
-  XSLibrary::Format xs_format{XSLibrary::invalid};
 
   // STATE
   Tolerance_control tol;
@@ -151,6 +147,9 @@ public:
   std::string input_file_stub();
   std::string get_linear_solver() const { return str_linear_solver; }
   std::string get_linear_preconditioner() const { return str_linear_preconditioner; }
+
+  std::vector<XSLibrary> xs;
+  std::vector<double> temp_arr; // list of xs library temperatures [K]
 
 private:
 

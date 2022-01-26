@@ -79,7 +79,7 @@ struct Material_record
 class Material_library
 {
 public:
-  Material_library(const XSLibrary& xs);
+  Material_library(const std::vector<XSLibrary> &xs);
   void read_material(std::ifstream& ifs);
 
   class Invalid_material_card : std::exception
@@ -98,6 +98,7 @@ public:
   int ngroup() const { return G; }
   int nmoment() const { return M; }
   int nmat() const { return static_cast<int>(mat.size()); } 
+  int ntemp() const { return NT; }
 
   void set_nmoment(int m);
 
@@ -106,9 +107,10 @@ public:
   bool rx_wide_chi{false};
 
 private:
-  const XSLibrary& xs; // associated microscopic cross section library
+  const std::vector<XSLibrary> &xs; // associated microscopic cross section library
   const int G;         // set in constructor
   int M; // non-const, can be updated/expanded with more moments for spn
+  const int NT; // number of temperatures
 
   static void reset_block(std::ifstream& ifs, const std::string& block_head);
   static constexpr char comment_char{'#'};

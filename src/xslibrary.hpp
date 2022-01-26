@@ -80,13 +80,6 @@ public:
 
   std::vector<XSRecord> rec;
 
-  enum Format
-  {
-    invalid = -1,
-    userxs,
-    hdf5xs
-  };
-
 private:
   int G{0}; // number of energy groups
   int N{0}; // number of materials/isotopes present

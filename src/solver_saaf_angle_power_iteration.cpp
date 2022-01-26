@@ -12,29 +12,105 @@
 
 #include <cmath>
 #include <vector>
+#include <utility>
 
 using namespace mfem;
 
+std::pair<int,double> temperature_interpolate(const std::vector<double> &temp_arr,
+                                              const double T)
+{
+
+  const int ntemp = static_cast<int>(temp_arr.size());
+
+  // assume temp_arr is sorted in ascending order
+
+  if (T <= temp_arr[0])
+  {
+    std::cout << "TEMPERATURE_XS_ERROR: too cold!"
+               << " Tmin=" << temp_arr[0]
+               << " T=" << T
+               << std::endl;
+    return {0, 0.0};
+  }
+
+  if (T >= temp_arr.back())
+  {
+    std::cout << "TEMPERATURE_XS_ERROR: too hot!"
+               << " Tmax=" << temp_arr.back()
+               << " T=" << T
+               << std::endl;
+    return {ntemp-2, 1.0};
+  }
+
+  for (int i = 0; i < ntemp-1; ++i)
+  {
+    if ((T >= temp_arr[i]) && (T <= temp_arr[i+1]))
+    {
+      const int ilo = i;
+      const double weight = (T - temp_arr[ilo]) / (temp_arr[ilo+1] - temp_arr[ilo]);
+      return {ilo, weight};
+    }
+  }
+
+  std::cout << "TEMPERATURE_XS_ERROR: unknown" << std::endl;
+  return {0,0.0};
+}
+
 // note: the function signature may need to change
-double xscalc_sigma_t(const int g, const XSRecord &rec, const double T)
+double xscalc_sigma_t(const int g, const Input &inp, const XSRecord &rec, const double T)
 {
-  return rec.sigma_t[g];
+
+  const int ntemp = inp.temp_arr.size();
+
+  if ((ntemp == 1) || (!inp.feedback))
+    return rec.sigma_t[g*ntemp];
+
+  const std::pair<const int, const double> w =
+    temperature_interpolate(inp.temp_arr, T);
+  const double xlo = rec.sigma_t[g*ntemp+w.first];
+  const double xhi = rec.sigma_t[g*ntemp+w.first+1];
+
+  return xlo + w.second * (xhi - xlo);
 }
 
-double xscalc_selfscatter(const int g, const XSRecord &rec, const double T)
+double xscalc_selfscatter(const int g, const Input &inp, const XSRecord &rec, const double T)
 {
-  return rec.sigma_s.Elem(g,g);
+  const int ntemp = inp.temp_arr.size();
+
+  if ((ntemp == 1) || (!inp.feedback))
+    return rec.sigma_s.Elem(g,g);
+
+  /*
+  const std::pair<const int, const double> w = temperature_interpolate(temp_arr, T);
+  const double xlo = rec.sigma_s[w.first].Elem(g,g);
+  const double xhi = rec.sigma_s[w.first+1].Elem(g,g);
+
+  return xlo + w.second * (xhi - xlo);
+  */
 }
 
-double xscalc_nusf(const int g, const XSRecord &rec, const double T)
+double xscalc_nusf(const int g, const Input &inp, const XSRecord &rec, const double T)
 {
-  return rec.nusf[g];
+
+  const int ntemp = inp.temp_arr.size();
+
+  if ((ntemp == 1) || (!inp.feedback))
+    return rec.nusf[g];
+
+  const std::pair<const int, const double> w =
+    temperature_interpolate(inp.temp_arr, T);
+  const double xlo = rec.nusf[g*ntemp+w.first];
+  const double xhi = rec.nusf[g*ntemp+w.first+1];
+
+  return xlo + w.second * (xhi - xlo);
 }
 
 // returns a row of the scattering matrix
-void xscalc_sigma_s(const int g, const XSRecord &rec, const double T,
+void xscalc_sigma_s(const int g, const Input &inp, const XSRecord &rec, const double T,
     Array<int> &col_idx, Vector &dat)
 {
+
+  // TODO temperature interpolation
 
   Array <int> c; // columns
   Vector d; // data
@@ -57,6 +133,7 @@ void xscalc_sigma_s(const int g, const XSRecord &rec, const double T,
 
 // returns the fisssion spectrum (chi)
 std::vector<double> xscalc_chi(const std::vector<double> &spectrum,
+                               const Input &inp,
                                const Material_library &mat_lib,
                                const Material_record &mat,
                                const XSRecord &rec,
@@ -64,35 +141,42 @@ std::vector<double> xscalc_chi(const std::vector<double> &spectrum,
                                const bool flux_free_chi=false)
 {
 
+  const int ntemp = inp.temp_arr.size();
+
   if (flux_free_chi)
     return rec.chi;
   
   if (mat_lib.rx_wide_chi)
     return mat_lib.chi;
 
-  // TODO this is where the interpolation will be implemented
-  return mat.calculate_chi(spectrum);
+  if (ntemp == 1)
+    return mat.calculate_chi(spectrum);
 
+  // TODO this is where the interpolation will be implemented
+  std::vector<double> chi(mat_lib.ngroup());
+  return chi;
 }
 
 class DSARemovalCoefficient final : public Coefficient
 {
 public:
   DSARemovalCoefficient(const int g_,
+                        const Input &inp_,
                         const Material_library &mat_lib_,
                         const ParGridFunction &temperature_)
-    : g{g_}, mat_lib{mat_lib_}, temperature{temperature_} {}
+    : g{g_}, inp{inp_}, mat_lib{mat_lib_}, temperature{temperature_} {}
   virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
   {
     const int attribute = T.Attribute-1;
     const XSRecord &rec = mat_lib.mat[attribute].rec;
     const double temp = temperature.GetValue(T, ip);
-    const double tot = xscalc_sigma_t(g, rec, temp);
-    const double scat = xscalc_selfscatter(g, rec, temp);
+    const double tot = xscalc_sigma_t(g, inp, rec, temp);
+    const double scat = xscalc_selfscatter(g, inp, rec, temp);
     return tot - scat;
   }
 private:
   const int g;
+  const Input &inp;
   const Material_library &mat_lib;
   const ParGridFunction &temperature;
 };
@@ -101,19 +185,21 @@ class DSADiffusiveCoefficient final : public Coefficient
 {
 public:
   DSADiffusiveCoefficient(const int g_,
+                          const Input& inp_,
                           const Material_library &mat_lib_,
                           const ParGridFunction &temperature_)
-    : g{g_}, mat_lib{mat_lib_}, temperature{temperature_} {}
+    : g{g_}, inp{inp_}, mat_lib{mat_lib_}, temperature{temperature_} {}
   virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
   {
     const int attribute = T.Attribute-1;
     const XSRecord &rec = mat_lib.mat[attribute].rec;
     const double temp = temperature.GetValue(T, ip);
-    const double tot = xscalc_sigma_t(g, rec, temp);
+    const double tot = xscalc_sigma_t(g, inp, rec, temp);
     return 1.0 / (3.0 * tot);
   }
 private:
   const int g;
+  const Input &inp;
   const Material_library &mat_lib;
   const ParGridFunction &temperature;
 };
@@ -122,19 +208,21 @@ class SelfscatterCoefficient final : public Coefficient
 {
 public:
   SelfscatterCoefficient(const int g_,
+                         const Input &inp_,
                          const Material_library &mat_lib_,
                          const ParGridFunction &temperature_)
-    : g{g_}, mat_lib{mat_lib_}, temperature{temperature_} {}
+    : g{g_}, inp{inp_}, mat_lib{mat_lib_}, temperature{temperature_} {}
   virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
   {
     const int attribute = T.Attribute-1;
     const XSRecord &rec = mat_lib.mat[attribute].rec;
     const double temp = temperature.GetValue(T, ip);
-    const double scat = xscalc_selfscatter(g, rec, temp);
+    const double scat = xscalc_selfscatter(g, inp, rec, temp);
     return scat;
   }
 private:
   const int g;
+  const Input &inp;
   const Material_library &mat_lib;
   const ParGridFunction &temperature;
 };
@@ -142,21 +230,23 @@ private:
 class SAAFTotalCoefficient final : public VectorCoefficient
 {
 public:
-  SAAFTotalCoefficient(const int g_,
+  SAAFTotalCoefficient(const Input &inp_,
+                       const int g_,
                        const Material_library &mat_lib_,
                        const Quadrature * const quad_,
                        const ParGridFunction &temperature_)
-    : VectorCoefficient(quad_->nd()), g{g_}, mat_lib{mat_lib_}, quad{quad_}, temperature{temperature_} {}
+    : VectorCoefficient(quad_->nd()), inp{inp_}, g{g_}, mat_lib{mat_lib_}, quad{quad_}, temperature{temperature_} {}
   virtual void Eval(Vector &v, ElementTransformation &T, const IntegrationPoint &ip) override
   {
     const int attribute = T.Attribute-1;
     const XSRecord &rec = mat_lib.mat[attribute].rec;
     const double temp = temperature.GetValue(T, ip);
-    const double tot = xscalc_sigma_t(g, rec, temp);
+    const double tot = xscalc_sigma_t(g, inp, rec, temp);
     v.SetSize(quad->nd());
     v = tot;
   }
 private:
+  const Input &inp;
   const int g;
   const Material_library &mat_lib;
   const Quadrature * const quad;
@@ -166,11 +256,12 @@ private:
 class SAAFStreamingCoefficient final : public MatrixTensorCoefficient
 {
 public:
-  SAAFStreamingCoefficient(const int g_,
+  SAAFStreamingCoefficient(const Input &inp_,
+                           const int g_,
                            const Material_library &mat_lib_,
                            const Quadrature * const quad_,
                            const ParGridFunction &temperature_)
-    : MatrixTensorCoefficient(quad_->nd()), g{g_}, mat_lib{mat_lib_}, quad{quad_}, temperature{temperature_} {}
+    : MatrixTensorCoefficient(quad_->nd()), inp{inp_}, g{g_}, mat_lib{mat_lib_}, quad{quad_}, temperature{temperature_} {}
   virtual void Eval(std::vector<DenseMatrix> &data,
                     Array<int> &row_idx,
                     Array<int> &col_idx,
@@ -180,7 +271,7 @@ public:
     const int attribute = T.Attribute-1;
     const XSRecord &rec = mat_lib.mat[attribute].rec;
     const double temp = temperature.GetValue(T, ip);
-    const double tot = xscalc_sigma_t(g, rec, temp);
+    const double tot = xscalc_sigma_t(g, inp, rec, temp);
 
     data.reserve(quad->nd());
     row_idx.SetSize(quad->nd());
@@ -199,6 +290,7 @@ public:
     return;
   }
 private:
+  const Input &inp;
   const int g;
   const Material_library &mat_lib;
   const Quadrature * const quad;
@@ -206,6 +298,7 @@ private:
 };
 
 HypreParMatrix * build_amat(const int g,
+                            const Input &inp,
                             const Material_library &mat_lib,
                             const Quadrature * const quad,
                             ParFiniteElementSpace *angular_flux_fespace,
@@ -220,8 +313,8 @@ HypreParMatrix * build_amat(const int g,
     omega.AddElement(quad->omega(n), n);
   VectorTensorConstantCoefficient omega_func{quad->nd(), omega};
 
-  SAAFStreamingCoefficient streaming_func{g, mat_lib, quad, temperature};
-  SAAFTotalCoefficient total_func{g, mat_lib, quad, temperature};
+  SAAFStreamingCoefficient streaming_func{inp, g, mat_lib, quad, temperature};
+  SAAFTotalCoefficient total_func{inp, g, mat_lib, quad, temperature};
 
   ParBilinearForm a{angular_flux_fespace};
   a.AddDomainIntegrator(new TensorDiffusionIntegrator{streaming_func});
@@ -235,15 +328,16 @@ HypreParMatrix * build_amat(const int g,
 
 
 HypreParMatrix * build_dmat(const int g,
-                           const Material_library &mat_lib,
-                           ParFiniteElementSpace *scalar_flux_fespace,
-                           const ParGridFunction &temperature)
+                            const Input &inp,
+                            const Material_library &mat_lib,
+                            ParFiniteElementSpace *scalar_flux_fespace,
+                            const ParGridFunction &temperature)
 {
 
   constexpr int skip_zeros = 2;
 
-  DSADiffusiveCoefficient dsa_diffusive_func{g, mat_lib, temperature};
-  DSARemovalCoefficient dsa_removal_func{g, mat_lib, temperature};
+  DSADiffusiveCoefficient dsa_diffusive_func{g, inp, mat_lib, temperature};
+  DSARemovalCoefficient dsa_removal_func{g, inp, mat_lib, temperature};
 
   ConstantCoefficient albedo{0.5};
 
@@ -347,7 +441,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
 
-    Amat[g].reset(build_amat(g, mat_lib, quad, angular_flux_fespace, temperature));
+    Amat[g].reset(
+      build_amat(g, inp, mat_lib, quad, angular_flux_fespace, temperature));
 
     std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Amat[g])};
     prec->SetPrintLevel(inp.verbose ? 1 : 0);
@@ -376,7 +471,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
 
-      Dmat[g].reset(build_dmat(g, mat_lib, scalar_flux_fespace, temperature));
+      Dmat[g].reset(
+        build_dmat(g, inp, mat_lib, scalar_flux_fespace, temperature));
 
       std::unique_ptr<HypreBoomerAMG> prec{std::make_unique<HypreBoomerAMG>(*Dmat[g])};
       prec->SetPrintLevel(0);
@@ -477,7 +573,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   std::vector<SelfscatterCoefficient> self_scatter_func;
   self_scatter_func.reserve(mat_lib.ngroup());
   for (int g{0}; g < mat_lib.ngroup(); ++g)
-    self_scatter_func.emplace_back(g, mat_lib, temperature);
+    self_scatter_func.emplace_back(g, inp, mat_lib, temperature);
 
   std::vector<ProductCoefficient> dsa_src;
   dsa_src.reserve(mat_lib.ngroup());
@@ -533,6 +629,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     *keff_ofs << std::setprecision(20);
   }
 
+  //if (!std::is_sorted(temp_arr)) // TODO
   temperature = inp.temp_heat_pipe;
 
   time.start(time.solver);
@@ -544,7 +641,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     {
 
       time.start("power");
-      calc_power_vector(scalar_flux, mat_lib, inp.rxpwr, temperature, power_quad);
+      calc_power_vector(scalar_flux, inp, mat_lib, inp.rxpwr, temperature, power_quad);
       time.stop("power");
 
       time.start("temperature");
@@ -556,14 +653,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       for (int g = 0; g < mat_lib.ngroup(); ++g)
       {
 
-        Amat[g].reset(build_amat(g, mat_lib, quad, angular_flux_fespace, temperature));
+        Amat[g].reset(
+          build_amat(g, inp, mat_lib, quad, angular_flux_fespace, temperature));
         Aprec[g]->SetOperator(*Amat[g]);
         Asol[g]->SetOperator(*Amat[g]);
         Asol[g]->SetPreconditioner(*Aprec[g]);
 
         if (inp.tol.use_dsa)
         {
-          Dmat[g].reset(build_dmat(g, mat_lib, scalar_flux_fespace, temperature));
+          Dmat[g].reset(
+            build_dmat(g, inp, mat_lib, scalar_flux_fespace, temperature));
           Dprec[g]->SetOperator(*Dmat[g]);
           Dsol[g]->SetOperator(*Dmat[g]);
           Dsol[g]->SetPreconditioner(*Dprec[g]);
@@ -576,7 +675,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     }
 
     time.start("calc_fiss_upscatter_vector");
-    calc_fiss_upscatter_vector(scalar_flux, mat_lib, quad, temperature,
+    calc_fiss_upscatter_vector(scalar_flux, inp, mat_lib, quad, temperature,
       fiss_upscatter_quad, saaf_fiss_upscatter_quad, keff, inp.flux_free_chi);
     time.stop("calc_fiss_upscatter_vector");
 
@@ -586,7 +685,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       if (myid == 0) std::cout << "BEGIN_GROUP " << g << std::endl;
 
       time.start("calc_downscatter_vector");
-      calc_downscatter_vector(g, scalar_flux, mat_lib, quad, temperature,
+      calc_downscatter_vector(g, scalar_flux, inp, mat_lib, quad, temperature,
         dnscatter_quad, saaf_dnscatter_quad);
       dnscatter_quad += fiss_upscatter_quad[g];
       saaf_dnscatter_quad += saaf_fiss_upscatter_quad[g];
@@ -600,8 +699,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
         dsa_phi_old = *scalar_flux[g]; // (k)
 
         time.start("calc_selfscatter_vector");
-        calc_selfscatter_vector(g, *scalar_flux[g], mat_lib, quad, temperature,
-          selfscatter_quad, saaf_selfscatter_quad);
+        calc_selfscatter_vector(g, *scalar_flux[g], inp, mat_lib, quad,
+          temperature, selfscatter_quad, saaf_selfscatter_quad);
         time.stop("calc_selfscatter_vector");
         time.start("calc_selfscatter_vector_sum");
         selfscatter_quad += dnscatter_quad;
@@ -700,7 +799,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     time.start("fisssum");
     QuadratureFunction fiss_src_quad{&qspace};
     fiss_src_quad.UseDevice(true);
-    calc_fiss_src(scalar_flux, mat_lib, temperature, fiss_src_quad);
+    calc_fiss_src(scalar_flux, inp, mat_lib, temperature, fiss_src_quad);
     const double local_fiss_sum{fiss_src_quad.Sum()};
     double fiss_sum;
     MPI_Allreduce(&local_fiss_sum, &fiss_sum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -748,12 +847,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   power.ProjectCoefficient(gfc);
 
   if (inp.pins.size() > 0)
+  {
+    calc_power_vector(scalar_flux, inp, mat_lib, inp.rxpwr, temperature, power_quad);
     calc_pin_power(power_quad, inp.pins);
+  }
 
   return;
 }
 
 void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+                                const Input &inp,
                                 const Material_library &mat_lib,
                                 const Quadrature * const quad,
                                 const ParGridFunction &temperature,
@@ -806,7 +909,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
 
       std::vector<double> tot(mat_lib.ngroup());
       for (int g = 0; g < mat_lib.ngroup(); ++g)
-        tot[g] = xscalc_sigma_t(g, rec, temp);
+        tot[g] = xscalc_sigma_t(g, inp, rec, temp);
 
       std::vector<double> chi; // to be populated later
 
@@ -821,7 +924,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
           spectrum[g] = dofval*locvec;
         }
 
-        chi = xscalc_chi(spectrum, mat_lib, mat, rec, temp, flux_free_chi);
+        chi = xscalc_chi(spectrum, inp, mat_lib, mat, rec, temp, flux_free_chi);
 
       }
       else
@@ -840,7 +943,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
 
         double fiss_sum{0.0};
         for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-          fiss_sum += xscalc_nusf(gprime, rec, temp)*spectrum[gprime];
+          fiss_sum += xscalc_nusf(gprime, inp, rec, temp)*spectrum[gprime];
 
         for (int g{0}; g < mat_lib.ngroup(); ++g)
           val(g) = chi[g]*fiss_sum;
@@ -852,26 +955,23 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
       // upscatter
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        if (rec.is_upscatter[g])
+
+        Array<int> col_idx;
+        Vector scat_dat;
+        xscalc_sigma_s(g, inp, rec, temp, col_idx, scat_dat);
+
+        for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
         {
-
-          Array<int> col_idx;
-          Vector scat_dat;
-          xscalc_sigma_s(g, rec, temp, col_idx, scat_dat);
-
-          for (int gidx{0}; gidx < col_idx.Size(); ++gidx)
+          const int gprime{col_idx[gidx]};
+          if (gprime > g)
           {
-            const int gprime{col_idx[gidx]};
-            if (gprime > g)
+            if (spectrum[gprime] < 0.0)
             {
-              if (spectrum[gprime] < 0.0)
-              {
-                Vector locvec(dofs.Size());
-                scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
-                spectrum[gprime] = dofval*locvec;
-              }
-              val(g) += scat_dat(gidx)*spectrum[gprime];
+              Vector locvec(dofs.Size());
+              scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
+              spectrum[gprime] = dofval*locvec;
             }
+            val(g) += scat_dat(gidx)*spectrum[gprime];
           }
         }
       }
@@ -914,6 +1014,7 @@ void calc_fiss_upscatter_vector(const std::vector<std::unique_ptr<ParGridFunctio
 
 void calc_downscatter_vector(const int g,
                              const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+                             const Input &inp,
                              const Material_library &mat_lib,
                              const Quadrature * const quad,
                              const ParGridFunction &temperature,
@@ -959,11 +1060,11 @@ void calc_downscatter_vector(const int g,
 
       // get all xs at this point
       // this will eventually be temperature dependent
-      const double tot = xscalc_sigma_t(g, rec, temp);
+      const double tot = xscalc_sigma_t(g, inp, rec, temp);
 
       Array<int> col_idx;
       Vector scat_dat;
-      xscalc_sigma_s(g, rec, temp, col_idx, scat_dat);
+      xscalc_sigma_s(g, inp, rec, temp, col_idx, scat_dat);
 
       double val{0.0};
 
@@ -1008,6 +1109,7 @@ void calc_downscatter_vector(const int g,
 
 void calc_selfscatter_vector(const int g,
                              const mfem::ParGridFunction &scalar_flux,
+                             const Input &inp,
                              const Material_library &mat_lib,
                              const Quadrature * const quad,
                              const ParGridFunction &temperature,
@@ -1043,8 +1145,8 @@ void calc_selfscatter_vector(const int g,
 
       // get all xs at this point
       const double temp = temperature.GetValue(e, ip);
-      const double scat = xscalc_selfscatter(g, rec, temp);
-      const double tot = xscalc_sigma_t(g, rec, temp);
+      const double scat = xscalc_selfscatter(g, inp, rec, temp);
+      const double tot = xscalc_sigma_t(g, inp, rec, temp);
 
       const double flux{scalar_flux.GetValue(e, ip)};
       const double val{scat*flux};
@@ -1104,6 +1206,7 @@ void calc_scalar_flux_vector(const ParGridFunction &angular_flux,
  * WARNING
  */
 void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux, 
+                   const Input &inp,
                    const Material_library &mat_lib,
                    const ParGridFunction &temperature,
                    QuadratureFunction &fiss_src)
@@ -1151,7 +1254,7 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
         Vector locvec(dofs.Size());
         scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
         const double flux{dofval*locvec};
-        fiss[idx] += xscalc_nusf(gprime, rec, temp)*flux;
+        fiss[idx] += xscalc_nusf(gprime, inp, rec, temp)*flux;
       }
 
       ++idx;
@@ -1163,6 +1266,7 @@ void calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_f
 }
 
 void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+                       const Input &inp,
                        const Material_library &mat_lib,
                        const double rxpwr,
                        const ParGridFunction &temperature,
@@ -1219,7 +1323,7 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
 
       std::vector<double> kappasf(mat_lib.ngroup());
       for (int g = 0; g < mat_lib.ngroup(); ++g)
-        kappasf[g] = kappa_over_nu*xscalc_nusf(g, rec, temp);
+        kappasf[g] = kappa_over_nu*xscalc_nusf(g, inp, rec, temp);
 
       for (int gprime = 0; gprime < mat_lib.ngroup(); ++gprime)
       {

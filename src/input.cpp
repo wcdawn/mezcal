@@ -75,15 +75,34 @@ void Input::read_core()
     }
     else if (card == "userxs")
     {
-      ifs >> xs_file;
+
+      std::string xs_file;
+      double temp;
+      ifs >> temp >> xs_file;
+
+      temp_arr.emplace_back(temp);
+
       xs_file   = stub + xs_file;
-      xs_format = XSLibrary::userxs;
+      xs.emplace_back();
+      xs.back().read_userxs(xs_file);
+      xs.back().calc_tcp0();
+
     }
     else if (card == "hdf5xs")
     {
-      ifs >> hdf5xs_lib_name >> xs_file;
+
+      std::string hdf5xs_lib_name, xs_file;
+      double temp;
+
+      ifs >> temp >> hdf5xs_lib_name >> xs_file;
+
+      temp_arr.emplace_back(temp);
+
       xs_file   = stub + xs_file;
-      xs_format = XSLibrary::hdf5xs;
+      xs.emplace_back();
+      xs.back().read_hdf5xs(xs_file, hdf5xs_lib_name);
+      xs.back().calc_tcp0();
+
     }
     else if (card == "reference")
     {
@@ -336,38 +355,6 @@ void Input::reconcile_enums()
 
   solver_str = solver;
   sol        = solver_choice_str_to_enum(solver_str);
-}
-
-void Input::echo(ostream& os) const
-{
-  os << "[CORE]\n";
-
-  os << "mesh_file " << mesh_file << '\n';
-  os << "boundary_conditions";
-  for (int i{0}; i < boundary_conditions.Size(); ++i)
-    os << ' ' << boundary_conditions[i];
-  os << '\n';
-  os << "order " << order << '\n';
-  os << "refine_serial " << refine_serial << '\n';
-  os << "refine_parallel " << refine_parallel << '\n';
-
-  os << "xs_file " << xs_file << '\n';
-
-  if (ref != Analytic::invalid) os << "reference " << reference << '\n';
-
-  os << "device " << device << '\n';
-  os << "static_condensation " << static_condensation << '\n';
-
-  os << "\n[STATE]\n";
-  os << "verbose " << verbose << '\n';
-  os << "max_inner " << tol.max_inner << '\n';
-  os << "inner_rel_tol " << tol.inner_rel << '\n';
-  os << "inner_abs_tol " << tol.inner_abs << '\n';
-  os << "max_outer " << tol.max_outer << '\n';
-  os << "k_tol " << tol.k << '\n';
-  os << "phi_tol " << tol.phi << '\n';
-  os << "solver " << solver_choice_enum_to_str(sol) << '\n';
-  os << "flux_free_chi " << flux_free_chi << '\n';
 }
 
 string Input::path_stub(string path)
