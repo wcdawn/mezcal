@@ -2,6 +2,8 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 double DownscatteringCoefficient::Eval(ElementTransformation& T, 
                                      const IntegrationPoint& ip)
 {
@@ -11,7 +13,7 @@ double DownscatteringCoefficient::Eval(ElementTransformation& T,
   
   Vector scat_dat;
   Array<int> scat_idx;
-  mat_lib.mat[attribute].rec.sigma_s.GetRow(g, scat_idx, scat_dat);
+  mat_lib.mat[attribute].rec[xs_temp_idx].sigma_s.GetRow(g, scat_idx, scat_dat);
 
   for (int gidx{0}; gidx < scat_idx.Size(); ++gidx)
   {

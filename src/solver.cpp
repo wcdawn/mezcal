@@ -52,6 +52,8 @@ bool exists(const std::string& fname)
 }
 #endif
 
+constexpr int xs_temp_idx = 0;
+
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
 
 double par_norml2(const Vector &x);
@@ -118,13 +120,13 @@ void diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   // assemble leakage coefficient
   Vector leakage(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[0]);
+    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec[xs_temp_idx].sigma_tr[0]);
   PWConstCoefficient leakage_func(leakage);
 
   // assemble removal coefficient
   Vector removal(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = mat_lib.mat[i].rec.sigma_r(0,ell);
+    removal[i] = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(0,ell);
   PWConstCoefficient removal_func(removal);
 
   a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -145,7 +147,7 @@ void diffusion_hypre_lobpcg(Timer& time, const Input& inp,
   // assemble fission coefficient
   Vector fission(pmesh->attributes.Max()); // length is number of materials
   for (int i{0}; i < fission.Size(); ++i)
-    fission[i] = mat_lib.mat[i].rec.nusf[0];
+    fission[i] = mat_lib.mat[i].rec[xs_temp_idx].nusf[0];
   PWConstCoefficient fission_func(fission);
 
   m.AddDomainIntegrator(new MassIntegrator(fission_func));
@@ -239,15 +241,15 @@ void spn_power_iteration_shift(Timer& time, const Input& inp,
       Vector leakage(pmesh->attributes.Max());
       for (int i{0}; i < leakage.Size(); ++i)
       {
-        leakage(i) = xmult_next / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        leakage(i) = xmult_next / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n+1);
         if (n > 0)
-          leakage(i) += xmult_prev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+          leakage(i) += xmult_prev / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n-1);
       }
       leakage_func.emplace_back(leakage);
 
       Vector removal(pmesh->attributes.Max());
       for (int i{0}; i < removal.Size(); ++i)
-        removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
+        removal(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n);
       removal_func.emplace_back(removal);
 
     }
@@ -419,7 +421,7 @@ void spn_power_iteration_shift(Timer& time, const Input& inp,
     
     Vector nusf_vec{pmesh->attributes.Max()};
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      nusf_vec(i) = mat_lib.mat[i].rec.nusf[g];
+      nusf_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].nusf[g];
     PWConstCoefficient nusf_operator{nusf_vec};
 
     fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_operator});
@@ -630,15 +632,15 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
       Vector leakage(pmesh->attributes.Max());
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
       {
-        leakage(i) = xmult_next / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
-        if (n > 0) leakage(i) += xmult_prev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+        leakage(i) = xmult_next / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n+1);
+        if (n > 0) leakage(i) += xmult_prev / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n-1);
       }
       PWConstCoefficient leakage_func{leakage};
       a.AddDomainIntegrator(new DiffusionIntegrator{leakage_func});
 
       Vector removal(pmesh->attributes.Max());
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
+        removal(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n);
       PWConstCoefficient removal_func{removal};
       a.AddDomainIntegrator(new MassIntegrator{removal_func});
 
@@ -697,7 +699,7 @@ void spn_amgx_power_iteration(Timer& time, const Input& inp,
     fiss[g] = std::make_unique<ParLinearForm>(fespace);
     Vector nusf(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      nusf(i) = mat_lib.mat[i].rec.nusf[g];
+      nusf(i) = mat_lib.mat[i].rec[xs_temp_idx].nusf[g];
     PWConstCoefficient nusf_func{nusf};
     fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_func});
     fiss[g]->Assemble();
@@ -817,12 +819,12 @@ void diffusion_fixed_src(Timer& time, const Input& inp,
 
   Vector leakage(pmesh->attributes.Max());
   for (int i{0}; i < leakage.Size(); ++i)
-    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[0]);
+    leakage[i] = 1.0 / (3.0 * mat_lib.mat[i].rec[xs_temp_idx].sigma_tr[0]);
   PWConstCoefficient leakage_func(leakage);
 
   Vector removal(pmesh->attributes.Max());
   for (int i{0}; i < removal.Size(); ++i)
-    removal[i] = mat_lib.mat[i].rec.sigma_r(0,ell);
+    removal[i] = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(0,ell);
   PWConstCoefficient removal_func(removal);
 
   a.AddDomainIntegrator(new DiffusionIntegrator(leakage_func));
@@ -837,7 +839,7 @@ void diffusion_fixed_src(Timer& time, const Input& inp,
 
   Vector source(pmesh->attributes.Max());
   for (int i{0}; i < source.Size(); ++i)
-    source[i] = mat_lib.mat[i].rec.source[0];
+    source[i] = mat_lib.mat[i].rec[xs_temp_idx].source[0];
   PWConstCoefficient source_func{source};
 
   b.AddDomainIntegrator(new DomainLFIntegrator(source_func));
@@ -988,15 +990,15 @@ void spn_slepc_manual(Timer& time, const Input& inp,
       Vector leakage(pmesh->attributes.Max());
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
       {
-        leakage(i) = xmult_next / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        leakage(i) = xmult_next / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n+1);
         if (n > 0)
-          leakage(i) += xmult_prev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+          leakage(i) += xmult_prev / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n-1);
       }
       PWConstCoefficient leakage_func{leakage};
 
       Vector removal(pmesh->attributes.Max());
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        removal[i] = mat_lib.mat[i].rec.sigma_r(g,2*n);
+        removal[i] = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n);
       PWConstCoefficient removal_func{removal};
 
       ParBilinearForm self_bilinear{fespace};
@@ -1014,7 +1016,7 @@ void spn_slepc_manual(Timer& time, const Input& inp,
 
         Vector next_leakage(pmesh->attributes.Max());
         for (int i{0}; i < pmesh->attributes.Max(); ++i)
-          next_leakage(i) = zmult / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+          next_leakage(i) = zmult / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n+1);
         PWConstCoefficient next_leakage_func{next_leakage};
 
         ParBilinearForm next_bilinear{fespace};
@@ -1031,7 +1033,7 @@ void spn_slepc_manual(Timer& time, const Input& inp,
 
         Vector prev_leakage(pmesh->attributes.Max());
         for (int i{0}; i < pmesh->attributes.Max(); ++i)
-          prev_leakage(i) = ymult / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+          prev_leakage(i) = ymult / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n-1);
         PWConstCoefficient prev_leakage_func{prev_leakage};
 
         ParBilinearForm prev_bilinear{fespace};
@@ -1057,7 +1059,7 @@ void spn_slepc_manual(Timer& time, const Input& inp,
             for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
             {
               const auto& isotope{mat.iso[iso_idx]};
-              const auto& record{isotope.rec};
+              const auto& record{*isotope.rec[xs_temp_idx]};
               const double nden{isotope.nden};
               fission[i] += record.chi[g] * nden * record.nusf[gprime];
             }
@@ -1082,7 +1084,7 @@ void spn_slepc_manual(Timer& time, const Input& inp,
             {
               Array<int> col_idx;
               Vector data;
-              mat_lib.mat[i].rec.sigma_s.GetRow(g, col_idx, data);
+              mat_lib.mat[i].rec[xs_temp_idx].sigma_s.GetRow(g, col_idx, data);
               const auto gprime_idx{col_idx.FindSorted(gprime)};
               if (gprime_idx >= 0)
                 scatter[i] -= data[gprime_idx];
@@ -1228,7 +1230,7 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
   {
     Vector inv_tot_vec{pmesh->attributes.Max()};
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      inv_tot_vec(i) = 1.0/mat_lib.mat[i].rec.sigma_t[g];
+      inv_tot_vec(i) = 1.0/mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
     inv_tot.emplace_back(inv_tot_vec);
   }
 
@@ -1250,7 +1252,7 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
 
       Vector total_operator{pmesh->attributes.Max()};
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        total_operator(i) = mat_lib.mat[i].rec.sigma_t[g];
+        total_operator(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
       PWConstCoefficient total{total_operator};
 
       a(g,n)->AddDomainIntegrator(new DiffusionIntegrator{streaming});
@@ -1317,7 +1319,7 @@ void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input
 
     Vector nusf_vec{pmesh->attributes.Max()};
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      nusf_vec(i) = mat_lib.mat[i].rec.nusf[g];
+      nusf_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].nusf[g];
     PWConstCoefficient nusf_operator{nusf_vec};
 
     fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_operator});
@@ -1435,7 +1437,7 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
       {
         total_omega[i].SetSize(quad->dim());
         total_omega[i] = quad->omega(n);
-        total_omega[i] *= mat_lib.mat[i].rec.sigma_t[g];
+        total_omega[i] *= mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
       }
       VectorPWConstCoefficient total_omega_term{total_omega};
       ScalarVectorProductCoefficient total_omega_func{tau_term[g], total_omega_term};
@@ -1457,8 +1459,8 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
       Vector total_total{pmesh->attributes.Max()};
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
       {
-        total(i) = mat_lib.mat[i].rec.sigma_t[g];
-        total_total(i) = total(i) * mat_lib.mat[i].rec.sigma_t[g];
+        total(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
+        total_total(i) = total(i) * mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
       }
       PWConstCoefficient total_func{total};
       PWConstCoefficient total_total_func{total_total};
@@ -1543,7 +1545,7 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
     total_vec[g].SetSize(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
     {
-      total_vec[g](i) = mat_lib.mat[i].rec.sigma_t[g];
+      total_vec[g](i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
     }
     total_vec_func.emplace_back(total_vec[g]);
     total_vec_stab_func.emplace_back(total_vec_func.back(), tau_term[g]);
@@ -1621,7 +1623,7 @@ void sfent_power_iteration(const Quadrature* const quad, Timer& time, const Inpu
 
     Vector fission(pmesh->attributes.Max());
     for (int i{0}; i < fission.Size(); ++i)
-      fission[i] = mat_lib.mat[i].rec.nusf[g];
+      fission[i] = mat_lib.mat[i].rec[xs_temp_idx].nusf[g];
     nusf_coeff.emplace_back(fission);
 
     phi_coeff.emplace_back(&scalar_flux(g));
@@ -1740,7 +1742,7 @@ void saaf_power_iteration(const Quadrature* const quad,
   {
     Vector inv_tot_vec{pmesh->attributes.Max()};
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      inv_tot_vec(i) = 1.0/mat_lib.mat[i].rec.sigma_t[g];
+      inv_tot_vec(i) = 1.0/mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
     inv_tot.emplace_back(inv_tot_vec);
   }
 
@@ -1768,7 +1770,7 @@ void saaf_power_iteration(const Quadrature* const quad,
 
       Vector total_operator{pmesh->attributes.Max()};
       for (int i{0}; i < pmesh->attributes.Max(); ++i)
-        total_operator(i) = mat_lib.mat[i].rec.sigma_t[g];
+        total_operator(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
       PWConstCoefficient total{total_operator};
 
       a(g,n)->AddDomainIntegrator(new DiffusionIntegrator{streaming});
@@ -1818,7 +1820,7 @@ void saaf_power_iteration(const Quadrature* const quad,
   {
     Vector self_scatter(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      self_scatter(i) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+      self_scatter(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_s.Elem(g,g);
     self_scatter_xs.emplace_back(self_scatter);
   }
 
@@ -1925,7 +1927,7 @@ void saaf_power_iteration(const Quadrature* const quad,
 
     Vector nusf_vec{pmesh->attributes.Max()};
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      nusf_vec(i) = mat_lib.mat[i].rec.nusf[g];
+      nusf_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].nusf[g];
     PWConstCoefficient nusf_operator{nusf_vec};
 
     fiss[g]->AddDomainIntegrator(new DomainLFIntegrator{nusf_operator});
@@ -2085,7 +2087,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
   {
     Vector tot_vec(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      tot_vec(i) = mat_lib.mat[i].rec.sigma_t[g];
+      tot_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
     tot.emplace_back(tot_vec);
   }
 
@@ -2159,7 +2161,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    const SparseMatrix& scat_mat{mat_lib.mat[i].rec.sigma_s};
+    const SparseMatrix& scat_mat{mat_lib.mat[i].rec[xs_temp_idx].sigma_s};
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
       Vector scat_dat;
@@ -2270,7 +2272,7 @@ void saaf_slepc_vector(const Quadrature* const quad,
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
           const Material_isotope& isotope{mat.iso[iso_idx]};
-          const XSRecord& record{isotope.rec};
+          const XSRecord& record{*isotope.rec[xs_temp_idx]};
           const double nden{isotope.nden};
           chi_nusf_vec[gprime + g*mat_lib.ngroup()](i) += record.chi[g] * nden * record.nusf[gprime];
         }
@@ -2436,8 +2438,8 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
   if ((mat_lib.ngroup() == 1) && (mat_lib.mat.size() == 1))
   {
     std::cout << "scattering ratio c=" <<
-      (mat_lib.mat[0].rec.sigma_s.Elem(0,0) + mat_lib.mat[0].rec.nusf[0]) /
-      mat_lib.mat[0].rec.sigma_t[0] << std::endl;
+      (mat_lib.mat[0].rec[xs_temp_idx].sigma_s.Elem(0,0) + mat_lib.mat[0].rec[xs_temp_idx].nusf[0]) /
+      mat_lib.mat[0].rec[xs_temp_idx].sigma_t[0] << std::endl;
   }
 
   time.start(time.matrix_assembly);
@@ -2464,7 +2466,7 @@ void saaf_true_amgx_vector(const Quadrature* const quad,
       saaf_benchmark_source.reserve(mat_lib.ngroup()*quad->nd());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           Vector tmp{quad->omega(n)};
@@ -2700,7 +2702,7 @@ void saaf_split_slepc_vector(const Quadrature* const quad,
       leakage[i].reserve(mat_lib.ngroup()*quad->nd());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           omega_mat[n] *= 1.0/tot;
@@ -2834,7 +2836,7 @@ void saaf_split_power_iteration(const Quadrature* const quad,
       leakage[i].reserve(mat_lib.ngroup()*quad->nd());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           omega_mat[n] *= 1.0/tot;
@@ -3026,8 +3028,8 @@ void saaf_self_power_iteration(const Quadrature* const quad,
       scat[i] = 0.0;
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
-        const double self_scat{mat_lib.mat[i].rec.sigma_s.Elem(g,g)};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
+        const double self_scat{mat_lib.mat[i].rec[xs_temp_idx].sigma_s.Elem(g,g)};
         for (int n{0}; n < quad->nd(); ++n)
         {
 
@@ -3639,7 +3641,7 @@ mfem::HypreParMatrix* saaf_a_matrix(const Input &inp,
   std::vector<Vector> collision(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    const XSRecord& rec{mat_lib.mat[i].rec};
+    const XSRecord& rec{mat_lib.mat[i].rec[xs_temp_idx]};
     streaming[i].reserve(block_rank);
     collision[i].SetSize(block_rank);
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -3677,7 +3679,7 @@ mfem::HypreParMatrix* saaf_a_matrix(const Input &inp,
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     scattering[i].SetSize(block_rank);
-    const XSRecord& record{mat_lib.mat[i].rec};
+    const XSRecord& record{mat_lib.mat[i].rec[xs_temp_idx]};
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
@@ -3745,7 +3747,7 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      const double tot{mat.rec.sigma_t[g]};
+      const double tot{mat.rec[xs_temp_idx].sigma_t[g]};
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
 
@@ -3753,7 +3755,7 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
           const Material_isotope& isotope{mat.iso[iso_idx]};
-          const XSRecord& record{isotope.rec};
+          const XSRecord& record{*isotope.rec[xs_temp_idx]};
           const double nden{isotope.nden};
           val += record.chi[g] * nden * record.nusf[gprime];
         } // iso_idx < mat.niso
@@ -3805,7 +3807,7 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     leakage[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
-    const XSRecord& record{mat_lib.mat[i].rec};
+    const XSRecord& record{mat_lib.mat[i].rec[xs_temp_idx]};
     for (int n{0}; n < inp.spn_eq(); ++n)
     {
       for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -3842,7 +3844,7 @@ HypreParMatrix* spn_a_matrix(const Input &inp,
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     removal[i].SetSize(mat_lib.ngroup()*inp.spn_eq());
-    const XSRecord& record{mat_lib.mat[i].rec};
+    const XSRecord& record{mat_lib.mat[i].rec[xs_temp_idx]};
 
     DenseMatrix scat_mat;
     record.sigma_s.ToDenseMatrix(scat_mat);
@@ -3892,7 +3894,7 @@ mfem::HypreParMatrix* spn_m_matrix(const Input &inp,
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
           const Material_isotope& isotope{mat.iso[iso_idx]};
-          const XSRecord& record{isotope.rec};
+          const XSRecord& record{*isotope.rec[xs_temp_idx]};
           const double nden{isotope.nden};
           fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
         }
@@ -3963,7 +3965,7 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
       leakage[i].reserve(quad->nd()*mat_lib.ngroup());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           const int idx{n+g*quad->nd()};
@@ -3981,7 +3983,7 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
       total[i].SetSize(quad->nd()*mat_lib.ngroup());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           const int idx{n+g*quad->nd()};
@@ -4027,8 +4029,8 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
       removal[i].SetSize(mat_lib.ngroup());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        diffusive[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_t[g]);
-        removal[i](g) = mat_lib.mat[i].rec.sigma_t[g] - mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+        diffusive[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]);
+        removal[i](g) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g] - mat_lib.mat[i].rec[xs_temp_idx].sigma_s.Elem(g,g);
       }
     }
     VectorPWConstCoefficient diffusive_func{diffusive};
@@ -4087,7 +4089,7 @@ void saaf_angle_jacobi_power_iteration(const Quadrature* const quad,
   {
     self_scatter_vec[i].SetSize(mat_lib.ngroup());
     for (int g{0}; g < mat_lib.ngroup(); ++g)
-      self_scatter_vec[i](g) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+      self_scatter_vec[i](g) = mat_lib.mat[i].rec[xs_temp_idx].sigma_s.Elem(g,g);
   }
   VectorPWConstCoefficient self_scatter_func{self_scatter_vec};
 
@@ -4249,7 +4251,7 @@ void calc_fiss_upscatter(const Result& scalar_flux,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
 
     const FiniteElement* const fe{fespace->GetFE(e)};
     Array<int> dofs;
@@ -4278,7 +4280,7 @@ void calc_fiss_upscatter(const Result& scalar_flux,
 
         const std::vector<double> chi{
           (mat_lib.rx_wide_chi) ? mat_lib.chi : 
-          ((flux_free_chi) ? rec.chi : mat.calculate_chi(spectrum))};
+          ((flux_free_chi) ? rec.chi : mat.calculate_chi(spectrum, xs_temp_idx))};
 
         for (int g{0}; g < mat_lib.ngroup(); ++g)
           fiss_quad_func[g](idx) += chi[g] * fiss_sum;
@@ -4342,7 +4344,7 @@ void calc_downscatter(const int g,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const SparseMatrix& scat{rec.sigma_s};
 
     Array<int> col_idx;
@@ -4401,7 +4403,7 @@ void calc_selfscatter(const int g,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const SparseMatrix& scat{rec.sigma_s};
 
     const double scatxs{scat.Elem(g,g)};
@@ -4442,7 +4444,7 @@ void calc_spn_next(const Result& flux,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const DenseMatrix& sigma_r{rec.sigma_r};
 
     ElementTransformation* const eltr{fespace->GetElementTransformation(e)};
@@ -4497,7 +4499,7 @@ void calc_spn_prev(const int g, const int n,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const DenseMatrix& sigma_r{rec.sigma_r};
     const double xs_val{sigma_r(g,2*n-1)};
 
@@ -4538,7 +4540,7 @@ void calc_fiss_src(const Result& scalar_flux,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
 
     if (!rec.is_fiss)
     {
@@ -4641,7 +4643,7 @@ void calc_power(const Material_library& mat_lib,
 
     Vector kappasf(max_att);
     for (int i{0}; i < max_att; ++i)
-      kappasf(i) = mat_lib.mat[i].rec.nusf[g]; // TODO replace with proper value
+      kappasf(i) = mat_lib.mat[i].rec[xs_temp_idx].nusf[g]; // TODO replace with proper value
     PWConstCoefficient kappasf_coeff{kappasf};
 
     GridFunctionCoefficient gfc{&scalar_flux(g)};
@@ -4998,7 +5000,7 @@ void calc_all_scatter(const Result& scalar_flux,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const SparseMatrix& scat{rec.sigma_s};
 
     const FiniteElement *fe{fespace->GetFE(e)};
@@ -5212,8 +5214,8 @@ void dg_spn_power_iteration(Input &inp,
   Vector removal_vec(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    diffusion_vec(i) = 1.0/(3.0*mat_lib.mat[i].rec.sigma_tr[0]);
-    removal_vec(i)   = mat_lib.mat[i].rec.sigma_r(0,0);
+    diffusion_vec(i) = 1.0/(3.0*mat_lib.mat[i].rec[xs_temp_idx].sigma_tr[0]);
+    removal_vec(i)   = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(0,0);
   }
   PWConstCoefficient diffusion{diffusion_vec};
   PWConstCoefficient removal{removal_vec};
@@ -5233,7 +5235,7 @@ void dg_spn_power_iteration(Input &inp,
 
   Vector nusf_vec(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
-    nusf_vec(i) = mat_lib.mat[i].rec.nusf[0];
+    nusf_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].nusf[0];
   PWConstCoefficient nusf_func{nusf_vec};
    
   ProductCoefficient fiss_src_func{scalar_flux_func, nusf_func};
@@ -5346,7 +5348,7 @@ void dg_transport_power_iteration(Input &inp,
 
     Vector tot(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      tot(i) = 5*mat_lib.mat[i].rec.sigma_t[0];
+      tot(i) = 5*mat_lib.mat[i].rec[xs_temp_idx].sigma_t[0];
     PWConstCoefficient tot_func{tot};
 
     for (int n{0}; n < quad->nd(); ++n)
@@ -5571,7 +5573,7 @@ void spn_partial_assembly_power_iteration(const Input &inp,
   {
     Vector diffusion_vec(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      diffusion_vec(i) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_tr[g]);
+      diffusion_vec(i) = 1.0 / (3.0 * mat_lib.mat[i].rec[xs_temp_idx].sigma_tr[g]);
     diffusion_func.emplace_back(diffusion_vec);
   }
 
@@ -5581,7 +5583,7 @@ void spn_partial_assembly_power_iteration(const Input &inp,
   {
     Vector removal_vec(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      removal_vec(i) = mat_lib.mat[i].rec.sigma_r(g,0);
+      removal_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,0);
     removal_func.emplace_back(removal_vec);
   }
 
@@ -5724,7 +5726,7 @@ void calc_src(const Material_library &mat_lib,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const SparseMatrix& scat{rec.sigma_s};
 
     for (int i{0}; i < ir.GetNPoints(); ++i)
@@ -5746,7 +5748,7 @@ void calc_src(const Material_library &mat_lib,
         const double fiss_sum{spectrum*nusf};
         const std::vector<double> chi{
           (mat_lib.rx_wide_chi) ? mat_lib.chi :
-          ((flux_free_chi) ? rec.chi : mat.calculate_chi(spectrum_vec))};
+          ((flux_free_chi) ? rec.chi : mat.calculate_chi(spectrum_vec, xs_temp_idx))};
         for (int g{0}; g < mat_lib.ngroup(); ++g)
           for (int n{0}; n < quad->nd(); ++n)
             val(n+g*quad->nd()) += chi[g]*fiss_sum/keff;
@@ -5821,7 +5823,7 @@ void calc_self_scatter(const Material_library &mat_lib,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
     const SparseMatrix& scat{rec.sigma_s};
 
     for (int i{0}; i < ir.GetNPoints(); ++i)
@@ -5900,7 +5902,7 @@ void calc_fiss_src_vector(const ParGridFunction &scalar_flux,
     const IntegrationRule ir{qspace->GetElementIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
-    const XSRecord& rec{mat.rec};
+    const XSRecord& rec{mat.rec[xs_temp_idx]};
 
     const Vector nusf{const_cast<double*>(rec.nusf.data()), 
       static_cast<int>(rec.nusf.size())};
@@ -5970,7 +5972,7 @@ void saaf_angle_nda_slepc(const Quadrature* const quad,
       leakage[i].reserve(quad->nd()*mat_lib.ngroup());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           const int idx{n+g*quad->nd()};
@@ -5988,7 +5990,7 @@ void saaf_angle_nda_slepc(const Quadrature* const quad,
       total[i].SetSize(quad->nd()*mat_lib.ngroup());
       for (int g{0}; g < mat_lib.ngroup(); ++g)
       {
-        const double tot{mat_lib.mat[i].rec.sigma_t[g]};
+        const double tot{mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]};
         for (int n{0}; n < quad->nd(); ++n)
         {
           const int idx{n+g*quad->nd()};
@@ -6041,14 +6043,14 @@ void saaf_angle_nda_slepc(const Quadrature* const quad,
   {
     diffusion[i].SetSize(mat_lib.ngroup());
     for (int g{0}; g < mat_lib.ngroup(); ++g)
-      diffusion[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec.sigma_t[g]);
+      diffusion[i](g) = 1.0 / (3.0 * mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g]);
   }
   VectorPWConstCoefficient diffusion_func{diffusion};
 
   std::vector<DenseMatrix> removal(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    const XSRecord &rec{mat_lib.mat[i].rec};
+    const XSRecord &rec{mat_lib.mat[i].rec[xs_temp_idx]};
 
     removal[i].SetSize(mat_lib.ngroup());
     rec.sigma_s.ToDenseMatrix(removal[i]);
@@ -6091,7 +6093,7 @@ void saaf_angle_nda_slepc(const Quadrature* const quad,
           for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
           {
             const Material_isotope& isotope{mat.iso[iso_idx]};
-            const XSRecord& record{isotope.rec};
+            const XSRecord& record{*isotope.rec[xs_temp_idx]};
             const double nden{isotope.nden};
             fission[i](g,gprime) += record.chi[g] * nden * record.nusf[gprime];
           }
@@ -6523,12 +6525,12 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
 
       Vector total_vec(pmesh->attributes.Max());
       for (int i = 0; i < pmesh->attributes.Max(); ++i)
-        total_vec(i) = mat_lib.mat[i].rec.sigma_t[g];
+        total_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
       PWConstCoefficient total_coeff{total_vec};
 
       Vector inv_total_vec(pmesh->attributes.Max());
       for (int i = 0; i < pmesh->attributes.Max(); ++i)
-        inv_total_vec(i) = 1.0/mat_lib.mat[i].rec.sigma_t[g];
+        inv_total_vec(i) = 1.0/mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
       PWConstCoefficient inv_total_coeff{inv_total_vec};
 
       for (int n = 0; n < quad->nd(); ++n)
@@ -6578,7 +6580,7 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
         Vector removal_vec(pmesh->attributes.Max());
         for (int i = 0; i < pmesh->attributes.Max(); ++i)
         {
-          const XSRecord &rec = mat_lib.mat[i].rec;
+          const XSRecord &rec = mat_lib.mat[i].rec[xs_temp_idx];
           diffusive_vec(i) = 1.0 / (3.0*rec.sigma_t[g]);
           removal_vec(i) = rec.sigma_t[g] - rec.sigma_s.Elem(g,g);
         }
@@ -6680,7 +6682,7 @@ void saaf_efficient_power_iteration(const Quadrature * const quad,
   {
     Vector selfscatter_vec(pmesh->attributes.Max());
     for (int i = 0; i < pmesh->attributes.Max(); ++i)
-      selfscatter_vec(i) = mat_lib.mat[i].rec.sigma_s.Elem(g,g);
+      selfscatter_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_s.Elem(g,g);
     selfscatter_coeff.emplace_back(selfscatter_vec);
   }
 
@@ -6909,7 +6911,7 @@ void calc_fiss_upscatter_efficient(const std::vector<std::unique_ptr<ParGridFunc
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     const FiniteElement * const fe = fespace->GetFE(e);
     Array<int> dofs;
@@ -6949,7 +6951,7 @@ void calc_fiss_upscatter_efficient(const std::vector<std::unique_ptr<ParGridFunc
         else if (mat_lib.rx_wide_chi)
           chi = mat_lib.chi;
         else
-          chi = mat.calculate_chi(spectrum);
+          chi = mat.calculate_chi(spectrum, xs_temp_idx);
 
       }
       else
@@ -7058,7 +7060,7 @@ void calc_downscatter_efficient(const int g,
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     const FiniteElement * const fe = fespace->GetFE(e);
     Array<int> dofs;
@@ -7143,7 +7145,7 @@ void calc_selfscatter_efficient(const int g,
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     for (int i = 0; i < ir.GetNPoints(); ++i)
     {
@@ -7216,7 +7218,7 @@ void calc_fiss_src_efficient(const std::vector<std::unique_ptr<ParGridFunction>>
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     if (!rec.is_fiss)
     {

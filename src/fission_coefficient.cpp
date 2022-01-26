@@ -2,13 +2,15 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 double FissionCoefficient::Eval(ElementTransformation& T,
                                 const IntegrationPoint& ip)
 {
 
   const int attribute{T.Attribute - 1};
 
-  const XSRecord& record{mat_lib.mat[attribute].rec};
+  const XSRecord& record{mat_lib.mat[attribute].rec[xs_temp_idx]};
   const std::vector<double>& nusf{record.nusf};
 
   if (!record.is_fiss) return 0.0;
@@ -34,12 +36,12 @@ double FissionCoefficient::get_chi(const ElementTransformation& T,
   const int element_id{T.ElementNo};
 
   // use precalculated value
-  if (flux_free_chi) return mat_lib.mat[attribute].rec.chi[g];
+  if (flux_free_chi) return mat_lib.mat[attribute].rec[xs_temp_idx].chi[g];
 
   // collect flux spectrum
   std::vector<double> spectrum(mat_lib.ngroup());
   for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
     spectrum[gprime] = phi(gprime).GetValue(element_id, ip);
 
-  return mat_lib.mat[attribute].calculate_chi(spectrum, g);
+  return mat_lib.mat[attribute].calculate_chi(spectrum, g, xs_temp_idx);
 }

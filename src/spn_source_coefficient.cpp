@@ -2,11 +2,13 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 void SPNSourceCoefficient::Eval(Vector& V, ElementTransformation& T, const IntegrationPoint& ip)
 {
 
   const int attribute{T.Attribute - 1};
-  const XSRecord& record{mat_lib.mat[attribute].rec};
+  const XSRecord& record{mat_lib.mat[attribute].rec[xs_temp_idx]};
 
   V.SetSize(dim);
   V = 0.0;

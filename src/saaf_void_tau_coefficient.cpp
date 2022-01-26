@@ -5,13 +5,14 @@
 using namespace mfem;
 
 std::unordered_map<int,double> SAAFVoidTauCoefficient::element_h(0);
+constexpr int xs_temp_idx = 0;
 
 double SAAFVoidTauCoefficient::Eval(ElementTransformation &T,
                                     const IntegrationPoint &ip)
 {
 
   const int attribute{T.Attribute-1};
-  const double sigma_t{mat_lib.mat[attribute].rec.sigma_t[g]};
+  const double sigma_t{mat_lib.mat[attribute].rec[xs_temp_idx].sigma_t[g]};
 
   constexpr bool use_max_vertex_distance{true};
 

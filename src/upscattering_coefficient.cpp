@@ -2,6 +2,8 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 double UpscatteringCoefficient::Eval(ElementTransformation& T, 
                                      const IntegrationPoint& ip)
 {
@@ -14,7 +16,7 @@ double UpscatteringCoefficient::Eval(ElementTransformation& T,
   
   Vector scat_dat;
   Array<int> scat_idx;
-  mat_lib.mat[attribute].rec.sigma_s.GetRow(g, scat_idx, scat_dat);
+  mat_lib.mat[attribute].rec[xs_temp_idx].sigma_s.GetRow(g, scat_idx, scat_dat);
 
   for (int gidx{0}; gidx < scat_idx.Size(); ++gidx)
   {
@@ -40,7 +42,7 @@ std::vector<bool> UpscatteringCoefficient::check_if_upscatter_present()
 
     Vector scat_dat;
     Array<int> scat_idx;
-    mat_lib.mat[i].rec.sigma_s.GetRow(g, scat_idx, scat_dat);
+    mat_lib.mat[i].rec[xs_temp_idx].sigma_s.GetRow(g, scat_idx, scat_dat);
 
     upscatter_present[i] = false;
 

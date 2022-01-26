@@ -214,7 +214,7 @@ mfem::HypreParMatrix* saaf_a_matrix(const Input &inp,
   std::vector<Vector> collision(pmesh->attributes.Max());
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
-    const XSRecord& rec{mat_lib.mat[i].rec};
+    const XSRecord& rec{mat_lib.mat[i].rec[0]};
     streaming[i].reserve(block_rank);
     collision[i].SetSize(block_rank);
     for (int g{0}; g < mat_lib.ngroup(); ++g)
@@ -252,7 +252,7 @@ mfem::HypreParMatrix* saaf_a_matrix(const Input &inp,
   for (int i{0}; i < pmesh->attributes.Max(); ++i)
   {
     scattering[i].SetSize(block_rank);
-    const XSRecord& record{mat_lib.mat[i].rec};
+    const XSRecord& record{mat_lib.mat[i].rec[0]};
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
@@ -329,7 +329,7 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
-      const double tot{mat.rec.sigma_t[g]};
+      const double tot{mat.rec[0].sigma_t[g]};
       for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
       {
 
@@ -337,7 +337,7 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
         for (int iso_idx{0}; iso_idx < mat.niso; ++iso_idx)
         {
           const Material_isotope& isotope{mat.iso[iso_idx]};
-          const XSRecord& record{isotope.rec};
+          const XSRecord& record{*isotope.rec[0]};
           const double nden{isotope.nden};
           val += record.chi[g] * nden * record.nusf[gprime];
         } // iso_idx < mat.niso

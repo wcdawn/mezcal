@@ -6,6 +6,8 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 namespace 
 {
   double par_norml2(const Vector &x)
@@ -95,7 +97,7 @@ void spn_power_iteration(Timer &time,
 
           for (int i = 0; i < pmesh->attributes.Max(); ++i)
           {
-            const double rem = mat_lib.mat[i].rec.sigma_r(g,rem_idx);
+            const double rem = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,rem_idx);
             val(i) += coeff*rem;
           }
 
@@ -121,9 +123,9 @@ void spn_power_iteration(Timer &time,
       Vector leakage(pmesh->attributes.Max());
       for (int i = 0; i < pmesh->attributes.Max(); ++i)
       {
-        leakage(i) = xnext / mat_lib.mat[i].rec.sigma_r(g,2*n+1);
+        leakage(i) = xnext / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n+1);
         if (n > 0)
-          leakage(i) += xprev / mat_lib.mat[i].rec.sigma_r(g,2*n-1);
+          leakage(i) += xprev / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n-1);
       }
       leakage_func.emplace_back(leakage);
 
@@ -141,7 +143,7 @@ void spn_power_iteration(Timer &time,
 
       Vector removal(pmesh->attributes.Max());
       for (int i = 0; i < pmesh->attributes.Max(); ++i)
-        removal(i) = mat_lib.mat[i].rec.sigma_r(g,2*n);
+        removal(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,2*n);
       removal_func.emplace_back(removal);
 
     }
@@ -266,7 +268,7 @@ void spn_power_iteration(Timer &time,
 
       Vector inv_removal(pmesh->attributes.Max());
       for (int i = 0; i < pmesh->attributes.Max(); ++i)
-        inv_removal(i) = 1.0 / mat_lib.mat[i].rec.sigma_r(g,n);
+        inv_removal(i) = 1.0 / mat_lib.mat[i].rec[xs_temp_idx].sigma_r(g,n);
       inv_removal_func.emplace_back(inv_removal);
 
     }
@@ -532,7 +534,7 @@ void spn_calc_fiss_upscatter(const std::vector<std::unique_ptr<ParGridFunction>>
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     const FiniteElement * const fe = fespace->GetFE(e);
     Array<int> dofs;
@@ -567,7 +569,7 @@ void spn_calc_fiss_upscatter(const std::vector<std::unique_ptr<ParGridFunction>>
         else if (mat_lib.rx_wide_chi)
           chi = mat_lib.chi;
         else
-          chi = mat.calculate_chi(spectrum);
+          chi = mat.calculate_chi(spectrum, xs_temp_idx);
 
       }
       else
@@ -663,7 +665,7 @@ void spn_calc_spn_next(const std::vector<std::unique_ptr<mfem::ParGridFunction>>
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
     const DenseMatrix &sigma_r = rec.sigma_r;
 
     ElementTransformation *T = fespace->GetElementTransformation(e);
@@ -735,7 +737,7 @@ void spn_calc_downscatter(int g,
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     const FiniteElement * const fe = fespace->GetFE(e);
     Array<int> dofs;
@@ -807,7 +809,7 @@ void spn_calc_spn_prev(int g, int n,
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     ElementTransformation *T = fespace->GetElementTransformation(e);
 
@@ -855,7 +857,7 @@ void spn_calc_fiss_src(const std::vector<std::unique_ptr<ParGridFunction>> &phi,
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     if (!rec.is_fiss)
     {
@@ -920,7 +922,7 @@ void spn_calc_power(const Material_library &mat_lib,
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
-    const XSRecord &rec = mat.rec;
+    const XSRecord &rec = mat.rec[xs_temp_idx];
 
     if (!rec.is_fiss)
     {

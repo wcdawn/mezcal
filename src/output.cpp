@@ -5,6 +5,8 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 void total_xs_plot(ParMesh *pmesh,
                    const Material_library &mat_lib,
                    const std::string out_name)
@@ -32,7 +34,7 @@ void total_xs_plot(ParMesh *pmesh,
 
     Vector tot_vec(pmesh->attributes.Max());
     for (int i{0}; i < pmesh->attributes.Max(); ++i)
-      tot_vec(i) = mat_lib.mat[i].rec.sigma_t[g];
+      tot_vec(i) = mat_lib.mat[i].rec[xs_temp_idx].sigma_t[g];
     PWConstCoefficient tot_func{tot_vec};
     tot_pgf[g].ProjectCoefficient(tot_func);
 
@@ -157,20 +159,24 @@ void mesh_stats(ParMesh *pmesh,
       const double &exact_area_vol{mat_lib->mat[i].exact_area_volume};
       const double rel_error{(exact_area_vol > 0.0) ? (sum_area_vol - exact_area_vol) / exact_area_vol : 0.0};
       const double factor{(sum_area_vol > 0.0) ? exact_area_vol / sum_area_vol : 1.0};
-      XSRecord &rec{mat_lib->mat[i].rec};
-
-      for (Material_isotope &isotope : mat_lib->mat[i].iso)
-        isotope.nden *= factor;
-
-      for (int g{0}; g < mat_lib->ngroup(); ++g)
+      
+      for (int t = 0; t < mat_lib->ntemp(); ++t)
       {
-        rec.sigma_t[g] *= factor;
-        rec.sigma_tr[g] *= factor;
-        rec.nusf[g] *= factor;
-      }
+        XSRecord &rec{mat_lib->mat[i].rec[t]};
 
-      rec.sigma_r *= factor;
-      rec.sigma_s *= factor;
+        for (Material_isotope &isotope : mat_lib->mat[i].iso)
+          isotope.nden *= factor;
+
+        for (int g{0}; g < mat_lib->ngroup(); ++g)
+        {
+          rec.sigma_t[g] *= factor;
+          rec.sigma_tr[g] *= factor;
+          rec.nusf[g] *= factor;
+        }
+
+        rec.sigma_r *= factor;
+        rec.sigma_s *= factor;
+      }
 
       if (myid == 0)
         std::cout << " " << exact_area_vol

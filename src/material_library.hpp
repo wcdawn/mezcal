@@ -13,21 +13,25 @@ struct Material_isotope
   std::string name;
   double nden;
   int idx;
-  const XSRecord& rec;
+  std::vector<const XSRecord*> rec;
 };
 
 struct Material_record
 {
   std::vector<Material_isotope> iso;
-  XSRecord rec;
+  std::vector<XSRecord> rec;
+
+  bool is_fiss;
 
   std::string name;
   int niso;
   int G;
   int N;
+  int NT;
 
   int ngroup() const { return G; }
   int nmoment() const { return N; }
+  int ntemp() const { return NT; }
 
   // utility functions
 
@@ -36,18 +40,21 @@ struct Material_record
 
   // calculate for all groups
   // phi_g is the flux spectra at a given position
-  std::vector<double> calculate_chi(const std::vector<double>& phi_g) const;
+  std::vector<double> calculate_chi(const std::vector<double>& phi_g,
+                                    const int temp_idx) const;
   // alternatively, calculate chi weighting with only nusf
-  std::vector<double> flux_free_chi() const;
+  std::vector<double> flux_free_chi(const int temp_idx) const;
 
   // calculate for a single group
   // These are less efficient but will be necessary to properly evaluate chi for
   // a given flux spectra. The main efficiency penalty will be a bigger problem
   // for many-group problems.
   // phi_g is the flux spectra at a given position
-  double calculate_chi(const std::vector<double>& phi_g, int g) const;
+  double calculate_chi(const std::vector<double>& phi_g,
+                       const int g,
+                       const int temp_idx) const;
   // alternatively, calculate chi weighting with only nusf
-  double flux_free_chi(int g) const;
+  double flux_free_chi(const int g, const int temp_idx) const;
 
   // calculate macroscopic xs based on user-input number densities and
   // microscopic xs from XSLibrary

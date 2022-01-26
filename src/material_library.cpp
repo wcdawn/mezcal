@@ -40,6 +40,7 @@ void Material_library::read_material(ifstream& ifs)
       ++mat_count;
       mat[mat_count].name = name;
       mat[mat_count].G    = G;
+      mat[mat_count].NT   = NT;
       continue;
     }
     else if (card == "exact_area_volume")
@@ -70,8 +71,13 @@ void Material_library::read_material(ifstream& ifs)
       // this is an isotope
       double nden;
       ifs >> nden;
-      mat[mat_count].iso.push_back(
-      Material_isotope{card, nden, iso_idx, xs[0].rec[iso_idx]});
+      Material_isotope this_iso;
+      this_iso.name = card;
+      this_iso.nden = nden;
+      this_iso.idx  = iso_idx;
+      for (int t = 0; t < NT; ++t)
+        this_iso.rec.push_back(&xs[t].rec[iso_idx]);
+      mat[mat_count].iso.push_back(this_iso);
     }
     else if (card == "chi")
     {
@@ -109,77 +115,89 @@ void Material_library::read_material(ifstream& ifs)
 void Material_record::calculate_macroscopic_xs()
 {
 
-  rec.set_ngroup(ngroup());
-  SparseMatrix scat(ngroup(), ngroup());
-
-  for (int i{0}; i < niso; ++i)
+  rec.resize(NT);
+  is_fiss = false;
+  for (int t = 0; t < NT; ++t)
   {
-    // this is a hack because there is no multiply/scaling operator provided for
-    // sparse matrices and "rec" is const-qualified
-    SparseMatrix tmp{iso[i].rec.sigma_s};
-    tmp *= iso[i].nden;
-    scat += tmp;
-    for (int g{0}; g < rec.ngroup(); ++g)
+
+    rec[t].set_ngroup(ngroup());
+    SparseMatrix scat(ngroup(), ngroup());
+
+    for (int i{0}; i < niso; ++i)
     {
-      rec.sigma_tr[g] += iso[i].nden * iso[i].rec.sigma_tr[g];
-      rec.sigma_t[g] += iso[i].nden * iso[i].rec.sigma_t[g];
-      rec.nusf[g] += iso[i].nden * iso[i].rec.nusf[g];
-      // note: fixed source is simply summed without number densities
-      rec.source[g] += iso[i].rec.source[g];
+      // this is a hack because there is no multiply/scaling operator provided for
+      // sparse matrices and "rec" is const-qualified
+      SparseMatrix tmp{iso[i].rec[t]->sigma_s};
+      tmp *= iso[i].nden;
+      scat += tmp;
+      for (int g{0}; g < rec[t].ngroup(); ++g)
+      {
+        rec[t].sigma_tr[g] += iso[i].nden * iso[i].rec[t]->sigma_tr[g];
+        rec[t].sigma_t[g]  += iso[i].nden * iso[i].rec[t]->sigma_t[g];
+        rec[t].nusf[g]     += iso[i].nden * iso[i].rec[t]->nusf[g];
+        // note: fixed source is simply summed without number densities
+        rec[t].source[g] += iso[i].rec[t]->source[g];
+      }
+
+      for (int n{0}; n < rec[t].nmoment(); ++n)
+        for (int g{0}; g < rec[t].ngroup(); ++g)
+          rec[t].sigma_r(g,n) += iso[i].nden * iso[i].rec[t]->sigma_r(g,n);
+
+      rec[t].is_fiss = rec[t].is_fiss || iso[i].rec[t]->is_fiss;
+      for (int g{0}; g < rec[t].ngroup(); ++g)
+        rec[t].is_upscatter[g] = rec[t].is_upscatter[g] || iso[i].rec[t]->is_upscatter[g];
     }
-
-    for (int n{0}; n < rec.nmoment(); ++n)
-      for (int g{0}; g < rec.ngroup(); ++g)
-        rec.sigma_r(g,n) += iso[i].nden * iso[i].rec.sigma_r(g,n);
-
-    rec.is_fiss = rec.is_fiss || iso[i].rec.is_fiss;
-    for (int g{0}; g < rec.ngroup(); ++g)
-      rec.is_upscatter[g] = rec.is_upscatter[g] || iso[i].rec.is_upscatter[g];
+    rec[t].sigma_s = scat;
+    rec[t].sigma_s.Finalize();
+    rec[t].sigma_s.SortColumnIndices();
+    rec[t].chi = flux_free_chi(t); // initialize chi with the flux_free_chi formula
+    is_fiss = is_fiss || rec[t].is_fiss;
   }
-  rec.sigma_s = scat;
-  rec.sigma_s.Finalize();
-  rec.sigma_s.SortColumnIndices();
-  rec.chi = flux_free_chi(); // initialize chi with the flux_free_chi formula
+
+  return;
 }
 
-vector<double> Material_record::flux_free_chi() const
+std::vector<double> Material_record::flux_free_chi(const int temp_idx) const
 {
-  vector<double> numerator(ngroup());
+  std::vector<double> numerator(ngroup());
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
-    if (!iso[i].rec.is_fiss) continue;
+    if (!iso[i].rec[temp_idx]->is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
-      f_i += iso[i].nden * iso[i].rec.nusf[gprime];
-    for (int g{0}; g < ngroup(); ++g) numerator[g] += iso[i].rec.chi[g] * f_i;
+      f_i += iso[i].nden * iso[i].rec[temp_idx]->nusf[gprime];
+    for (int g{0}; g < ngroup(); ++g)
+      numerator[g] += iso[i].rec[temp_idx]->chi[g] * f_i;
     denominator += f_i;
   }
   if (denominator > 0.0)
-    for (int g{0}; g < ngroup(); ++g) numerator[g] /= denominator;
+    for (int g{0}; g < ngroup(); ++g)
+      numerator[g] /= denominator;
   return numerator;
 }
 
-double Material_record::flux_free_chi(int g) const
+double Material_record::flux_free_chi(const int g, const int temp_idx) const
 {
   double numerator{0.0};
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
-    if (!iso[i].rec.is_fiss) continue;
+    if (!iso[i].rec[temp_idx]->is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
-      f_i += iso[i].nden * iso[i].rec.nusf[gprime];
-    numerator += iso[i].rec.chi[g] * f_i;
+      f_i += iso[i].nden * iso[i].rec[temp_idx]->nusf[gprime];
+    numerator += iso[i].rec[temp_idx]->chi[g] * f_i;
     denominator += f_i;
   }
   if (denominator > 0.0) numerator /= denominator;
   return numerator;
 }
 
-vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
+std::vector<double> Material_record::calculate_chi(const vector<double>& phi_g,
+                                                   const int temp_idx) const
 {
-  vector<double> numerator(ngroup());
+  std::vector<double> numerator(ngroup());
   double denominator{0.0};
 
   for (double& num : numerator)
@@ -187,12 +205,12 @@ vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
 
   for (int i{0}; i < niso; ++i)
   {
-    if (!iso[i].rec.is_fiss) continue;
+    if (!iso[i].rec[temp_idx]->is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
-      f_i += iso[i].nden * iso[i].rec.nusf[gprime] * phi_g[gprime];
+      f_i += iso[i].nden * iso[i].rec[temp_idx]->nusf[gprime] * phi_g[gprime];
     for (int g{0}; g < ngroup(); ++g)
-      numerator[g] += iso[i].rec.chi[g] * f_i;
+      numerator[g] += iso[i].rec[temp_idx]->chi[g] * f_i;
     denominator += f_i;
   }
 
@@ -207,17 +225,19 @@ vector<double> Material_record::calculate_chi(const vector<double>& phi_g) const
   return numerator;
 }
 
-double Material_record::calculate_chi(const vector<double>& phi_g, int g) const
+double Material_record::calculate_chi(const vector<double>& phi_g,
+                                      const int g,
+                                      const int temp_idx) const
 {
   double numerator{0.0};
   double denominator{0.0};
   for (int i{0}; i < niso; ++i)
   {
-    if (!iso[i].rec.is_fiss) continue;
+    if (!iso[i].rec[temp_idx]->is_fiss) continue;
     double f_i{0.0};
     for (int gprime{0}; gprime < ngroup(); ++gprime)
-      f_i += iso[i].nden * iso[i].rec.nusf[gprime] * phi_g[gprime];
-    numerator += iso[i].rec.chi[g] * f_i;
+      f_i += iso[i].nden * iso[i].rec[temp_idx]->nusf[gprime] * phi_g[gprime];
+    numerator += iso[i].rec[temp_idx]->chi[g] * f_i;
     denominator += f_i;
   }
   if (denominator > 0.0) numerator /= denominator;
@@ -233,22 +253,25 @@ void Material_library::set_nmoment(int m)
 {
   M = m;
 
-  if (M > mat[0].rec.sigma_r.Width())
+  if (M > mat[0].rec[0].sigma_r.Width())
   {
     for (Material_record& this_mat : mat)
     {
-      XSRecord& record{this_mat.rec};
-      // after SetSize, need to rebuild entire matrix because the new matrix is
-      // zero-initialized
-      record.sigma_r.SetSize(G,M);
-      for (int n{0}; n < M; ++n)
+      for (int t = 0; t < NT; ++t)
       {
-        for (int g{0}; g < G; ++g)
+        XSRecord& record{this_mat.rec[t]};
+        // after SetSize, need to rebuild entire matrix because the new matrix is
+        // zero-initialized
+        record.sigma_r.SetSize(G,M);
+        for (int n{0}; n < M; ++n)
         {
-          if (n == 0)
-            record.sigma_r(g,n) = record.sigma_t[g] - record.sigma_s.Elem(g,g);
-          else
-            record.sigma_r(g,n) = record.sigma_t[g];
+          for (int g{0}; g < G; ++g)
+          {
+            if (n == 0)
+              record.sigma_r(g,n) = record.sigma_t[g] - record.sigma_s.Elem(g,g);
+            else
+              record.sigma_r(g,n) = record.sigma_t[g];
+          }
         }
       }
     }

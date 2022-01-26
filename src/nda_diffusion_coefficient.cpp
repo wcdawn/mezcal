@@ -2,6 +2,8 @@
 
 using namespace mfem;
 
+constexpr int xs_temp_idx = 0;
+
 void NDADiffusionCoefficient::Eval(Vector &v,
                                    ElementTransformation &T,
                                    const IntegrationPoint &ip)
@@ -30,7 +32,7 @@ void NDADiffusionCoefficient::Eval(Vector &v,
   v = 0.0;
   for (int g{0}; g < mat_lib.ngroup(); ++g)
   {
-    const double diffusion{1.0 / (3.0 * mat_lib.mat[attribute].rec.sigma_t[g])};
+    const double diffusion{1.0 / (3.0 * mat_lib.mat[attribute].rec[xs_temp_idx].sigma_t[g])};
 
     double flux{0.0};
 
