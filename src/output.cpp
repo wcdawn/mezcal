@@ -209,6 +209,7 @@ void calc_pin_power(const QuadratureFunction &power_quad,
 
   Vector pin_power(pins.size());
   pin_power = 0.0;
+  double lost_power = 0.0;
 
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
@@ -228,10 +229,14 @@ void calc_pin_power(const QuadratureFunction &power_quad,
       Vector r(3);
       T->Transform(ip, r);
 
-      const double p = pquad[idx];
+      double p = pquad[idx];
 
       if (p > 0.0)
       {
+
+        p *= i_weight*t_weight;
+
+        bool found = false;
         for (int j = 0; j < pin_power.Size(); ++j)
         {
 
@@ -240,11 +245,16 @@ void calc_pin_power(const QuadratureFunction &power_quad,
 
           if (dist < pins[j].radius)
           {
-            pin_power(j) += p*i_weight*t_weight;
+            pin_power(j) += p;
+            found = true;
             break;
           }
 
         }
+
+        if (!found)
+          lost_power += p;
+
       }
 
       ++idx;
@@ -256,6 +266,9 @@ void calc_pin_power(const QuadratureFunction &power_quad,
   // NOTE: some pins may be fractional so need to do normalization outside
   std::cout << "pin_power" << std::endl;
   pin_power.Print();
+
+  if (lost_power > 0.0)
+    std::cout << "WARNING: lost_power=" << lost_power << std::endl;
 
   return;
 }
