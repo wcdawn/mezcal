@@ -66,7 +66,7 @@ double xscalc_sigma_t(const int g,
   const int ntemp = inp.temp_arr.size();
 
   if ((ntemp == 1) || (!inp.feedback))
-    return mat.rec[0].sigma_t[g*ntemp];
+    return mat.rec[0].sigma_t[g];
 
   const std::pair<const int, const double> w =
     temperature_interpolate(inp.temp_arr, T);
@@ -149,14 +149,14 @@ void xscalc_sigma_s(const int g,
   mat.rec[w.first].sigma_s.GetRow(g, c_lo, d_lo);
   Vector v_lo(mat.ngroup());
   v_lo = 0.0;
-  v_lo.SetSubVector(c_lo, d_lo); // add other vectors to v for interpolating
+  v_lo.SetSubVector(c_lo, d_lo);
   
   Array <int> c_hi; // columns
   Vector d_hi; // data
   mat.rec[w.first+1].sigma_s.GetRow(g, c_hi, d_hi);
   Vector v_hi(mat.ngroup());
   v_hi = 0.0;
-  v_hi.SetSubVector(c_hi, d_hi); // add other vectors to v for interpolating
+  v_hi.SetSubVector(c_hi, d_hi);
   
   Vector v(mat.ngroup());
   v = 0.0;
