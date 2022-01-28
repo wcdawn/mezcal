@@ -196,6 +196,22 @@ void mesh_stats(ParMesh *pmesh,
   return;
 }
 
+class PinCoefficient final : public mfem::Coefficient
+{
+public:
+  PinCoefficient(const Pin &p_) : p{p_} {}
+  virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip) override
+  {
+    double x[3];
+    Vector v(x, 3);
+    T.Transform(ip, v);
+    const double dist = std::sqrt(std::pow(p.x-v(0),2) + std::pow(p.y-v(1),2));
+    return (dist <= p.radius) ? 1.0 : 0.0;
+  }
+private:
+  const Pin &p;
+};
+
 void calc_pin_power(const QuadratureFunction &power_quad,
                     const std::vector<Pin> &pins)
 {
@@ -263,12 +279,30 @@ void calc_pin_power(const QuadratureFunction &power_quad,
 
   }
 
-  // NOTE: some pins may be fractional so need to do normalization outside
-  std::cout << "pin_power" << std::endl;
-  pin_power.Print();
+  double *p = pin_power.HostReadWrite();
+  for (int i = 0; i < pin_power.Size(); ++i)
+  {
+    const double local_val = p[i];
+    double val;
+    MPI_Allreduce(&local_val, &val, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    p[i] = val;
+  }
 
-  if (lost_power > 0.0)
-    std::cout << "WARNING: lost_power=" << lost_power << std::endl;
+  int myid;
+  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+
+  if (myid == 0)
+  {
+
+    // NOTE:
+    // some pins may be fractional so need to do normalization in post processing
+    std::cout << "pin_power" << std::endl;
+    pin_power.Print(std::cout, 1);
+
+    if (lost_power > 0.0)
+      std::cout << "WARNING: lost_power=" << lost_power << std::endl;
+
+  }
 
   return;
 }

@@ -441,6 +441,61 @@ template<class T> const char * as_bytes(const T &i)
   return static_cast<const char*>(addr);
 }
 
+void read_restart(const int myid,
+                  const std::string stub,
+                  const Quadrature * const quad,
+                  std::vector<std::unique_ptr<ParGridFunction>> &angular_flux,
+                  std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
+                  double &keff)
+{
+
+  for (int g = 0; g < static_cast<int>(angular_flux.size()); ++g)
+  {
+
+    std::unique_ptr<char[]> fname{std::make_unique<char[]>(stub.size()+26)};
+    sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", stub.c_str(), g, myid);
+
+    std::ifstream ifs{fname.get(), std::ios_base::binary};
+    int af_size;
+    ifs.read(as_bytes(af_size), sizeof(int));
+    MFEM_VERIFY(af_size == angular_flux[g]->Size(), "inconsistent restart size");
+    double *af = angular_flux[g]->HostWrite();
+    for (int i{0}; i < angular_flux[g]->Size(); ++i)
+      ifs.read(as_bytes(af[i]), sizeof(double));
+
+    calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]);
+
+  }
+
+  const std::string keff_fname{stub + "_restart_keff.out"};
+  std::ifstream keff_ifs{keff_fname};
+  while (keff_ifs.good())
+    keff_ifs >> keff;
+
+  return;
+}
+
+void write_restart(const int myid,
+                   const std::string stub,
+                   const std::vector<std::unique_ptr<ParGridFunction>> &angular_flux)
+{
+
+    std::unique_ptr<char[]> fname{std::make_unique<char[]>(stub.size()+26)};
+    for (int gprime = 0; gprime < static_cast<int>(angular_flux.size()); ++gprime)
+    {
+      sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", stub.c_str(), gprime, myid);
+
+      const int size = angular_flux[gprime]->Size();
+      std::ofstream ofs{fname.get(), std::ios_base::binary};
+      ofs.write(as_bytes(size), sizeof(int));
+      const double *af = angular_flux[gprime]->HostRead();
+      for (int i{0}; i < size; ++i)
+        ofs.write(as_bytes(af[i]), sizeof(double));
+    }
+
+  return;
+}
+
 void saaf_angle_power_iteration(const Quadrature* const quad,
                                 Timer& time,
                                 Input& inp,
@@ -459,26 +514,8 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
   if (inp.restart.flux)
   {
 
-    for (int g{0}; g < mat_lib.ngroup(); ++g)
-    {
-      std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
-      sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", inp.input_file_stub().c_str(), g, myid);
-
-      std::ifstream ifs{fname.get(), std::ios_base::binary};
-      int af_size;
-      ifs.read(as_bytes(af_size), sizeof(int));
-      MFEM_VERIFY(af_size == angular_flux[g]->Size(), "inconsistent restart size");
-      double *af = angular_flux[g]->HostWrite();
-      for (int i{0}; i < angular_flux[g]->Size(); ++i)
-        ifs.read(as_bytes(af[i]), sizeof(double));
-
-      calc_scalar_flux_vector(*angular_flux[g], quad, *scalar_flux[g]);
-    }
-
-    const std::string keff_fname{inp.input_file_stub() + "_restart_keff.out"};
-    std::ifstream keff_ifs{keff_fname};
-    while (keff_ifs.good())
-      keff_ifs >> keff;
+    read_restart(myid, inp.input_file_stub(), quad,
+      angular_flux, scalar_flux, keff);
 
   }
   else
@@ -612,7 +649,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
       MFEM_VERIFY(reflective_condition.Max() == 0,
         "VectorBoundaryFlowIntegrator (required for reflective bcs) is "
         "incompatible with LinearAssemblyLevel::FULL.");
-      lf_self_scatter[g]->SetAssemblyLevel(LinearAssemblyLevel::FULL);
+      lf_self_scatter[g]->SetAssemblyLevel(AssemblyLevel::FULL);
     }
     else
     {
@@ -655,7 +692,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     {
       lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
       lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
-      if (inp.use_full_assembly) lf_dsa[g]->SetAssemblyLevel(LinearAssemblyLevel::FULL);
+      if (inp.use_full_assembly) lf_dsa[g]->SetAssemblyLevel(AssemblyLevel::FULL);
     }
   }
 
@@ -838,19 +875,7 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
                     << std::endl;
         }
         time.start("restart_out");
-        std::unique_ptr<char[]> fname{std::make_unique<char[]>(inp.input_file_stub().size()+26)};
-        for (int gprime{0}; gprime < mat_lib.ngroup(); ++gprime)
-        {
-          sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", inp.input_file_stub().c_str(), gprime, myid);
-
-          const int size = angular_flux[gprime]->Size();
-          std::ofstream ofs{fname.get(), std::ios_base::binary};
-          ofs.write(as_bytes(size), sizeof(int));
-          const double *af = angular_flux[gprime]->HostRead();
-          for (int i{0}; i < size; ++i)
-            ofs.write(as_bytes(af[i]), sizeof(double));
-        }
-
+        write_restart(myid, inp.input_file_stub(), angular_flux);
         time.stop("restart_out");
 
         QuadratureFunctionCoefficient gfc{power_quad};
@@ -908,14 +933,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     std::cout << "solve_counter= " << solve_counter << std::endl;
   }
 
+  calc_power_vector(scalar_flux, inp, mat_lib, inp.rxpwr, temperature, power_quad);
+
   QuadratureFunctionCoefficient gfc{power_quad};
   power.ProjectCoefficient(gfc);
 
   if (inp.pins.size() > 0)
-  {
-    calc_power_vector(scalar_flux, inp, mat_lib, inp.rxpwr, temperature, power_quad);
     calc_pin_power(power_quad, inp.pins);
-  }
+
+  if (inp.restart.out)
+    write_restart(myid, inp.input_file_stub(), angular_flux);
 
   return;
 }
@@ -1337,8 +1364,8 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
   constexpr double kappa_over_nu = 1.0; // TODO this should be group dependent
 
   const QuadratureSpace* const qspace = power_quad.GetSpace();
-  const ParFiniteElementSpace* const fespace = scalar_flux[0]->ParFESpace();
-  const ParMesh* const mesh = fespace->GetParMesh();
+  const ParFiniteElementSpace * const fespace = scalar_flux[0]->ParFESpace();
+  const ParMesh * const pmesh = fespace->GetParMesh();
 
   power_quad = 0.0; // [W/cc]
   double *pquad = power_quad.HostReadWrite();
@@ -1351,7 +1378,7 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
   {
 
     const IntegrationRule &ir = qspace->GetElementIntRule(e);
-    const int attribute = mesh->GetAttribute(e) - 1;
+    const int attribute = pmesh->GetAttribute(e) - 1;
     const Material_record &mat = mat_lib.mat[attribute];
 
     if (!mat.is_fiss)
@@ -1400,6 +1427,9 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
 
     }
   }
+
+  const double local_pwr_sum = pwr_sum;
+  MPI_Allreduce(&local_pwr_sum, &pwr_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
   // calculate power normalization factor
   const double factor = rxpwr / pwr_sum;
