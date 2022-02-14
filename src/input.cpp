@@ -81,6 +81,7 @@ void Input::read_core()
       ifs >> temp >> xs_file;
 
       temp_arr.emplace_back(temp);
+      sqrt_temp_arr.emplace_back(std::sqrt(temp));
 
       xs_file   = stub + xs_file;
       xs.emplace_back();
@@ -97,6 +98,7 @@ void Input::read_core()
       ifs >> temp >> hdf5xs_lib_name >> xs_file;
 
       temp_arr.emplace_back(temp);
+      sqrt_temp_arr.emplace_back(std::sqrt(temp));
 
       xs_file   = stub + xs_file;
       xs.emplace_back();

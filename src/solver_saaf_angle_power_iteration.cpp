@@ -68,21 +68,13 @@ double xscalc_sigma_t(const int g,
   if ((ntemp == 1) || (!inp.feedback))
     return mat.rec[0].sigma_t[g];
 
-  const std::pair<const int, const double> w =
+  const std::pair<const int, const double> w = (mat.is_fiss) ?
+    temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T)) :
     temperature_interpolate(inp.temp_arr, T);
   const double xlo = mat.rec[w.first].sigma_t[g];
   const double xhi = mat.rec[w.first+1].sigma_t[g];
 
   const double val = xlo + w.second * (xhi - xlo);
-
-  /*
-  std::cout << "xlo=" << xlo 
-            << " xhi=" << xhi 
-            << " i=" << w.first
-            << " w=" << w.second 
-            << " val=" << val
-            << std::endl;
-            */
 
   return val;
 }
@@ -97,7 +89,8 @@ double xscalc_selfscatter(const int g,
   if ((ntemp == 1) || (!inp.feedback))
     return mat.rec[0].sigma_s.Elem(g,g);
 
-  const std::pair<const int, const double> w =
+  const std::pair<const int, const double> w = (mat.is_fiss) ?
+    temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T)) :
     temperature_interpolate(inp.temp_arr, T);
   const double xlo = mat.rec[w.first].sigma_s.Elem(g,g);
   const double xhi = mat.rec[w.first+1].sigma_s.Elem(g,g);
@@ -111,13 +104,16 @@ double xscalc_nusf(const int g,
                    const double T)
 {
 
+  if (!mat.is_fiss) 
+    return 0.0;
+
   const int ntemp = inp.temp_arr.size();
 
   if ((ntemp == 1) || (!inp.feedback))
     return mat.rec[0].nusf[g];
 
   const std::pair<const int, const double> w =
-    temperature_interpolate(inp.temp_arr, T);
+    temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T));
   const double xlo = mat.rec[w.first].nusf[g];
   const double xhi = mat.rec[w.first+1].nusf[g];
 
@@ -141,7 +137,8 @@ void xscalc_sigma_s(const int g,
     return;
   }
 
-  const std::pair<const int, const double> w =
+  const std::pair<const int, const double> w = (mat.is_fiss) ?
+    temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T)) :
     temperature_interpolate(inp.temp_arr, T);
 
   Array <int> c_lo; // columns
@@ -194,7 +191,8 @@ std::vector<double> xscalc_chi(const std::vector<double> &spectrum,
     if ((ntemp == 1) || (!inp.feedback))
       return mat.rec[0].chi;
 
-    const std::pair<const int, const double> w =
+    const std::pair<const int, const double> w = (mat.is_fiss) ?
+      temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T)) :
       temperature_interpolate(inp.temp_arr, T);
 
     std::vector<double> chi(mat.ngroup());
@@ -211,7 +209,8 @@ std::vector<double> xscalc_chi(const std::vector<double> &spectrum,
   if ((ntemp == 1) || (!inp.feedback))
     return mat.calculate_chi(spectrum, 0);
 
-  const std::pair<const int, const double> w =
+  const std::pair<const int, const double> w = (mat.is_fiss) ?
+    temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T)) :
     temperature_interpolate(inp.temp_arr, T);
 
   std::vector<double> chi(mat.ngroup());

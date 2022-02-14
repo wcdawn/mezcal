@@ -150,6 +150,7 @@ public:
 
   std::vector<XSLibrary> xs;
   std::vector<double> temp_arr; // list of xs library temperatures [K]
+  std::vector<double> sqrt_temp_arr; // list of xs library temperatures [K]
 
 private:
 
