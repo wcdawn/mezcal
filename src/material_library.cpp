@@ -327,12 +327,15 @@ double Material_record::thermal_conductivity(Thermal_material k_mat_in, double T
     case (Be):
       {
         const double Tc = T - 273.15;
-        return (189.8 - 0.2964*Tc + 2.5429e-4*std::pow(Tc,2) - 1.0104e-7*std::pow(Tc,3))*1e-2;
+        const double porosity = 0.0;
+        const double f = (1.0 - porosity)/(1.0 + 3.7*std::pow(porosity,2));
+        return f*(189.8 - 0.2964*Tc + 2.5429e-4*std::pow(Tc,2) - 1.0104e-7*std::pow(Tc,3))*1e-2;
       }
     case (B4C):
       {
-        const double Tc = T - 273.15;
-        return 1.0/(6.87+0.0171*Tc)*4.184;
+        constexpr double porosity = 0.0;
+        constexpr double f = (1.0 - porosity)/(1.0 + 2.2*porosity);
+        return f*4.184/(6.87+0.0171*T);
       }
     case(UZrH):
       {
