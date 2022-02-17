@@ -487,6 +487,7 @@ int main(int argc, char* argv[])
         case (Solver_choice::conduction_linear):
         case (Solver_choice::conduction_var_cond):
           {
+            temperature = inp.temp_heat_pipe;
             // the power distriubtion is actually specified within the solver
             // and unnecessary here
             const int integration_order = scalar_flux_fespace.GetOrder(0)+1;
