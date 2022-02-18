@@ -2,7 +2,7 @@
 
 mesh_file conduction_linear.mesh
 boundary_conditions 0 0 0 1
-userxs finite_cyl.xs
+userxs 1.0 finite_cyl.xs
 
 [MATERIAL]
 

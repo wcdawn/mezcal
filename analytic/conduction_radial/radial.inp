@@ -2,7 +2,7 @@
 
 mesh_file circle.vtk
 boundary_conditions 1
-userxs finite_cyl.xs
+userxs 1.0 finite_cyl.xs
 
 [MATERIAL]
 

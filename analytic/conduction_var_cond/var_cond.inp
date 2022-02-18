@@ -2,7 +2,7 @@
 
 mesh_file conduction_var_cond.mesh
 boundary_conditions 0 0 0 1
-userxs finite_cyl.xs
+userxs 1.0 finite_cyl.xs
 
 [MATERIAL]
 
@@ -23,4 +23,4 @@ temp_heat_pipe 600.
 temp_inner_rel 1e-12
 temp_inner_abs 1e-12
 temp_max_inner 1000
-temp_tol 1e-8
+temp_tol 1e-10
