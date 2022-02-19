@@ -12,7 +12,8 @@
 
 #include <vector>
 
-void saaf_angle_power_iteration(const Quadrature * const quad,
+void saaf_angle_power_iteration(const int state,
+                                const Quadrature * const quad,
                                 Timer &time,
                                 Input &inp,
                                 const Material_library &mat_lib,

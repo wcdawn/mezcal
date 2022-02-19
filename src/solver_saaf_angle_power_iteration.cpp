@@ -495,7 +495,8 @@ void write_restart(const int myid,
   return;
 }
 
-void saaf_angle_power_iteration(const Quadrature* const quad,
+void saaf_angle_power_iteration(const int state,
+                                const Quadrature* const quad,
                                 Timer& time,
                                 Input& inp,
                                 const Material_library& mat_lib,
@@ -516,9 +517,16 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
     read_restart(myid, inp.input_file_stub(), quad,
       angular_flux, scalar_flux, keff);
 
+    inp.restart.flux = false; // necessary for multistate
+
+    // initialize temperature
+    temperature = inp.temp_heat_pipe;
+
   }
-  else
+  else if (state == 0)
   {
+
+    // only initialize on the first state
 
     for (int g{0}; g < mat_lib.ngroup(); ++g)
     {
@@ -528,10 +536,10 @@ void saaf_angle_power_iteration(const Quadrature* const quad,
 
     keff = 1.0;
 
-  }
+    // initialize temperature
+    temperature = inp.temp_heat_pipe;
 
-  // initialize temperature
-  temperature = inp.temp_heat_pipe;
+  }
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux[0]->ParFESpace();
 
