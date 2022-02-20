@@ -14,11 +14,11 @@ H5_DIR = $(OLCF_HDF5_ROOT)/lib
 MPI_DIR = $(OLCF_SPECTRUM_MPI_ROOT)
 MPI_LIB = -L$(MPI_DIR)/lib -lmpi_ibm
 
-PROJ = /ccs/proj/csc254/wcdawn/container
+PROJ = /ccs/proj/csc404/wcdawn/container
 MFEM_DIR = $(PROJ)/mfem
 HYPRE_DIR = $(PROJ)/hypre/src/hypre
 METIS_DIR = $(PROJ)/metis-5.1.0
-METIS_LIB = -L$(METIS_DIR)/lib -lmetis
+METIS_LIB = -L$(METIS_DIR)/build/Linux-ppc64le/libmetis -lmetis
 
 # CUDA_DIR is set automatically by the module
 CUDA_ARCH = -arch=sm_70
@@ -27,11 +27,6 @@ PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
 SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
 
 CXXFLAGS += -DGPU_AWARE_MPI
-CXXFLAGS += -DAMGX_AVAILABLE
-
-AMGX_DIR = $(OLCF_AMGX_ROOT)
-AMGX_LIB_DIR = $(AMGX_DIR)/lib
-AMGX_INCLUDE_DIR = $(AMGX_DIR)/include
 
 else ifeq ($(MACH),ARCHBUILD)
 
@@ -58,6 +53,9 @@ CXXFLAGS += -DAMGX_AVAILABLE
 AMGX_DIR = /home/wcdawn/projects/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR  = $(AMGX_DIR)/base/include
+
+AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
+AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
 else ifeq ($(MACH),LASSEN)
 
@@ -86,6 +84,9 @@ CXXFLAGS += -DAMGX_AVAILABLE
 AMGX_DIR = $(WORKSPACE)/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
+
+AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
+AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
 else
 
@@ -124,9 +125,6 @@ PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
 
 SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
 SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
-
-AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
-AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
 MPI_INCLUDE = -I$(MPI_DIR)/include
 
