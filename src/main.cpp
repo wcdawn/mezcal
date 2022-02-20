@@ -347,6 +347,7 @@ int main(int argc, char* argv[])
 
   ofstream sum{inp.input_file_stub() + ".sum"};
   sum << "=== STATEPOINT SUMMARY ===\n" << "state, keff\n";
+  sum << setprecision(20);
 
   mesh_stats(pmesh.get(), std::cout, &mat_lib); // volume correct xs
 
@@ -571,7 +572,7 @@ int main(int argc, char* argv[])
     output.SetFormat(DataCollection::PARALLEL_FORMAT);
     output.Save();
 
-    sum << state << ',' << ',' << res.keff << '\n';
+    sum << state << ',' << res.keff << '\n';
 
     if (mat_lib.ngroup() == 24)
     {
