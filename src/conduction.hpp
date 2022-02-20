@@ -21,7 +21,7 @@ void temperature_heat_conduction(const Input &inp,
                                  mfem::ParGridFunction &temperature);
 
 void conduction_error_analysis(mfem::Coefficient &coeff, 
-                               mfem::GridFunction &sol);
+                               mfem::ParGridFunction &sol);
 
 void calc_thermal_conductivity(const Input &inp,
                                const Material_library &mat_lib,

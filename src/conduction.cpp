@@ -123,7 +123,7 @@ void temperature_heat_conduction(const Input &inp,
   ParMesh *pmesh = parfespace->GetParMesh();
   QuadratureSpace *qspace = power.GetSpace();
 
-  Array<int> ess_bdr, ess_tdof_list;
+  Array<int> ess_bdr, ess_tdof_local;
   ess_bdr.SetSize(pmesh->bdr_attributes.Max());
 
   // For now I'm allowing reflective (insulating) boundaries.There is a
@@ -132,31 +132,33 @@ void temperature_heat_conduction(const Input &inp,
   for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
     ess_bdr[i] = inp.boundary_conditions[i];
 
-  parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+  parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_local);
 
   std::unordered_set<int> heat_pipe_set;
-  for (int e{0}; e < parfespace->GetNE(); ++e)
+  for (int e = 0; e < parfespace->GetNE(); ++e)
   {
     if (parfespace->GetAttribute(e) == heat_pipe_id)
     {
       // found a heat pipe
       Array<int> dofs;
       parfespace->GetElementDofs(e, dofs);
-      for (int i{0}; i < dofs.Size(); ++i)
-      {
-        const int ldof{parfespace->GetLocalTDofNumber(dofs[i])};
-        if (ldof >= 0)
-        {
-          heat_pipe_set.insert(ldof);
-        }
-      }
+      for (int i = 0; i < dofs.Size(); ++i)
+        heat_pipe_set.insert(dofs[i]);
     }
   }
 
   for (int val : heat_pipe_set)
-    ess_tdof_list.Append(val);
+    ess_tdof_local.Append(val);
 
-  temperature.SetSubVector(ess_tdof_list, inp.temp_heat_pipe);
+  temperature.SetSubVector(ess_tdof_local, inp.temp_heat_pipe);
+
+  Array<int> ess_tdof_global;
+  for (int i = 0; i < ess_tdof_local.Size(); ++i)
+  {
+    const int ldof = parfespace->GetLocalTDofNumber(ess_tdof_local[i]);
+    if (ldof >= 0)
+      ess_tdof_global.Append(ldof);
+  }
 
   ConstantCoefficient temp_boundary_coeff{inp.temp_boundary}; // constant temperature of boundary
   temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
@@ -227,21 +229,16 @@ void temperature_heat_conduction(const Input &inp,
     a.Assemble();
     a.Finalize();
 
-    std::unique_ptr<HypreParMatrix> Amat{a.ParallelAssemble()};
-    
-    std::unique_ptr<HypreParVector> B{b.ParallelAssemble()};
+    OperatorHandle A;
+    Vector X, B;
+    a.FormLinearSystem(ess_tdof_global, temperature, b, A, X, B);
 
-    temperature.SetSubVector(ess_tdof_list, inp.temp_heat_pipe);
-    temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
-    std::unique_ptr<HypreParVector> X{temperature.ParallelAssemble()};
-
-    Amat->EliminateRowsCols(ess_tdof_list, *X, *B);
-
-    amg.SetOperator(*Amat);
-    cg.SetOperator(*Amat);
+    amg.SetOperator(*A);
+    cg.SetOperator(*A);
     cg.SetPreconditioner(amg);
-    cg.Mult(*B, *X);
-    temperature.Distribute(*X);
+    cg.Mult(B, X);
+
+    a.RecoverFEMSolution(X, b, temperature);
 
     temperature_old -= temperature;
     temperature_old.HostRead(); // necessary to sync memory for GPU problems
@@ -281,15 +278,19 @@ void temperature_heat_conduction(const Input &inp,
   return;
 }
 
-void conduction_error_analysis(Coefficient &coeff, GridFunction &sol)
+void conduction_error_analysis(Coefficient &coeff, ParGridFunction &sol)
 {
   const double l2error{sol.ComputeL2Error(coeff)};
   const double lmaxerror{sol.ComputeMaxError(coeff)};
-  std::cout << "===TEMPERATURE_ERROR===" << std::endl;
-  std::cout << "l2error=" << l2error << std::endl;
-  std::cout << "lmaxerror=" << lmaxerror << std::endl;
 
-  GridFunction exact{sol};
+  if (sol.ParFESpace()->GetMyRank() == 0)
+  {
+    std::cout << "===TEMPERATURE_ERROR===" << std::endl;
+    std::cout << "l2error=" << l2error << std::endl;
+    std::cout << "lmaxerror=" << lmaxerror << std::endl;
+  }
+
+  ParGridFunction exact{sol};
   exact.ProjectCoefficient(coeff);
   Vector nval_exact;
   exact.GetNodalValues(nval_exact);
@@ -297,7 +298,7 @@ void conduction_error_analysis(Coefficient &coeff, GridFunction &sol)
   Vector nval_sol;
   sol.GetNodalValues(nval_sol);
 
-  Mesh *mesh = sol.FESpace()->GetMesh();
+  ParMesh *mesh = sol.ParFESpace()->GetParMesh();
   Vector node;
   mesh->GetVertices(node);
 
