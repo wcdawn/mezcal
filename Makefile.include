@@ -41,16 +41,16 @@ H5_DIR = /usr/lib
 
 MPI_LIB = -L/usr/lib/openmpi -lmpi -lmpi_cxx
 
-MICROREACTOR_DIR = /home/wcdawn/work/microreactor
+MICROREACTOR_DIR = /home/wcdawn/projects/container
 MFEM_DIR = $(MICROREACTOR_DIR)/mfem
 HYPRE_DIR = $(MICROREACTOR_DIR)/hypre/src/hypre
-METIS_DIR = $(MICROREACTOR_DIR)/metis
+METIS_DIR = $(MICROREACTOR_DIR)/metis-5.1.0/
 
 METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 CUDA_DIR = /opt/cuda
-PETSC_DIR = /home/wcdawn/projects/petsc/arch-linux-c-debug
-SLEPC_DIR = /home/wcdawn/projects/slepc/arch-linux-c-debug
+PETSC_DIR = /home/wcdawn/projects/container/petsc/arch-linux-c-opt
+SLEPC_DIR = /home/wcdawn/projects/container/slepc/arch-linux-c-opt
 CUDA_ARCH = -arch=sm_75
 
 CXXFLAGS += -DAMGX_AVAILABLE
@@ -86,32 +86,6 @@ CXXFLAGS += -DAMGX_AVAILABLE
 AMGX_DIR = $(WORKSPACE)/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
 AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
-
-PUMI_DIR = $(WORKSPACE)/core
-PUMI_INCLUDE = -I$(PUMI_DIR)/pumi \
-			   -I$(PUMI_DIR)/apf \
-			   -I$(PUMI_DIR)/can \
-			   -I$(PUMI_DIR)/mds \
-			   -I$(PUMI_DIR)/gmi \
-			   -I$(PUMI_DIR)/pcu \
-			   -I$(PUMI_DIR)/crv \
-			   -I$(PUMI_DIR)/ma \
-			   -I$(PUMI_DIR)/mth \
-			   -I$(PUMI_DIR)/spr
-PUMI_LIB = -L$(PUMI_DIR)/build/pumi -lpumi \
-		   -L$(PUMI_DIR)/build/crv -lcrv \
-		   -L$(PUMI_DIR)/build/ma -lma \
-		   -L$(PUMI_DIR)/build/mds -lmds \
-		   -L$(PUMI_DIR)/build/apf -lapf \
-		   -L$(PUMI_DIR)/build/pcu -lpcu \
-		   -L$(PUMI_DIR)/build/gmi -lgmi \
-		   -L$(PUMI_DIR)/build/parma -lparma \
-		   -L$(PUMI_DIR)/build/lion -llion \
-		   -L$(PUMI_DIR)/build/mth -lmth \
-		   -L$(PUMI_DIR)/build/apf_zoltan -lzoltan \
-		   -L$(PUMI_DIR)/build/spr -lspr \
-		   -L$(PUMI_DIR)/../zoltan/build/src -lzoltan \
-		   -L$(PUMI_DIR)/../parmetis-4.0.3/build/Linux-ppc64le/libparmetis -lparmetis -lmetis
 
 else
 
@@ -156,5 +130,5 @@ AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
 MPI_INCLUDE = -I$(MPI_DIR)/include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE) $(PUMI_INCLUDE)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB) $(PUMI_LIB)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)

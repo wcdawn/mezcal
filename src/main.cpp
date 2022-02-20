@@ -21,11 +21,6 @@
 
 #include "output.hpp"
 
-#include "PCU.h"
-#include "gmi_null.h"
-#include "gmi_mesh.h"
-#include "apfMDS.h"
-
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -105,21 +100,6 @@ int main(int argc, char* argv[])
 
   time.start("Mesh processing");
 
-  // check file extension to determine if this is a PUMI mesh
-  const bool isPUMI{std::string(inp.mesh_file).compare(std::string(inp.mesh_file).size()-4, 4, ".smb") == 0};
-
-  std::unique_ptr<apf::Mesh2> pumi_mesh;
-  if (isPUMI)
-  {
-    PCU_Comm_Init();
-    gmi_register_mesh();
-    gmi_register_null();
-
-    const char* model_file = ".null";
-    pumi_mesh.reset(apf::loadMdsMesh(model_file, inp.mesh_file));
-    pumi_mesh->verify();
-  }
-
   // 3. Read the mesh from the given mesh file. We can handle triangular,
   //    quadrilateral, tetrahedral, hexahedral, surface and volume meshes with
   //    the same code.
@@ -130,10 +110,6 @@ int main(int argc, char* argv[])
     std::ifstream ifs{fname};
     MFEM_VERIFY(ifs.good(), "Restart mesh file " << fname << " not found.");
     pmesh = std::make_unique<ParMesh>(MPI_COMM_WORLD, ifs);
-  }
-  else if (isPUMI)
-  {
-    pmesh = std::make_unique<ParPumiMesh>(MPI_COMM_WORLD, pumi_mesh.get());
   }
   else
   {
@@ -620,13 +596,6 @@ int main(int argc, char* argv[])
   // 15. Free the used memory.
 
   if (inp.order > 0) delete fec;
-
-  if (isPUMI)
-  {
-    pumi_mesh->destroyNative();
-    apf::destroyMesh(pumi_mesh.get());
-    PCU_Comm_Free();
-  }
 
   MPI_Finalize();
 
