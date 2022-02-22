@@ -4,7 +4,6 @@
 #include "thermal_conductivity_coefficient.hpp"
 
 #include <iostream>
-#include <unordered_set>
 
 #include <cmath>
 
@@ -122,8 +121,9 @@ void temperature_heat_conduction(const Input &inp,
   ParFiniteElementSpace *parfespace = temperature.ParFESpace();
   ParMesh *pmesh = parfespace->GetParMesh();
   QuadratureSpace *qspace = power.GetSpace();
+  const int myid = parfespace->GetMyRank();
 
-  Array<int> ess_bdr, ess_tdof_local;
+  Array<int> ess_bdr, ess_tdof_list;
   ess_bdr.SetSize(pmesh->bdr_attributes.Max());
 
   // For now I'm allowing reflective (insulating) boundaries.There is a
@@ -132,9 +132,12 @@ void temperature_heat_conduction(const Input &inp,
   for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
     ess_bdr[i] = inp.boundary_conditions[i];
 
-  parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_local);
+  parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
-  std::unordered_set<int> heat_pipe_set;
+  Array<int> ess_dofs_hp, true_ess_dofs_hp;
+  ess_dofs_hp.SetSize(parfespace->GetVSize());
+  ess_dofs_hp = 0;
+
   for (int e = 0; e < parfespace->GetNE(); ++e)
   {
     if (parfespace->GetAttribute(e) == heat_pipe_id)
@@ -143,23 +146,24 @@ void temperature_heat_conduction(const Input &inp,
       Array<int> dofs;
       parfespace->GetElementDofs(e, dofs);
       for (int i = 0; i < dofs.Size(); ++i)
-        heat_pipe_set.insert(dofs[i]);
+        ess_dofs_hp[dofs[i]] = -1;
     }
   }
 
-  for (int val : heat_pipe_set)
-    ess_tdof_local.Append(val);
+  parfespace->Synchronize(ess_dofs_hp);
 
-  temperature.SetSubVector(ess_tdof_local, inp.temp_heat_pipe);
+  parfespace->GetRestrictionMatrix()->BooleanMult(ess_dofs_hp, true_ess_dofs_hp);
 
-  Array<int> ess_tdof_global;
-  for (int i = 0; i < ess_tdof_local.Size(); ++i)
-  {
-    const int ldof = parfespace->GetLocalTDofNumber(ess_tdof_local[i]);
-    if (ldof >= 0)
-      ess_tdof_global.Append(ldof);
-  }
+  Array<int> ess_tdof_list_hp;
+  ParFiniteElementSpace::MarkerToList(true_ess_dofs_hp, ess_tdof_list_hp);
 
+  for (int i = 0; i < ess_tdof_list_hp.Size(); ++i)
+    ess_tdof_list.Append(ess_tdof_list_hp[i]);
+
+  // NOTE: the following treatment resets the initial guess for temperature
+  // every time. There is certainly a better way to do this, but getting the DOF
+  // filtering to work is hard enough.
+  temperature = inp.temp_heat_pipe;
   ConstantCoefficient temp_boundary_coeff{inp.temp_boundary}; // constant temperature of boundary
   temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
 
@@ -231,7 +235,7 @@ void temperature_heat_conduction(const Input &inp,
 
     OperatorHandle A;
     Vector X, B;
-    a.FormLinearSystem(ess_tdof_global, temperature, b, A, X, B);
+    a.FormLinearSystem(ess_tdof_list, temperature, b, A, X, B);
 
     amg.SetOperator(*A);
     cg.SetOperator(*A);
@@ -242,11 +246,11 @@ void temperature_heat_conduction(const Input &inp,
 
     temperature_old -= temperature;
     temperature_old.HostRead(); // necessary to sync memory for GPU problems
-    const double local_temp_conv{temperature_old.Normlinf()};
-    MPI_Allreduce(&local_temp_conv, &temp_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    const double list_temp_conv{temperature_old.Normlinf()};
+    MPI_Allreduce(&list_temp_conv, &temp_conv, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    //if ((inp.verbose) && (parfespace->GetMyRank() == 0))
-    if (parfespace->GetMyRank() == 0)
+    //if ((inp.verbose) && (myid == 0))
+    if (myid == 0)
       std::cout << "temperature_iter=" << iter << " temp_conv=" << temp_conv << std::endl;
 
   }
