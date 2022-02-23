@@ -572,7 +572,7 @@ int main(int argc, char* argv[])
     output.SetFormat(DataCollection::PARALLEL_FORMAT);
     output.Save();
 
-    sum << state << ',' << res.keff << '\n';
+    sum << state << ',' << res.keff << std::endl;
 
     if (mat_lib.ngroup() == 24)
     {
