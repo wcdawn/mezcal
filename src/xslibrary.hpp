@@ -34,7 +34,7 @@ struct XSRecord
   std::vector<double> sigma_tr;
   std::vector<double> sigma_t;
   mfem::DenseMatrix sigma_r;
-  std::vector<double> nusf;
+  std::vector<double> nusf, kappasf;
   std::vector<double> chi;
   std::vector<double> source; // fixed source
 

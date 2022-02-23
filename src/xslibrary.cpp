@@ -33,6 +33,7 @@ void XSRecord::set_ngroup(int ngroup, int nmoment)
   sigma_t.resize(G);
   sigma_r.SetSize(G, nmoment);
   nusf.resize(G);
+  kappasf.resize(G);
   chi.resize(G);
   source.resize(G);
   is_upscatter.resize(G);
@@ -136,6 +137,11 @@ void XSLibrary::read_userxs(const std::string& fname)
     {
       rec[mat_count].is_fiss = true;
       read_vector(ifs, rec[mat_count].nusf);
+    }
+    else if (card == "kappasf")
+    {
+      rec[mat_count].is_fiss = true;
+      read_vector(ifs, rec[mat_count].kappasf);
     }
     else if (card == "chi")
     {
@@ -470,6 +476,8 @@ void XSLibrary::Print(ostream& os)
     {
       os << "nusf\n";
       write_vector(os, record.nusf);
+      os << "kappasf\n";
+      write_vector(os, record.kappasf);
       os << "chi\n";
       write_vector(os, record.chi);
     }

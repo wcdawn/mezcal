@@ -135,6 +135,7 @@ void Material_record::calculate_macroscopic_xs()
         rec[t].sigma_tr[g] += iso[i].nden * iso[i].rec[t]->sigma_tr[g];
         rec[t].sigma_t[g]  += iso[i].nden * iso[i].rec[t]->sigma_t[g];
         rec[t].nusf[g]     += iso[i].nden * iso[i].rec[t]->nusf[g];
+        rec[t].kappasf[g]  += iso[i].nden * iso[i].rec[t]->kappasf[g];
         // note: fixed source is simply summed without number densities
         rec[t].source[g] += iso[i].rec[t]->source[g];
       }

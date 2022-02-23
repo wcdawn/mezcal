@@ -120,6 +120,28 @@ double xscalc_nusf(const int g,
   return xlo + w.second * (xhi - xlo);
 }
 
+double xscalc_kappasf(const int g,
+                      const Input &inp,
+                      const Material_record &mat,
+                      const double T)
+{
+
+  if (!mat.is_fiss) 
+    return 0.0;
+
+  const int ntemp = inp.temp_arr.size();
+
+  if ((ntemp == 1) || (!inp.feedback))
+    return mat.rec[0].kappasf[g];
+
+  const std::pair<const int, const double> w =
+    temperature_interpolate(inp.sqrt_temp_arr, std::sqrt(T));
+  const double xlo = mat.rec[w.first].kappasf[g];
+  const double xhi = mat.rec[w.first+1].kappasf[g];
+
+  return xlo + w.second * (xhi - xlo);
+}
+
 // returns a row of the scattering matrix
 void xscalc_sigma_s(const int g,
                     const Input &inp,
@@ -1368,8 +1390,6 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
                        QuadratureFunction &power_quad)
 {
 
-  constexpr double kappa_over_nu = 1.0; // TODO this should be group dependent
-
   const QuadratureSpace* const qspace = power_quad.GetSpace();
   const ParFiniteElementSpace * const fespace = scalar_flux[0]->ParFESpace();
   const ParMesh * const pmesh = fespace->GetParMesh();
@@ -1416,16 +1436,12 @@ void calc_power_vector(const std::vector<std::unique_ptr<ParGridFunction>> &scal
       temperature.GetSubVector(dofs, temp_locvec.HostWrite());
       const double temp = dofval*temp_locvec;
 
-      std::vector<double> kappasf(mat_lib.ngroup());
-      for (int g = 0; g < mat_lib.ngroup(); ++g)
-        kappasf[g] = kappa_over_nu*xscalc_nusf(g, inp, mat, temp);
-
       for (int gprime = 0; gprime < mat_lib.ngroup(); ++gprime)
       {
         Vector locvec(dofs.Size());
         scalar_flux[gprime]->GetSubVector(dofs, locvec.HostWrite());
         const double flux = dofval*locvec;
-        pquad[idx] += kappasf[gprime]*flux;
+        pquad[idx] += xscalc_kappasf(gprime, inp, mat, temp)*flux;
       }
 
       pwr_sum += t_weight*i_weight*pquad[idx];
