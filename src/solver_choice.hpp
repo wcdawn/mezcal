@@ -34,6 +34,7 @@ enum class Solver_choice
   conduction_linear, // TODO move this into "analytic"
   conduction_radial, // TODO move this into "analytic"
   conduction_var_cond,
+  multiphysics, // picard iterations
   none // do absolutely nothing
 };
 

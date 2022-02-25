@@ -16,6 +16,7 @@ CPP_FILES = main.cpp \
 			level_symmetric_quadrature.cpp \
 			material_library.cpp \
 			matrix_pwconst_coefficient.cpp \
+			multiphysics.cpp \
 			nda_boundary_factor_coefficient.cpp \
 			nda_diffusion_coefficient.cpp \
 			output.cpp \
@@ -56,6 +57,7 @@ HPP_FILES = analytic.hpp \
 			material_library.hpp \
 			matrix_pwconst_coefficient.hpp \
 			memory.hpp \
+			multiphysics.hpp \
 			nda_boundary_factor_coefficient.hpp \
 			nda_diffusion_coefficient.hpp \
 			output.hpp \
@@ -162,7 +164,7 @@ addon :
 
 # Listing Order:
 # <object file> : $(MFEM_HEADER) <my header> <other headers>
-main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp timer.hpp xslibrary.hpp quadrature.hpp legendre_chebyschev_quadrature.hpp level_symmetric_quadrature.hpp output.hpp
+main.o : $(MFEM_HEADER) analytic.hpp input.hpp material_library.hpp result.hpp solver.hpp timer.hpp xslibrary.hpp quadrature.hpp legendre_chebyschev_quadrature.hpp level_symmetric_quadrature.hpp output.hpp multiphysics.hpp
 analytic.o : $(MFEM_HEADER) analytic.hpp result.hpp xslibrary.hpp
 xslibrary.o : $(MFEM_HEADER) xslibrary.hpp
 input.o : $(MFEM_HEADER) analytic.hpp input.hpp xslibrary.hpp quadrature.hpp
@@ -198,3 +200,4 @@ solver_saaf_angle_power_iteration.o : $(MFEM_HEADER) solver_saaf_angle_power_ite
 solver_saaf_true_slepc_vector.o : $(MFEM_HEADER) solver_saaf_true_slepc_vector.hpp input.hpp make_unique.hpp material_library.hpp matrix_pwconst_coefficient.hpp memory.hpp quadrature.hpp result.hpp timer.hpp vector_pwconst_coefficient.hpp ../addon/mfem_addon.hpp ../addon/tensor.hpp
 vector_incoming_flux_coefficient.o : $(MFEM_HEADER) quadrature.hpp
 solver_spn_power_iteration.o : $(MFEM_HEADER) solver_spn_power_iteration.hpp input.hpp material_library.hpp result.hpp timer.hpp output.hpp conduction.hpp
+multiphysics.o : $(MFEM_HEADER) multiphysics.hpp solver_saaf_angle_power_iteration.hpp conduction.hpp

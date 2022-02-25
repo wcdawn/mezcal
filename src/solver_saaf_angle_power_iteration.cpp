@@ -517,7 +517,7 @@ void write_restart(const int myid,
   return;
 }
 
-void saaf_angle_power_iteration(const int state,
+void saaf_angle_power_iteration(const bool init,
                                 const Quadrature* const quad,
                                 Timer& time,
                                 Input& inp,
@@ -545,7 +545,7 @@ void saaf_angle_power_iteration(const int state,
     temperature = inp.temp_heat_pipe;
 
   }
-  else if (state == 0)
+  else if (init)
   {
 
     // only initialize on the first state
@@ -768,6 +768,7 @@ void saaf_angle_power_iteration(const int state,
                  && ((k_conv > inp.tol.k) || (phi_conv > inp.tol.phi)); ++iter)
   {
 
+#if 0
     if (inp.feedback)
     {
 
@@ -804,6 +805,7 @@ void saaf_angle_power_iteration(const int state,
       time.stop(time.matrix_assembly);
 
     }
+#endif
 
     time.start("calc_fiss_upscatter_vector");
     calc_fiss_upscatter_vector(scalar_flux, inp, mat_lib, quad, temperature,

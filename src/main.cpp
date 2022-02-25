@@ -7,6 +7,7 @@
 #include "solver.hpp"
 #include "solver_amgx.h"
 #include "solver_saaf_angle_power_iteration.hpp"
+#include "multiphysics.hpp"
 #include "solver_saaf_true_slepc_vector.hpp"
 #include "solver_spn_power_iteration.hpp"
 
@@ -168,6 +169,7 @@ int main(int argc, char* argv[])
     (inp.sol == Solver_choice::sfent_power_iteration) ||
     (inp.sol == Solver_choice::saaf_power_iteration) ||
     (inp.sol == Solver_choice::saaf_angle_power_iteration) ||
+    (inp.sol == Solver_choice::multiphysics) ||
     (inp.sol == Solver_choice::saaf_efficient_power_iteration) ||
     (inp.sol == Solver_choice::saaf_angle_nda_slepc) ||
     (inp.sol == Solver_choice::saaf_angle_jacobi_power_iteration) ||
@@ -225,6 +227,7 @@ int main(int argc, char* argv[])
       vdim = mat_lib.ngroup()*quad->nd();
       break;
     case (Solver_choice::saaf_angle_power_iteration):
+    case (Solver_choice::multiphysics):
       vdim = quad->nd();
       break;
     default:
@@ -264,6 +267,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_angle_jacobi_power_iteration):
       break;
     case (Solver_choice::saaf_angle_power_iteration):
+    case (Solver_choice::multiphysics):
       dof *= mat_lib.ngroup();
       break;
     case (Solver_choice::saaf_power_iteration):
@@ -309,6 +313,7 @@ int main(int argc, char* argv[])
     case (Solver_choice::saaf_split_power_iteration):
     case (Solver_choice::saaf_self_power_iteration):
     case (Solver_choice::saaf_angle_power_iteration):
+    case (Solver_choice::multiphysics):
     case (Solver_choice::saaf_angle_nda_slepc):
     case (Solver_choice::saaf_angle_jacobi_power_iteration):
     case (Solver_choice::amgx_vector):
@@ -397,7 +402,11 @@ int main(int argc, char* argv[])
           saaf_power_iteration(quad.get(), time, inp, mat_lib, pmesh.get(), &fespace, res, scalar_flux);
           break;
         case (Solver_choice::saaf_angle_power_iteration):
-          saaf_angle_power_iteration(state, quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
+          saaf_angle_power_iteration((state == 0), quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
+          res.keff = scalar_flux.keff;
+          break;
+        case (Solver_choice::multiphysics):
+          multiphysics(state, quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
           res.keff = scalar_flux.keff;
           break;
         case (Solver_choice::spn_power_iteration):
