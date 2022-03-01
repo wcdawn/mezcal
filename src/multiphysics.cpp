@@ -46,10 +46,20 @@ void multiphysics(const int state,
   QuadratureFunction power_quad{&qspace};
   QuadratureFunction power_quad_old{&qspace};
 
+  if ((state == 0) && (!inp.restart.flux))
+  {
+    temperature = inp.temp_heat_pipe;
+    for (int g = 0; g < mat_lib.ngroup(); ++g)
+    {
+      *scalar_flux[g] = 1.0;
+      *angular_flux[g] = 1.0;
+    }
+  }
+
   for (int iter = 0; (iter < max_iter) && ((kconv > ktol) || (powerconv > powertol)); ++iter)
   {
 
-    const bool init = ((state == 0) && (iter == 0));
+    const bool init = ((state == 0) && (iter == 0) && (!inp.restart.flux));
 
     calc_power_vector(scalar_flux, inp, mat_lib, inp.rxpwr, temperature, power_quad_old);
     temperature_heat_conduction(inp, mat_lib, power_quad_old, temperature);
@@ -57,7 +67,8 @@ void multiphysics(const int state,
     calc_power_vector(scalar_flux, inp, mat_lib, inp.rxpwr, temperature, power_quad);
 
     kconv = std::abs(keff_old - keff);
-    powerconv = par_norml2(power_quad_old)/par_norml2(power_quad);
+    power_quad_old -= power_quad;
+    powerconv = (inp.rxpwr > 0.0) ?  par_norml2(power_quad_old)/par_norml2(power_quad) : 0.0;
 
     if (myid == 0)
       std::cout << "multiphysics_iter=" << iter
@@ -69,7 +80,8 @@ void multiphysics(const int state,
 
   }
 
-  std::cout << "MULTIPHYSICS_FINISHED!!! :)" << std::endl;
+  if (myid == 0) 
+    std::cout << "MULTIPHYSICS_FINISHED!!! :)" << std::endl;
 
   return;
 }

@@ -9,6 +9,74 @@
 
 using namespace mfem;
 
+// this is so that the routines are called only once
+// there seems to be a leak somewhere in the temperature update
+// but i'm not sure where
+namespace conduction_geom_data
+{
+
+  Array<int> ess_bdr, ess_tdof_list;
+  bool first = true;
+
+  void set_geometry(ParFiniteElementSpace *parfespace,
+                    const Array<int> &bc_arr,
+                    const int heat_pipe_id)
+  {
+
+    if (!first)
+      return;
+
+    const ParMesh * const pmesh = parfespace->GetParMesh();
+
+    ess_bdr.SetSize(pmesh->bdr_attributes.Max());
+
+    for (int i = 0; (i < bc_arr.Size()) && (i < ess_bdr.Size()); ++i)
+      ess_bdr[i] = bc_arr[i];
+
+    parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
+
+    Array<int> ess_dofs_hp, true_ess_dofs_hp;
+    ess_dofs_hp.SetSize(parfespace->GetVSize());
+    ess_dofs_hp = 0;
+
+    for (int e = 0; e < parfespace->GetNE(); ++e)
+    {
+      if (parfespace->GetAttribute(e) == heat_pipe_id)
+      {
+        // found a heat pipe
+        Array<int> dofs;
+        parfespace->GetElementDofs(e, dofs);
+        for (int i = 0; i < dofs.Size(); ++i)
+          ess_dofs_hp[dofs[i]] = -1;
+      }
+    }
+
+    parfespace->Synchronize(ess_dofs_hp);
+
+    parfespace->GetRestrictionMatrix()->BooleanMult(ess_dofs_hp, true_ess_dofs_hp);
+
+    Array<int> ess_tdof_list_hp;
+    ParFiniteElementSpace::MarkerToList(true_ess_dofs_hp, ess_tdof_list_hp);
+
+    for (int i = 0; i < ess_tdof_list_hp.Size(); ++i)
+      ess_tdof_list.Append(ess_tdof_list_hp[i]);
+
+    first = false;
+    return;
+  }
+
+  void initialize_temperature(const double temp_boundary,
+                              const double temp_hp,
+                              ParGridFunction &temperature)
+  {
+    temperature = temp_hp;
+    ConstantCoefficient temp_boundary_coeff{temp_boundary};
+    temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
+    return;
+  }
+
+}
+
 double linear_source(const Vector &v)
 {
   const double x{v(0)-0.2};
@@ -113,59 +181,13 @@ void temperature_heat_conduction(const Input &inp,
 
   constexpr bool thermal_conductivity_plot = false;
 
-  // bwr 5 is poison rods
-  // vvercan 4 is poison rods
-  // use 1 for analytic problems (default)
-  const int heat_pipe_id{inp.heat_pipe_idx};
-
   ParFiniteElementSpace *parfespace = temperature.ParFESpace();
   ParMesh *pmesh = parfespace->GetParMesh();
   QuadratureSpace *qspace = power.GetSpace();
   const int myid = parfespace->GetMyRank();
 
-  Array<int> ess_bdr, ess_tdof_list;
-  ess_bdr.SetSize(pmesh->bdr_attributes.Max());
-
-  // For now I'm allowing reflective (insulating) boundaries.There is a
-  // potential problem that this system would have no solution if there is no
-  // essential boundary and also no heat pipes but just don't let that happen...
-  for (int i{0}; (i < inp.boundary_conditions.Size()) && (i < ess_bdr.Size()); ++i)
-    ess_bdr[i] = inp.boundary_conditions[i];
-
-  parfespace->GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
-
-  Array<int> ess_dofs_hp, true_ess_dofs_hp;
-  ess_dofs_hp.SetSize(parfespace->GetVSize());
-  ess_dofs_hp = 0;
-
-  for (int e = 0; e < parfespace->GetNE(); ++e)
-  {
-    if (parfespace->GetAttribute(e) == heat_pipe_id)
-    {
-      // found a heat pipe
-      Array<int> dofs;
-      parfespace->GetElementDofs(e, dofs);
-      for (int i = 0; i < dofs.Size(); ++i)
-        ess_dofs_hp[dofs[i]] = -1;
-    }
-  }
-
-  parfespace->Synchronize(ess_dofs_hp);
-
-  parfespace->GetRestrictionMatrix()->BooleanMult(ess_dofs_hp, true_ess_dofs_hp);
-
-  Array<int> ess_tdof_list_hp;
-  ParFiniteElementSpace::MarkerToList(true_ess_dofs_hp, ess_tdof_list_hp);
-
-  for (int i = 0; i < ess_tdof_list_hp.Size(); ++i)
-    ess_tdof_list.Append(ess_tdof_list_hp[i]);
-
-  // NOTE: the following treatment resets the initial guess for temperature
-  // every time. There is certainly a better way to do this, but getting the DOF
-  // filtering to work is hard enough.
-  temperature = inp.temp_heat_pipe;
-  ConstantCoefficient temp_boundary_coeff{inp.temp_boundary}; // constant temperature of boundary
-  temperature.ProjectBdrCoefficient(temp_boundary_coeff, ess_bdr);
+  conduction_geom_data::set_geometry(parfespace, inp.boundary_conditions, inp.heat_pipe_idx);
+  conduction_geom_data::initialize_temperature(inp.temp_boundary, inp.temp_heat_pipe, temperature);
 
   QuadratureFunction thermal_conductivity_quad{qspace};
   QuadratureFunctionCoefficient thermal_conductivity_quad_func{thermal_conductivity_quad};
@@ -199,16 +221,6 @@ void temperature_heat_conduction(const Input &inp,
   // For Robin bc, add BoundaryLFIntegrator
   b.Assemble();
 
-  HypreBoomerAMG amg;
-  amg.SetPrintLevel(0);
-
-  HyprePCG cg(MPI_COMM_WORLD);
-  cg.SetPreconditioner(amg);
-  cg.SetTol(inp.tol.temp_inner_rel);
-  cg.SetAbsTol(inp.tol.temp_inner_abs);
-  cg.SetMaxIter(inp.tol.temp_max_inner);
-  cg.SetPrintLevel(inp.verbose ? 2 : 0);
-
   double temp_conv{inp.tol.temp*1e2+1.0};
   for (int iter{0}; (iter < inp.tol.temp_max_outer) &&
       (temp_conv > inp.tol.temp); ++iter)
@@ -235,11 +247,19 @@ void temperature_heat_conduction(const Input &inp,
 
     OperatorHandle A;
     Vector X, B;
-    a.FormLinearSystem(ess_tdof_list, temperature, b, A, X, B);
+    a.FormLinearSystem(conduction_geom_data::ess_tdof_list, temperature, b, A, X, B);
 
-    amg.SetOperator(*A);
-    cg.SetOperator(*A);
+    HypreBoomerAMG amg{*A.As<HypreParMatrix>()};
+    amg.SetPrintLevel(0);
+
+    HyprePCG cg{MPI_COMM_WORLD};
+    cg.SetPrintLevel(inp.verbose ? 2 : 0);
     cg.SetPreconditioner(amg);
+    cg.SetOperator(*A);
+    cg.SetTol(inp.tol.temp_inner_rel);
+    cg.SetAbsTol(inp.tol.temp_inner_rel);
+    cg.SetMaxIter(inp.tol.temp_max_inner);
+
     cg.Mult(B, X);
 
     a.RecoverFEMSolution(X, b, temperature);

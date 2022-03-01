@@ -467,8 +467,11 @@ void read_restart(const int myid,
                   const Quadrature * const quad,
                   std::vector<std::unique_ptr<ParGridFunction>> &angular_flux,
                   std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux,
-                  double &keff)
+                  double &keff,
+                  ParGridFunction &temperature)
 {
+
+  if (myid == 0) std::cout << "READING_RESTART" << std::endl;
 
   for (int g = 0; g < static_cast<int>(angular_flux.size()); ++g)
   {
@@ -488,6 +491,16 @@ void read_restart(const int myid,
 
   }
 
+  std::unique_ptr<char[]> fname{std::make_unique<char[]>(stub.size()+25)};
+  sprintf(fname.get(), "%s_restart_temp_%06d.sol", stub.c_str(), myid);
+  std::ifstream ifs{fname.get(), std::ios_base::binary};
+  int temp_size;
+  ifs.read(as_bytes(temp_size), sizeof(int));
+  MFEM_VERIFY(temp_size == temperature.Size(), "inconsistent restart size");
+  double *t = temperature.HostWrite();
+  for (int i{0}; i < temperature.Size(); ++i)
+    ifs.read(as_bytes(t[i]), sizeof(double));
+
   const std::string keff_fname{stub + "_restart_keff.out"};
   std::ifstream keff_ifs{keff_fname};
   while (keff_ifs.good())
@@ -498,12 +511,13 @@ void read_restart(const int myid,
 
 void write_restart(const int myid,
                    const std::string stub,
-                   const std::vector<std::unique_ptr<ParGridFunction>> &angular_flux)
+                   const std::vector<std::unique_ptr<ParGridFunction>> &angular_flux,
+                   const ParGridFunction &temperature)
 {
 
-    std::unique_ptr<char[]> fname{std::make_unique<char[]>(stub.size()+26)};
     for (int gprime = 0; gprime < static_cast<int>(angular_flux.size()); ++gprime)
     {
+      std::unique_ptr<char[]> fname{std::make_unique<char[]>(stub.size()+26)};
       sprintf(fname.get(), "%s_restart_g%04d_%06d.sol", stub.c_str(), gprime, myid);
 
       const int size = angular_flux[gprime]->Size();
@@ -513,6 +527,15 @@ void write_restart(const int myid,
       for (int i{0}; i < size; ++i)
         ofs.write(as_bytes(af[i]), sizeof(double));
     }
+
+    std::unique_ptr<char[]> fname{std::make_unique<char[]>(stub.size()+25)};
+    sprintf(fname.get(), "%s_restart_temp_%06d.sol", stub.c_str(), myid);
+    const int size = temperature.Size();
+    std::ofstream ofs{fname.get(), std::ios_base::binary};
+    ofs.write(as_bytes(size), sizeof(int));
+    const double *t = temperature.HostRead();
+    for (int i{0}; i < size; ++i)
+      ofs.write(as_bytes(t[i]), sizeof(double));
 
   return;
 }
@@ -537,12 +560,9 @@ void saaf_angle_power_iteration(const bool init,
   {
 
     read_restart(myid, inp.input_file_stub(), quad,
-      angular_flux, scalar_flux, keff);
+      angular_flux, scalar_flux, keff, temperature);
 
     inp.restart.flux = false; // necessary for multistate
-
-    // initialize temperature
-    temperature = inp.temp_heat_pipe;
 
   }
   else if (init)
@@ -906,7 +926,7 @@ void saaf_angle_power_iteration(const bool init,
                     << std::endl;
         }
         time.start("restart_out");
-        write_restart(myid, inp.input_file_stub(), angular_flux);
+        write_restart(myid, inp.input_file_stub(), angular_flux, temperature);
         time.stop("restart_out");
 
         QuadratureFunctionCoefficient gfc{power_quad};
@@ -973,7 +993,7 @@ void saaf_angle_power_iteration(const bool init,
     calc_pin_power(power_quad, inp.pins);
 
   if (inp.restart.out)
-    write_restart(myid, inp.input_file_stub(), angular_flux);
+    write_restart(myid, inp.input_file_stub(), angular_flux, temperature);
 
   return;
 }
