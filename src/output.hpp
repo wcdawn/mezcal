@@ -9,6 +9,8 @@
 
 #include <string>
 #include <iostream>
+#include <vector>
+#include <memory>
 
 void total_xs_plot(mfem::ParMesh *pmesh,
                    const Material_library &mat_lib,
@@ -25,5 +27,8 @@ void mesh_stats(mfem::ParMesh *pmesh,
 
 void calc_pin_power(const mfem::QuadratureFunction &power_quad,
                     const std::vector<Pin> &pins);
+
+void edit_flux(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux);
+               
 
 #endif

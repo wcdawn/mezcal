@@ -306,3 +306,56 @@ void calc_pin_power(const QuadratureFunction &power_quad,
 
   return;
 }
+
+void edit_flux(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux)
+{
+
+  ParFiniteElementSpace *parfespace = scalar_flux[0]->ParFESpace();
+  ParMesh *pmesh = parfespace->GetParMesh();
+  const int myid = parfespace->GetMyRank();
+
+  const int ngroup = scalar_flux.size();
+
+  std::vector<double> flux_tot(pmesh->attributes.Max()*ngroup);
+
+  for (int i = 0; i < pmesh->attributes.Max(); ++i)
+  {
+
+    Vector v(pmesh->attributes.Max());
+    v = 0.0;
+    v(i) = 1.0;
+    PWConstCoefficient coeff{v};
+
+    ParLinearForm b{parfespace};
+    b.AddDomainIntegrator(new DomainLFIntegrator{coeff});
+    b.Assemble();
+
+    for (int g = 0; g < ngroup; ++g)
+    {
+
+      const int idx = g + ngroup*i;
+      flux_tot[idx] = b(*scalar_flux[g]);
+
+    }
+
+  }
+
+  if (myid == 0)
+  {
+    std::ofstream ofs{"flux.out"};
+    for (int i = 0; i < pmesh->attributes.Max(); ++i)
+    {
+      ofs << "attribute=" << i+1 << std::endl;
+      const auto old_precision{ofs.precision()};
+      ofs << std::setprecision(20);
+      for (int g = 0; g < ngroup; ++g)
+      {
+        const int idx = g + ngroup*i;
+        ofs << flux_tot[idx] << std::endl;
+      }
+      ofs << std::setprecision(old_precision);
+    }
+  }
+
+  return;
+}
