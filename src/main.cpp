@@ -95,6 +95,12 @@ int main(int argc, char* argv[])
   if (device.IsEnabled()) device.SetGPUAwareMPI();
 #endif
 
+  if (inp.buckling > 0.0)
+  {
+    for (XSLibrary &x : inp.xs)
+      x.calc_buckling(inp.buckling);
+  }
+
   // core block is finished, you can read the material block
   Material_library mat_lib{inp.xs};
   mat_lib.read_material(inp.ifs);

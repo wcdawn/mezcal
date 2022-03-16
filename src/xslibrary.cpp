@@ -508,3 +508,17 @@ void XSLibrary::calc_tcp0()
   }
   return;
 }
+
+void XSLibrary::calc_buckling(double bsq)
+{
+  for (int n{0}; n < N; ++n)
+  {
+    XSRecord &record{rec[n]};
+    for (int g{0}; g < G; ++g)
+    {
+      double val = record.sigma_t[g] + bsq/(3.0*record.sigma_t[g]);
+      record.sigma_t[g] = val;
+    }
+  }
+  return;
+}

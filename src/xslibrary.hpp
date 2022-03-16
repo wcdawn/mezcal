@@ -57,6 +57,7 @@ public:
 
   void Print(std::ostream& os);
   void calc_tcp0();
+  void calc_buckling(double bsq);
 
   class Invalid_input_card : std::exception
   {

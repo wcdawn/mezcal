@@ -107,6 +107,7 @@ public:
   const char* device{"cpu"};
   bool static_condensation{false};
   bool verbose{false};
+  double buckling = 0.0; // this must be B^2_z , units [1/cm^2] // NOTE: SQUARED
 
   // actual enum value
   Analytic::Reference ref{Analytic::invalid};

@@ -136,6 +136,10 @@ void Input::read_core()
       pins.back().y = y;
       pins.back().radius = r;
     }
+    else if (card == "buckling")
+    {
+      ifs >> buckling;
+    }
     else if (card == "[MATERIAL]")
     {
       // expecting to lead into [MATERIAL] block
