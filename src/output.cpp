@@ -307,7 +307,8 @@ void calc_pin_power(const QuadratureFunction &power_quad,
   return;
 }
 
-void edit_flux(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux)
+void edit_flux(const std::string &stub,
+               const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux)
 {
 
   ParFiniteElementSpace *parfespace = scalar_flux[0]->ParFESpace();
@@ -342,7 +343,7 @@ void edit_flux(const std::vector<std::unique_ptr<ParGridFunction>> &scalar_flux)
 
   if (myid == 0)
   {
-    std::ofstream ofs{"flux.out"};
+    std::ofstream ofs{stub + ".flux"};
     for (int i = 0; i < pmesh->attributes.Max(); ++i)
     {
       ofs << "attribute=" << i+1 << std::endl;

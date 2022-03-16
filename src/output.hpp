@@ -28,7 +28,8 @@ void mesh_stats(mfem::ParMesh *pmesh,
 void calc_pin_power(const mfem::QuadratureFunction &power_quad,
                     const std::vector<Pin> &pins);
 
-void edit_flux(const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux);
+void edit_flux(const std::string &stub,
+               const std::vector<std::unique_ptr<mfem::ParGridFunction>> &scalar_flux);
                
 
 #endif

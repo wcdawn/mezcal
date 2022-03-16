@@ -404,12 +404,12 @@ int main(int argc, char* argv[])
         case (Solver_choice::saaf_angle_power_iteration):
           saaf_angle_power_iteration((state == 0), quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
           res.keff = scalar_flux.keff;
-          edit_flux(scalar_flux);
+          edit_flux(inp.input_file_stub(), scalar_flux);
           break;
         case (Solver_choice::multiphysics):
           multiphysics(state, quad.get(), time, inp, mat_lib, res, scalar_flux, scalar_flux.keff, power, temperature);
           res.keff = scalar_flux.keff;
-          edit_flux(scalar_flux);
+          edit_flux(inp.input_file_stub(), scalar_flux);
           break;
         case (Solver_choice::spn_power_iteration):
           spn_power_iteration(time, inp, mat_lib, res, res.keff, power, temperature);
