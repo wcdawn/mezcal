@@ -256,6 +256,18 @@ void Input::read_state()
     {
       tol.use_dsa = read_bool(ifs);
     }
+    else if (card == "multiphysics_power_tol")
+    {
+      ifs >> tol.multiphysics_power;
+    }
+    else if (card == "multiphysics_k_tol")
+    {
+      ifs >> tol.multiphysics_k;
+    }
+    else if (card == "multiphysics_max_outer")
+    {
+      ifs >> tol.multiphysics_outer;
+    }
     else if (card == "solver")
     {
       ifs >> solver_str;

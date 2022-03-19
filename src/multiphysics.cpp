@@ -27,18 +27,11 @@ void multiphysics(const int state,
                   ParGridFunction &temperature)
 {
 
-  constexpr int max_iter = 10;
-  constexpr double ktol = 1e-7;
-  constexpr double powertol = 1e-6;
-
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
   ParMesh *pmesh = scalar_flux_fespace->GetParMesh();
   const int myid = scalar_flux_fespace->GetMyRank();
 
   double keff_old = keff;
-
-  double kconv = ktol*1e2 + 1.0;
-  double powerconv = powertol*1e2 + 1.0;
 
   const int integration_order = scalar_flux_fespace->GetOrder(0)+1;
   QuadratureSpace qspace {pmesh, integration_order};
@@ -56,7 +49,12 @@ void multiphysics(const int state,
     }
   }
 
-  for (int iter = 0; (iter < max_iter) && ((kconv > ktol) || (powerconv > powertol)); ++iter)
+  double kconv = inp.tol.multiphysics_k*1e2 + 1.0;
+  double powerconv = inp.tol.multiphysics_k*1e2 + 1.0;
+
+  for (int iter = 0; (iter < inp.tol.multiphysics_outer) && 
+      ((kconv > inp.tol.multiphysics_k) || 
+       (powerconv > inp.tol.multiphysics_power)); ++iter)
   {
 
     const bool init = ((state == 0) && (iter == 0) && (!inp.restart.flux));

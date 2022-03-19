@@ -37,6 +37,11 @@ struct Tolerance_control
   int temp_max_inner{1000};
   double temp_inner_rel{1e-6};
   double temp_inner_abs{1e-6};
+
+  double multiphysics_power{1e-6};
+  double multiphysics_k{1e-7};
+  int multiphysics_outer{10};
+
 };
 
 struct Restart_control
