@@ -111,7 +111,7 @@ link :
 $(EXEC) : $(OBJ)
 	@$(MAKE) version -s
 	@$(MAKE) -C $(ADDON_DIR)
-	$(NVCC) $(CUDA_ARCH) $(LDFLAGS) -Xcompiler -fopenmp -Xcompiler -pthread $^ -o $@ $(LIBS) $(MPI_LIB)
+	$(LD) $(GPU_ARCH) $(LDFLAGS) -Xcompiler -fopenmp -Xcompiler -pthread $^ -o $@ $(LIBS) $(MPI_LIB)
 
 %.o : %.cpp
 	$(MPICXX) $(MPICXXFLAGS) $(INCLUDE) -c $<

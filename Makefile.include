@@ -1,10 +1,9 @@
 # Makefile
 
 CXXFLAGS = -Wall -pedantic-errors -std=$(STD) -fopenmp
-# LDFLAGS = -std=$(STD) # -fopenmp # doesn't work with nvcc
 LDFLAGS = -std=$(STD)
 
-NVCC = nvcc
+LD = nvcc
 
 ifeq ($(MACH),SUMMIT)
 STD = c++11
@@ -20,13 +19,21 @@ HYPRE_DIR = $(PROJ)/hypre/src/hypre
 METIS_DIR = $(PROJ)/metis-5.1.0
 METIS_LIB = -L$(METIS_DIR)/build/Linux-ppc64le/libmetis -lmetis
 
-# CUDA_DIR is set automatically by the module
-CUDA_ARCH = -arch=sm_70
-
 PETSC_DIR = $(PROJ)/petsc/arch-olcf-summit-opt
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
+PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
+
 SLEPC_DIR = $(PROJ)/slepc/arch-olcf-summit-opt
+SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
+SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 CXXFLAGS += -DGPU_AWARE_MPI
+CXXFLAGS += -DPETSC_AVAILABLE
+
+# CUDA_DIR is set automatically by the module
+GPU_ARCH = -arch=sm_70
+GPU_INCLUDE = -I$(CUDA_DIR)/include
+GPU_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
 
 else ifeq ($(MACH),ARCHBUILD)
 
@@ -44,11 +51,20 @@ METIS_DIR = $(MICROREACTOR_DIR)/metis-5.1.0/
 METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 CUDA_DIR = /opt/cuda
+GPU_ARCH = -arch=sm_75
+GPU_INCLUDE = -I$(CUDA_DIR)/include
+GPU_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
+
 PETSC_DIR = /home/wcdawn/projects/container/petsc/arch-linux-c-opt
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
+PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
+
 SLEPC_DIR = /home/wcdawn/projects/container/slepc/arch-linux-c-opt
-CUDA_ARCH = -arch=sm_75
+SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
+SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 CXXFLAGS += -DAMGX_AVAILABLE
+CXXFLAGS += -DPETSC_AVAILABLE
 
 AMGX_DIR = /home/wcdawn/projects/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
@@ -72,14 +88,22 @@ HYPRE_DIR = $(WORKSPACE)/hypre/src/hypre
 METIS_DIR = $(WORKSPACE)/metis-5.1.0
 METIS_LIB = -L$(METIS_DIR)/lib -lmetis
 
-CUDA_DIR = $(CUDA_HOME)
-CUDA_ARCH = -arch=sm_70
+# CUDA_HOME is set automatically by the module
+GPU_ARCH = -arch=sm_70
+GPU_INCLUDE = -I$(CUDA_HOME)/include
+GPU_LIB = -L$(CUDA_HOME)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
 
 PETSC_DIR = $(WORKSPACE)/petsc/arch-llnl-lassen-opt
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
+PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
+
 SLEPC_DIR = $(WORKSPACE)/slepc/arch-llnl-lassen-opt
+SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
+SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 CXXFLAGS += -DGPU_AWARE_MPI
 CXXFLAGS += -DAMGX_AVAILABLE
+CXXFLAGS += -DPETSC_AVAILABLE
 
 AMGX_DIR = $(WORKSPACE)/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
@@ -87,6 +111,26 @@ AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
 
 AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
 AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
+
+else ifeq ($(MACH),JEZEBEL)
+
+STD = c++17
+
+H5_DIR = /usr/lib/x86_64-linux-gnu/hdf5/serial
+H5_INCLUDE = -I$(H5_DIR)/include
+
+MPI_DIR = /home/wcdawn/bin/openmpi-4.1.2/bin
+MPICXX = $(MPI_DIR)/mpicxx
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi
+
+CONTAINER = /home/wcdawn/projects/container
+MFEM_DIR = $(CONTAINER)/mfem
+HYPRE_DIR = $(CONTAINER)/hypre-2.23.0/src/hypre
+METIS_DIR = $(CONTAINER)/metis-5.1.0
+
+METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
+
+LD = $(MPICXX)
 
 else
 
@@ -102,11 +146,8 @@ endif
 
 MPICXXFLAGS = $(CXXFLAGS)
 
-H5CXXFLAGS = $(CXXFLAGS)
 # generated using "h5c++ -show"
 H5_LIB = -L$(H5_DIR) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
-
-LD = $(MPICXX) 
 
 MFEM_INCLUDE = -I$(MFEM_DIR)
 MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
@@ -117,16 +158,7 @@ HYPRE_LIB = $(HYPRE_DIR)/lib/libHYPRE.a
 
 METIS_INCLUDE = -I$(METIS_DIR)/include
 
-CUDA_INCLUDE = -I$(CUDA_DIR)/include
-CUDA_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
-
-PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/../include
-PETSC_LIB = -L$(PETSC_DIR)/lib -l:libpetsc.so
-
-SLEPC_INCLUDE = -I$(SLEPC_DIR)/include -I$(SLEPC_DIR)/../include
-SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
-
 MPI_INCLUDE = -I$(MPI_DIR)/include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(CUDA_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(CUDA_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(H5_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE) $(GPU_INCLUDE)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB) $(GPU_LIB)
