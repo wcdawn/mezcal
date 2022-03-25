@@ -87,9 +87,7 @@ int main(int argc, char* argv[])
   // 2. Enable hardware devices such as GPUs, and programming models such as
   //    CUDA, OCCA, RAJA and OpenMP based on command line options.
 
-  std::string device_str{inp.device};
-  device_str += ",omp";
-  Device device(device_str);
+  Device device{inp.device};
   if (myid == 0) device.Print();
 #ifdef GPU_AWARE_MPI
   if (device.IsEnabled()) device.SetGPUAwareMPI();
