@@ -1,4 +1,4 @@
-#ifndef OUPTUT_HPP
+#ifndef OUTPUT_HPP
 #define OUTPUT_HPP
 
 #include "mfem.hpp"
