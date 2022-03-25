@@ -15,7 +15,7 @@ void VectorDomainLFGradIntegrator::AssembleRHSElementVect(
    dshape.SetSize(dof, spaceDim);
 
    Vector pelvect(dof);
-   elvect.SetSize(dof*vdim);
+   elvect.SetSize(dof*vdim/spaceDim);
    elvect = 0.0;
 
    const IntegrationRule *ir = IntRule;
