@@ -140,9 +140,9 @@ double radial_solution(const Vector &v)
   constexpr double k{0.1};
   constexpr double q0{100.};
 
-  constexpr double c1{1.0/std::log(R_HP/R_B) * (
+  const double c1{1.0/std::log(R_HP/R_B) * (
     (T_HP-T_B)*(R_B-R_HP)*k/q0 - std::pow(R_HP,3)/9. + 0.25*R_B*std::pow(R_HP,2) - 5./36.*std::pow(R_B,3))};
-  constexpr double c2{T_B*(R_B-R_HP)*k/q0 + 5./36.*std::pow(R_B,3) - c1*std::log(R_B)};
+  const double c2{T_B*(R_B-R_HP)*k/q0 + 5./36.*std::pow(R_B,3) - c1*std::log(R_B)};
 
   if (r < R_HP) return T_HP;
   return q0/k / (R_B - R_HP) * (std::pow(r,3)/9. - 0.25*R_B*std::pow(r,2) + c1*std::log(r) + c2);
@@ -160,9 +160,9 @@ double var_cond_solution(const Vector &v)
   constexpr double T0{600.0};
   constexpr double TL{300.0};
 
-  constexpr double c2{q0*std::pow(2.0*L/M_PI, 2) - 0.5/alpha*(std::pow(k0, 2) -
+  const double c2{q0*std::pow(2.0*L/M_PI, 2) - 0.5/alpha*(std::pow(k0, 2) -
     std::pow(alpha*T0-k0, 2))};
-  constexpr double c1{-1.0/L * (0.5/alpha*(std::pow(k0, 2) - std::pow(alpha*TL-k0, 2)) + c2)};
+  const double c1{-1.0/L * (0.5/alpha*(std::pow(k0, 2) - std::pow(alpha*TL-k0, 2)) + c2)};
 
   constexpr bool constant{false};
 
