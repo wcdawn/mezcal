@@ -28,8 +28,10 @@
 
 #include "memory.hpp"
 
+#ifdef PETSC_AVAILABLE
 #include "../mfem/linalg/petscinternals.hpp" // PCHKERRQ
 #include "slepceps.h"
+#endif
 
 #include <cmath>
 #include <limits>
@@ -54,7 +56,9 @@ bool exists(const std::string& fname)
 
 constexpr int xs_temp_idx = 0;
 
+#ifdef PETSC_AVAILABLE
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf);
+#endif
 
 double par_norml2(const Vector &x);
 
@@ -886,6 +890,8 @@ void spn_slepc_vector(Timer& time, const Input& inp,
                         Result& scalar_flux)
 {
 
+#ifdef PETSC_AVAILABLE
+
   // get the process id so that only the root process writes to terminal
   const int myid{fespace->GetMyRank()};
 
@@ -916,6 +922,10 @@ void spn_slepc_vector(Timer& time, const Input& inp,
     GridFunctionCoefficient gfc{&res(0), g+1};
     scalar_flux(g).ProjectCoefficient(gfc);
   }
+
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
 
   return;
 }
@@ -953,6 +963,8 @@ void spn_slepc_manual(Timer& time, const Input& inp,
                        const Array<int>& ess_bdr, const ParMesh* const pmesh,
                        ParFiniteElementSpace* const fespace, Result& res)
 {
+
+#ifdef PETSC_AVAILABLE
 
   mat_lib.set_nmoment(inp.spn_order()+1);
 
@@ -1187,8 +1199,15 @@ void spn_slepc_manual(Timer& time, const Input& inp,
     }
   }
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
+  return;
+
 }
 
+#ifdef PETSC_AVAILABLE
 PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf)
 {
   OperatorHandle oh{Operator::PETSC_MATAIJ};
@@ -1198,6 +1217,7 @@ PetscParMatrix* bilinear_to_petscparmatrix(ParBilinearForm& pbf)
   oh.SetOperatorOwner(false);
   return A;
 }
+#endif
 
 void epdo_power_iteration(const Quadrature* const quad, Timer& time, const Input& inp,
                           const Material_library& mat_lib,
@@ -2059,6 +2079,8 @@ void saaf_slepc_vector(const Quadrature* const quad,
                        Result& scalar_flux)
 {
 
+#ifdef PETSC_AVAILABLE
+
   const int myid{fespace->GetMyRank()};
   const int block_rank{mat_lib.ngroup()*quad->nd()};
 
@@ -2418,6 +2440,10 @@ void saaf_slepc_vector(const Quadrature* const quad,
 
   // TODO figure out how to calculate scalar flux
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
@@ -2547,6 +2573,7 @@ namespace slepc_split
   std::unique_ptr<QuadratureFunction> scat_quad{nullptr}, scat_saaf_quad{nullptr};
   std::unique_ptr<VectorQuadratureFunctionCoefficient> scat_quad_func{nullptr}, scat_saaf_quad_func{nullptr};
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc)
   {
     
@@ -2657,6 +2684,8 @@ namespace slepc_split
     return 0;
   }
 
+#endif
+
 } // namespace slepc_split
 
 void saaf_split_slepc_vector(const Quadrature* const quad,
@@ -2666,6 +2695,8 @@ void saaf_split_slepc_vector(const Quadrature* const quad,
                              Result &angular_flux,
                              Result &scalar_flux)
 {
+
+#ifdef PETSC_AVAILABLE
 
   ParFiniteElementSpace *angular_flux_fespace = angular_flux(0).ParFESpace();
   const ParMesh *pmesh = angular_flux_fespace->GetParMesh();
@@ -2787,6 +2818,10 @@ void saaf_split_slepc_vector(const Quadrature* const quad,
   MFEMFinalizeSlepc();
 
   if (myid == 0) std::cout << "solve_counter=" << slepc_split::solve_counter << std::endl;
+
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
 
   return;
 }
@@ -3200,6 +3235,8 @@ namespace slepc_diffusion
   ParGridFunction *angular_flux{nullptr};
   ParGridFunction *scalar_flux{nullptr};
 
+#ifdef PETSC_AVAILABLE
+
   PetscErrorCode setup(PC pc)
   {
 
@@ -3290,6 +3327,8 @@ namespace slepc_diffusion
     return PetscErrorCode{0};
   }
 
+#endif
+
 } // namespace slepc_diffusion
 
 void saaf_true_slepc_diffusion_vector(const Quadrature* const quad,
@@ -3299,6 +3338,8 @@ void saaf_true_slepc_diffusion_vector(const Quadrature* const quad,
                                       Result& angular_flux,
                                       Result& scalar_flux)
 {
+
+#ifdef PETSC_AVAILABLE
 
   ParFiniteElementSpace *angular_flux_fespace{angular_flux(0).ParFESpace()};
   ParFiniteElementSpace *scalar_flux_fespace{scalar_flux(0).ParFESpace()};
@@ -3392,6 +3433,10 @@ void saaf_true_slepc_diffusion_vector(const Quadrature* const quad,
 
   // TODO calculate scalar flux
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
@@ -3409,6 +3454,7 @@ namespace slepc_transport
 
   int fine_per_coarse{0};
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc)
   {
 
@@ -3491,6 +3537,8 @@ namespace slepc_transport
     return 0;
   }
 
+#endif
+
 } // namespace slepc_transport
 
 void saaf_true_slepc_transport_vector(const Quadrature* const quad_hi,
@@ -3499,6 +3547,9 @@ void saaf_true_slepc_transport_vector(const Quadrature* const quad_hi,
                                       const Material_library& mat_lib,
                                       Result& angular_flux)
 {
+
+#ifdef PETSC_AVAILABLE
+
   ParFiniteElementSpace* fespace_hi{angular_flux(0).ParFESpace()};
   ParMesh* pmesh{fespace_hi->GetParMesh()};
 
@@ -3616,6 +3667,10 @@ void saaf_true_slepc_transport_vector(const Quadrature* const quad_hi,
     }
   }
   MFEMFinalizeSlepc();
+
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
 
   return;
 }
@@ -4874,6 +4929,7 @@ namespace slepc_amgx
   bool verbose{true};
   int ndevices{0};
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc)
   {
 
@@ -4916,6 +4972,7 @@ namespace slepc_amgx
     sol.reset();
     return PetscErrorCode{0};
   }
+#endif
 
 } // namespace slepc_amgx
 
@@ -4930,6 +4987,7 @@ namespace slepc_hypre
   const Material_library *mat_lib{nullptr};
   const Quadrature *quad{nullptr};
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc)
   {
 
@@ -4973,6 +5031,7 @@ namespace slepc_hypre
     Ahypre = nullptr;
     return 0;
   }
+#endif
 
 } // namespace slepc_hypre
 
@@ -5934,6 +5993,8 @@ void saaf_angle_nda_slepc(const Quadrature* const quad,
                           Result &scalar_flux_res)
 {
 
+#ifdef PETSC_AVAILABLE
+
   ParGridFunction &angular_flux{angular_flux_res(0)};
   ParGridFunction &scalar_flux{scalar_flux_res(0)};
 
@@ -6231,6 +6292,10 @@ void saaf_angle_nda_slepc(const Quadrature* const quad,
 
   }
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
@@ -6269,6 +6334,8 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
                           Result& res,
                           int numfunctions)
 {
+
+#ifdef PETSC_AVAILABLE
 
   constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
 
@@ -6416,11 +6483,17 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
 
   flux_sign_fixup(res(0));
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
 void slepc_initialize(const Input& inp)
 {
+
+#ifdef PETSC_AVAILABLE
 
   const std::string slepcrc_fname{inp.concatenate_path("slepcrc")};
 
@@ -6463,12 +6536,20 @@ void slepc_initialize(const Input& inp)
   else
     MFEMInitializeSlepc(nullptr, nullptr, nullptr, nullptr);
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
 void slepc_finalize()
 {
+#ifdef PETSC_AVAILABLE
   MFEMFinalizeSlepc();
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
   return;
 }
 

@@ -16,7 +16,9 @@
 #include <string>
 #include <vector>
 
+#ifdef PETSC_AVAILABLE
 #include "petsc.h"
+#endif
 
 namespace slepc_amgx
 {
@@ -24,9 +26,11 @@ namespace slepc_amgx
   extern std::unique_ptr<mfem::Solver> sol;
   extern mfem::HypreParMatrix* Ahypre;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_amgx
 
@@ -40,9 +44,11 @@ namespace slepc_hypre
   extern const Material_library *mat_lib;
   extern const Quadrature *quad;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_hypre
 
@@ -59,9 +65,11 @@ namespace slepc_diffusion
   extern mfem::ParGridFunction *angular_flux;
   extern mfem::ParGridFunction *scalar_flux;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_diffusion
 
@@ -81,9 +89,11 @@ namespace slepc_transport
 
   extern int fine_per_coarse;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_transport
 
@@ -105,9 +115,11 @@ namespace slepc_split
   // that either need to be listed here or gotten rid of.
   extern std::unique_ptr<mfem::ParLinearForm> scat_src;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_split
 

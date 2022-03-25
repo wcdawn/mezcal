@@ -9,7 +9,10 @@
 #include "timer.hpp"
 
 #include "mfem.hpp"
+
+#ifdef PETSC_AVAILABLE
 #include "petsc.h"
+#endif
 
 void saaf_true_slepc_vector(const Quadrature* const quad,
                             Timer& time,
@@ -31,9 +34,11 @@ namespace slepc_amgx
   extern std::unique_ptr<mfem::Solver> sol;
   extern mfem::HypreParMatrix* Ahypre;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_amgx
 
@@ -47,9 +52,11 @@ namespace slepc_hypre
   extern const Material_library *mat_lib;
   extern const Quadrature *quad;
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc);
   PetscErrorCode apply(PC pc, Vec xin, Vec xout);
   PetscErrorCode destroy(PC pc);
+#endif
 
 } // namespace slepc_hypre
 

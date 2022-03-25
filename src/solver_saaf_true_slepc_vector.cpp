@@ -8,8 +8,10 @@
 #include "vector_pwconst_coefficient.hpp"
 #include "matrix_pwconst_coefficient.hpp"
 
+#ifdef PETSC_AVAILABLE
 #include "../mfem/linalg/petscinternals.hpp" // PCHKERRQ
 #include "slepceps.h"
+#endif
 
 #include <cmath>
 #include <string>
@@ -38,6 +40,8 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
                             const Material_library& mat_lib,
                             Result& angular_flux)
 {
+
+#ifdef PETSC_AVAILABLE
 
   ParFiniteElementSpace* const fespace{angular_flux(0).ParFESpace()};
 
@@ -75,6 +79,10 @@ void saaf_true_slepc_vector(const Quadrature* const quad,
   }
   slepc_finalize();
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
@@ -90,6 +98,7 @@ namespace slepc_amgx
   bool verbose{true};
   int ndevices{0};
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc)
   {
 
@@ -133,6 +142,8 @@ namespace slepc_amgx
     return PetscErrorCode{0};
   }
 
+#endif
+
 } // namespace slepc_amgx
 
 namespace slepc_hypre
@@ -146,6 +157,7 @@ namespace slepc_hypre
   const Material_library *mat_lib{nullptr};
   const Quadrature *quad{nullptr};
 
+#ifdef PETSC_AVAILABLE
   PetscErrorCode setup(PC pc)
   {
 
@@ -189,6 +201,7 @@ namespace slepc_hypre
     Ahypre = nullptr;
     return 0;
   }
+#endif
 
 } // namespace slepc_hypre
 
@@ -386,6 +399,8 @@ HypreParMatrix* saaf_m_matrix(const Input &inp,
 void slepc_initialize(const Input& inp)
 {
 
+#ifdef PETSC_AVAILABLE
+
   const std::string slepcrc_fname{inp.concatenate_path("slepcrc")};
 
 #if 0
@@ -427,6 +442,10 @@ void slepc_initialize(const Input& inp)
   else
     MFEMInitializeSlepc(nullptr, nullptr, nullptr, nullptr);
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
@@ -437,6 +456,8 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
                           Result& res,
                           int numfunctions)
 {
+
+#ifdef PETSC_AVAILABLE
 
   //constexpr Operator::Type petsc_format{Operator::PETSC_MATAIJ};
   constexpr Operator::Type petsc_format{Operator::PETSC_MATHYPRE};
@@ -586,13 +607,21 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
 
   flux_sign_fixup(res(0));
 
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
+
   return;
 }
 
 void slepc_finalize()
 {
+#ifdef PETSC_AVAILABLE
   MFEMFinalizeSlepc();
   return;
+#else
+  MFEM_ABORT("MEZCAL must be built with PETSc & SLEPc!");
+#endif
 }
 
 void flux_sign_fixup(Vector& pgf)
