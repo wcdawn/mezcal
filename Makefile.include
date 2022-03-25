@@ -35,6 +35,31 @@ GPU_ARCH = -arch=sm_70
 GPU_INCLUDE = -I$(CUDA_DIR)/include
 GPU_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
 
+else ifeq ($(MACH),CRUSHER)
+
+STD = c++11
+MPICXX = hipcc
+LD = hipcc
+
+H5_DIR = $(OLCF_HDF5_ROOT)/lib
+H5_INCLUDE = -I$(OLCF_HDF5_ROOT)/include
+
+# relies on MPICH_DIR and CRAY_MPICH_ROOTDIR set by cray-mpich module
+MPI_DIR = $(MPICH_DIR)
+MPI_LIB = -L$(MPICH_DIR)/lib -lmpi -L$(CRAY_MPICH_ROOTDIR)/gtl/lib -lmpi_gtl_hsa
+
+METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
+
+CXXFLAGS += -DGPU_AWARE_MPI
+
+CONTAINER = /ccs/proj/csc404/wcdawn/container_hip
+MFEM_DIR = $(CONTAINER)/mfem
+HYPRE_DIR = $(CONTAINER)/hypre-2.23.0/src/hypre
+METIS_DIR = $(CONTAINER)/metis-5.1.0
+
+GPU_ARCH = --amdgpu-target=gfx90a
+GPU_LIB = -L/opt/rocm-4.5.0/lib -lrocsparse -lrocrand -lhipsparse
+
 else ifeq ($(MACH),ARCHBUILD)
 
 STD = c++17
@@ -160,5 +185,5 @@ METIS_INCLUDE = -I$(METIS_DIR)/include
 
 MPI_INCLUDE = -I$(MPI_DIR)/include
 
-INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(H5_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE) $(GPU_INCLUDE)
-LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(H5_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB) $(GPU_LIB)
+INCLUDE = $(MFEM_INCLUDE) $(HYPRE_INCLUDE) $(METIS_INCLUDE) $(H5_INCLUDE) $(MPI_INCLUDE) $(PETSC_INCLUDE) $(SLEPC_INCLUDE) $(AMGX_INCLUDE) $(GPU_INCLUDE)
+LIBS = $(MFEM_LIB) $(HYPRE_LIB) $(METIS_LIB) $(H5_LIB) $(MPI_LIB) $(PETSC_LIB) $(SLEPC_LIB) $(AMGX_LIB) $(GPU_LIB)
