@@ -698,7 +698,9 @@ void saaf_angle_power_iteration(const bool init,
       MFEM_VERIFY(reflective_condition.Max() == 0,
         "VectorBoundaryFlowIntegrator (required for reflective bcs) is "
         "incompatible with LinearAssemblyLevel::FULL.");
+#if 0
       lf_self_scatter[g]->SetAssemblyLevel(AssemblyLevel::FULL);
+#endif
     }
     else
     {
@@ -741,7 +743,9 @@ void saaf_angle_power_iteration(const bool init,
     {
       lf_dsa[g] = std::make_unique<ParLinearForm>(scalar_flux_fespace);
       lf_dsa[g]->AddDomainIntegrator(new DomainLFIntegrator{dsa_src[g]});
+#if 0
       if (inp.use_full_assembly) lf_dsa[g]->SetAssemblyLevel(AssemblyLevel::FULL);
+#endif
     }
   }
 
