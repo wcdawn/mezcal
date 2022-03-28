@@ -34,6 +34,7 @@ string solver_choice_enum_to_str(const Solver_choice& solver)
     case (Solver_choice::conduction_linear): return "conduction_linear";
     case (Solver_choice::conduction_radial): return "conduction_radial";
     case (Solver_choice::conduction_var_cond): return "conduction_var_cond";
+    case (Solver_choice::conduction_var_cond_radial): return "conduction_var_cond_radial";
     case (Solver_choice::multiphysics): return "multiphysics";
     case (Solver_choice::none): return "none";
     default: return "invalid";
@@ -70,6 +71,7 @@ Solver_choice solver_choice_str_to_enum(const string& solver)
   if (solver == "conduction_linear") return Solver_choice::conduction_linear;
   if (solver == "conduction_radial") return Solver_choice::conduction_radial;
   if (solver == "conduction_var_cond") return Solver_choice::conduction_var_cond;
+  if (solver == "conduction_var_cond_radial") return Solver_choice::conduction_var_cond_radial;
   if (solver == "multiphysics") return Solver_choice::multiphysics;
   if (solver == "none") return Solver_choice::none;
   return Solver_choice::invalid;

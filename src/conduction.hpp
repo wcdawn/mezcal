@@ -15,6 +15,9 @@ double radial_solution(const mfem::Vector& v);
 double var_cond_source(const mfem::Vector& v);
 double var_cond_solution(const mfem::Vector& v);
 
+double var_cond_radial_source(const mfem::Vector& v);
+double var_cond_radial_solution(const mfem::Vector& v);
+
 void temperature_heat_conduction(const Input &inp,
                                  const Material_library &mat_lib, 
                                  mfem::QuadratureFunction &power,

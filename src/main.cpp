@@ -476,6 +476,7 @@ int main(int argc, char* argv[])
         case (Solver_choice::conduction_radial):
         case (Solver_choice::conduction_linear):
         case (Solver_choice::conduction_var_cond):
+        case (Solver_choice::conduction_var_cond_radial):
           {
             temperature = inp.temp_heat_pipe;
             // the power distriubtion is actually specified within the solver
