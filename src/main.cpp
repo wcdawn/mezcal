@@ -590,14 +590,21 @@ int main(int argc, char* argv[])
 
     sum << state << ',' << res.keff << std::endl;
 
-    if (mat_lib.ngroup() == 24)
+    switch (mat_lib.ngroup())
     {
-      // assume 24-group SCALE-based energy group structure
-      // 1) E < 0.625 eV (g < 3)
-      // 2) 0.625 eV < E < 6 keV (3 < g < 17)
-      // 3) E > 6 keV (g > 17)
-      coarse_energy_plot(pmesh.get(), scalar_flux, {3, 17},
-        inp.input_file_stub()+"_"+state_name.str()+"_coarse_energy");
+      case (24):
+        // assume 24-group SCALE-based energy group structure
+        // 1) E < 0.625 eV (g < 3)
+        // 2) 0.625 eV < E < 6 keV (3 < g < 17)
+        // 3) E > 6 keV (g > 17)
+        coarse_energy_plot(pmesh.get(), scalar_flux, {3, 17},
+          inp.input_file_stub()+"_"+state_name.str()+"_coarse_energy");
+        break;
+      case (26):
+        // same as 24 but with 2 extra fast groups
+        coarse_energy_plot(pmesh.get(), scalar_flux, {5, 19},
+          inp.input_file_stub()+"_"+state_name.str()+"_coarse_energy");
+        break;
     }
 
     time.stop();
