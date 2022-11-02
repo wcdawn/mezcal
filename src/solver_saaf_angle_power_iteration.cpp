@@ -552,6 +552,14 @@ void saaf_angle_power_iteration(const bool init,
                                 ParGridFunction &temperature)
 {
 
+  if ((mat_lib.ngroup() == 1) && (mat_lib.mat.size() == 1))
+  {
+    constexpr int xs_temp_idx = 0;
+    std::cout << "scattering ratio c=" <<
+      (mat_lib.mat[0].rec[xs_temp_idx].sigma_s.Elem(0,0) + mat_lib.mat[0].rec[xs_temp_idx].nusf[0]) /
+      mat_lib.mat[0].rec[xs_temp_idx].sigma_t[0] << std::endl;
+  }
+
   ParFiniteElementSpace *scalar_flux_fespace = scalar_flux[0]->ParFESpace();
   const int myid{scalar_flux_fespace->GetMyRank()};
   ParMesh *pmesh = scalar_flux_fespace->GetParMesh();
