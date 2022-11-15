@@ -542,7 +542,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
     PC preconditioner_inner;
     ierr = KSPGetPC(petsc_solver_inner, &preconditioner_inner); PCHKERRQ(slepc, ierr);
     ierr = PCSetType(preconditioner_inner, PCGAMG); PCHKERRQ(slepc, ierr);
-    ierr = PCGAMGSetSymGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
+    ierr = PCGAMGSetSquareGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
 
     ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
   }

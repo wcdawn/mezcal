@@ -157,6 +157,37 @@ METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 LD = $(MPICXX)
 
+else ifeq ($(MACH),IAGO)
+
+CONTAINER=/users/william.dawn/projects/container
+
+MPI_DIR=$(CONTAINER)/mpich-install
+MFEM_DIR=$(CONTAINER)/mfem-4.5
+HYPRE_DIR=$(CONTAINER)/hypre-2.26.0/src/hypre
+METIS_DIR=$(CONTAINER)/metis-5.1.0
+
+METIS_LIB=$(METIS_DIR)/lib/libmetis.a
+
+STD = c++11
+MPICXX=$(MPI_DIR)/bin/mpicxx
+H5_DIR=/usr/lib64
+
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi -lmpicxx
+
+# TODO something about CUDA/GPU
+LD=$(MPICXX)
+
+PETSC_DIR=$(CONTAINER)/petsc-3.18.1
+PETSC_ARCH=arch-linux-c-debug
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/$(PETSC_ARCH)/include
+PETSC_LIB = -L$(PETSC_DIR)/$(PETSC_ARCH)/lib -lpetsc
+
+SLEPC_DIR=$(CONTAINER)/slepc-3.18.1
+SLEPC_INCLUDE=-I$(SLEPC_DIR)/$(PETSC_ARCH)/include -I$(SLEPC_DIR)/include
+SLEPC_LIB = -L$(SLEPC_DIR)/$(PETSC_ARCH)/lib -lslepc
+
+CXXFLAGS += -DPETSC_AVAILABLE
+
 else
 
 $(error Invalid MACH)

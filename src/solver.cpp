@@ -4289,7 +4289,7 @@ void calc_fiss_upscatter(const Result& scalar_flux,
                          std::vector<QuadratureFunction>& upscatter_quad_func,
                          const bool flux_free_chi)
 {
-  const QuadratureSpace* const qspace{fiss_quad_func[0].GetSpace()};
+  const QuadratureSpaceBase* const qspace{fiss_quad_func[0].GetSpace()};
   const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
   const ParMesh* const mesh{fespace->GetParMesh()};
 
@@ -4303,7 +4303,7 @@ void calc_fiss_upscatter(const Result& scalar_flux,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -4387,7 +4387,7 @@ void calc_downscatter(const int g,
 {
   dnscatter_quad_func = 0.0;
 
-  const QuadratureSpace* const qspace{dnscatter_quad_func.GetSpace()};
+  const QuadratureSpaceBase* const qspace{dnscatter_quad_func.GetSpace()};
   const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
   const ParMesh* const mesh{fespace->GetParMesh()};
 
@@ -4396,7 +4396,7 @@ void calc_downscatter(const int g,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -4446,7 +4446,7 @@ void calc_selfscatter(const int g,
 {
   selfscatter_quad_func = 0.0;
 
-  const QuadratureSpace* const qspace{selfscatter_quad_func.GetSpace()};
+  const QuadratureSpaceBase* const qspace{selfscatter_quad_func.GetSpace()};
   const ParFiniteElementSpace* const fespace{scalar_flux.ParFESpace()};
   const ParMesh* const mesh{fespace->GetParMesh()};
 
@@ -4455,7 +4455,7 @@ void calc_selfscatter(const int g,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -4480,7 +4480,7 @@ void calc_spn_next(const Result& flux,
                    SPNWrapper<QuadratureFunction>& spn_next_quad_func)
 {
 
-  const QuadratureSpace* const qspace{spn_next_quad_func(0,0).GetSpace()};
+  const QuadratureSpaceBase* const qspace{spn_next_quad_func(0,0).GetSpace()};
   const ParFiniteElementSpace* const fespace{flux(0).ParFESpace()};
   const ParMesh* const mesh{fespace->GetParMesh()};
   const int dim{mesh->Dimension()};
@@ -4496,7 +4496,7 @@ void calc_spn_next(const Result& flux,
   int idx{0}, idx_sto{0};
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -4542,7 +4542,7 @@ void calc_spn_prev(const int g, const int n,
   spn_prev_quad_func = 0.0;
   if (n == 0) return;
 
-  const QuadratureSpace* const qspace{spn_prev_quad_func.GetSpace()};
+  const QuadratureSpaceBase* const qspace{spn_prev_quad_func.GetSpace()};
   const ParFiniteElementSpace* const fespace{flux(0).ParFESpace()};
   const ParMesh* const mesh{fespace->GetParMesh()};
   const double xmult_prev{(4.0*n*n - 2.0*n) / (16.0*n*n - 1.0)};
@@ -4551,7 +4551,7 @@ void calc_spn_prev(const int g, const int n,
   int idx{0};
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -4582,7 +4582,7 @@ void calc_fiss_src(const Result& scalar_flux,
                    QuadratureFunction& fiss_src)
 {
 
-  const QuadratureSpace* const qspace{fiss_src.GetSpace()};
+  const QuadratureSpaceBase* const qspace{fiss_src.GetSpace()};
   const ParFiniteElementSpace* const fespace{scalar_flux(0).ParFESpace()};
   const ParMesh* const mesh{fespace->GetParMesh()};
 
@@ -4592,7 +4592,7 @@ void calc_fiss_src(const Result& scalar_flux,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{mesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -5046,7 +5046,7 @@ void calc_all_scatter(const Result& scalar_flux,
   scat_quad = 0.0;
   scat_saaf_quad = 0.0;
 
-  const QuadratureSpace* qspace{scat_quad.GetSpace()};
+  const QuadratureSpaceBase* qspace{scat_quad.GetSpace()};
   const ParFiniteElementSpace* fespace{scalar_flux(0).ParFESpace()};
   const ParMesh* pmesh{fespace->GetParMesh()};
 
@@ -5056,7 +5056,7 @@ void calc_all_scatter(const Result& scalar_flux,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -5772,7 +5772,7 @@ void calc_src(const Material_library &mat_lib,
   src_quad = 0.0;
   saaf_src_quad = 0.0;
 
-  const QuadratureSpace *qspace{src_quad.GetSpace()};
+  const QuadratureSpaceBase *qspace{src_quad.GetSpace()};
   const ParFiniteElementSpace *fespace{scalar_flux.ParFESpace()};
   const ParMesh *pmesh{fespace->GetParMesh()};
 
@@ -5782,7 +5782,7 @@ void calc_src(const Material_library &mat_lib,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -5869,7 +5869,7 @@ void calc_self_scatter(const Material_library &mat_lib,
   self_scatter_quad = 0.0;
   saaf_self_scatter_quad = 0.0;
 
-  const QuadratureSpace *qspace{self_scatter_quad.GetSpace()};
+  const QuadratureSpaceBase *qspace{self_scatter_quad.GetSpace()};
   const ParFiniteElementSpace *fespace{scalar_flux.ParFESpace()};
   const ParMesh *pmesh{fespace->GetParMesh()};
 
@@ -5879,7 +5879,7 @@ void calc_self_scatter(const Material_library &mat_lib,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -5949,7 +5949,7 @@ void calc_fiss_src_vector(const ParGridFunction &scalar_flux,
 
   fiss_src_quad = 0.0;
 
-  const QuadratureSpace *qspace{fiss_src_quad.GetSpace()};
+  const QuadratureSpaceBase *qspace{fiss_src_quad.GetSpace()};
   const ParFiniteElementSpace *fespace{scalar_flux.ParFESpace()};
   const ParMesh *pmesh{fespace->GetParMesh()};
 
@@ -5958,7 +5958,7 @@ void calc_fiss_src_vector(const ParGridFunction &scalar_flux,
   for (int e{0}; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule ir{qspace->GetElementIntRule(e)};
+    const IntegrationRule ir{qspace->GetIntRule(e)};
     const int attribute{pmesh->GetAttribute(e)-1};
     const Material_record& mat{mat_lib.mat[attribute]};
     const XSRecord& rec{mat.rec[xs_temp_idx]};
@@ -6418,7 +6418,7 @@ void slepc_solver_wrapper(HypreParMatrix* Ahypre,
     PC preconditioner_inner;
     ierr = KSPGetPC(petsc_solver_inner, &preconditioner_inner); PCHKERRQ(slepc, ierr);
     ierr = PCSetType(preconditioner_inner, PCGAMG); PCHKERRQ(slepc, ierr);
-    ierr = PCGAMGSetSymGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
+    ierr = PCGAMGSetSquareGraph(preconditioner_inner, PETSC_TRUE); PCHKERRQ(slepc, ierr);
 
     ierr = KSPSetPC(petsc_solver, preconditioner); PCHKERRQ(slepc, ierr);
   }
@@ -6972,7 +6972,7 @@ void calc_fiss_upscatter_efficient(const std::vector<std::unique_ptr<ParGridFunc
                                    const bool flux_free_chi)
 {
 
-  const QuadratureSpace * const qspace = fiss_upscatter_quad[0].GetSpace();
+  const QuadratureSpaceBase * const qspace = fiss_upscatter_quad[0].GetSpace();
   const ParFiniteElementSpace * const fespace = scalar_flux[0]->ParFESpace();
   const ParMesh * const pmesh = fespace->GetParMesh();
 
@@ -6989,7 +6989,7 @@ void calc_fiss_upscatter_efficient(const std::vector<std::unique_ptr<ParGridFunc
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const IntegrationRule &ir = qspace->GetIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
     const XSRecord &rec = mat.rec[xs_temp_idx];
@@ -7122,7 +7122,7 @@ void calc_downscatter_efficient(const int g,
                                 std::vector<QuadratureFunction> &saaf_dnscatter_quad)
 {
 
-  const QuadratureSpace * const qspace = dnscatter_quad.GetSpace();
+  const QuadratureSpaceBase * const qspace = dnscatter_quad.GetSpace();
   const ParFiniteElementSpace * const fespace = scalar_flux[0]->ParFESpace();
   const ParMesh * const pmesh = fespace->GetParMesh();
 
@@ -7138,7 +7138,7 @@ void calc_downscatter_efficient(const int g,
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const IntegrationRule &ir = qspace->GetIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
     const XSRecord &rec = mat.rec[xs_temp_idx];
@@ -7207,7 +7207,7 @@ void calc_selfscatter_efficient(const int g,
                                 std::vector<QuadratureFunction> &saaf_selfscatter_quad)
 {
 
-  const QuadratureSpace * const qspace = selfscatter_quad.GetSpace();
+  const QuadratureSpaceBase * const qspace = selfscatter_quad.GetSpace();
   const ParFiniteElementSpace * const fespace = scalar_flux.ParFESpace();
   const ParMesh * const pmesh = fespace->GetParMesh();
 
@@ -7223,7 +7223,7 @@ void calc_selfscatter_efficient(const int g,
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const IntegrationRule &ir = qspace->GetIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
     const XSRecord &rec = mat.rec[xs_temp_idx];
@@ -7284,7 +7284,7 @@ void calc_fiss_src_efficient(const std::vector<std::unique_ptr<ParGridFunction>>
                              QuadratureFunction &fiss_src)
 {
 
-  const QuadratureSpace * const qspace = fiss_src.GetSpace();
+  const QuadratureSpaceBase * const qspace = fiss_src.GetSpace();
   const ParFiniteElementSpace * const fespace = scalar_flux[0]->ParFESpace();
   const ParMesh * const pmesh = fespace->GetParMesh();
 
@@ -7296,7 +7296,7 @@ void calc_fiss_src_efficient(const std::vector<std::unique_ptr<ParGridFunction>>
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const IntegrationRule &ir = qspace->GetIntRule(e);
     const int attribute = pmesh->GetAttribute(e)-1;
     const Material_record &mat = mat_lib.mat[attribute];
     const XSRecord &rec = mat.rec[xs_temp_idx];

@@ -208,7 +208,7 @@ void temperature_heat_conduction(const Input &inp,
 
   ParFiniteElementSpace *parfespace = temperature.ParFESpace();
   ParMesh *pmesh = parfespace->GetParMesh();
-  QuadratureSpace *qspace = power.GetSpace();
+  QuadratureSpaceBase *qspace = power.GetSpace();
   const int myid = parfespace->GetMyRank();
 
   conduction_geom_data::set_geometry(parfespace, inp.boundary_conditions, inp.heat_pipe_idx);
@@ -401,7 +401,7 @@ void calc_thermal_conductivity(const Input &inp,
   constexpr double alpha = 1e-2;
   constexpr double kbar = 5.100359646753139;
 
-  const QuadratureSpace* const qspace = thermal_conductivity_quad.GetSpace();
+  const QuadratureSpaceBase* const qspace = thermal_conductivity_quad.GetSpace();
   const ParFiniteElementSpace* const fespace = temperature.ParFESpace();
   const ParMesh* const mesh = fespace->GetParMesh();
 
@@ -420,7 +420,7 @@ void calc_thermal_conductivity(const Input &inp,
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const IntegrationRule &ir = qspace->GetIntRule(e);
     const int attribute = mesh->GetAttribute(e) - 1;
 
     std::function<double(double)> k_T;

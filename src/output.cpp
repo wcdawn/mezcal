@@ -216,7 +216,7 @@ void calc_pin_power(const QuadratureFunction &power_quad,
                     const std::vector<Pin> &pins)
 {
 
-  const QuadratureSpace * const qspace = power_quad.GetSpace();
+  const QuadratureSpaceBase * const qspace = power_quad.GetSpace();
   Mesh *mesh = qspace->GetMesh();
     
   const double * pquad = power_quad.HostRead();
@@ -230,7 +230,7 @@ void calc_pin_power(const QuadratureFunction &power_quad,
   for (int e = 0; e < qspace->GetNE(); ++e)
   {
 
-    const IntegrationRule &ir = qspace->GetElementIntRule(e);
+    const IntegrationRule &ir = qspace->GetIntRule(e);
     ElementTransformation *T = mesh->GetElementTransformation(e);
     
     for (int i = 0; i < ir.GetNPoints(); ++i)
