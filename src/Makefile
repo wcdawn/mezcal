@@ -12,6 +12,7 @@ CPP_FILES = main.cpp \
 			hdf5_access_wrapper.cpp \
 			incoming_flux_coefficient.cpp \
 			input.cpp \
+			kinetics.cpp \
 			legendre_chebyschev_quadrature.cpp \
 			level_symmetric_quadrature.cpp \
 			material_library.cpp \
@@ -51,6 +52,7 @@ HPP_FILES = analytic.hpp \
 			hdf5_access_wrapper.hpp \
 			incoming_flux_coefficient.hpp \
 			input.hpp \
+			kinetics.hpp \
 			legendre_chebyschev_quadrature.hpp \
 			level_symmetric_quadrature.hpp \
 			make_unique.hpp \
@@ -201,3 +203,4 @@ solver_saaf_true_slepc_vector.o : $(MFEM_HEADER) solver_saaf_true_slepc_vector.h
 vector_incoming_flux_coefficient.o : $(MFEM_HEADER) quadrature.hpp
 solver_spn_power_iteration.o : $(MFEM_HEADER) solver_spn_power_iteration.hpp input.hpp material_library.hpp result.hpp timer.hpp output.hpp conduction.hpp
 multiphysics.o : $(MFEM_HEADER) multiphysics.hpp solver_saaf_angle_power_iteration.hpp conduction.hpp
+kinetics.o : $(MFEM_HEADER) kinetics.hpp
