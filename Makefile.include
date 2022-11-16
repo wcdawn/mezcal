@@ -90,6 +90,7 @@ SLEPC_LIB = -L$(SLEPC_DIR)/lib -l:libslepc.so
 
 CXXFLAGS += -DAMGX_AVAILABLE
 CXXFLAGS += -DPETSC_AVAILABLE
+LDFLAGS += -Xcompiler -fopenmp -Xcompiler -pthread
 
 AMGX_DIR = /home/wcdawn/projects/amgx
 AMGX_LIB_DIR = $(AMGX_DIR)/build
@@ -188,6 +189,7 @@ SLEPC_LIB = -Wl,-rpath,/$(SLEPC_DIR)/$(PETSC_ARCH)/lib -L$(SLEPC_DIR)/$(PETSC_AR
 SLEPC_LIB += $(PETSC_LIB) # double count
 
 CXXFLAGS += -DPETSC_AVAILABLE
+LDFLAGS += -fopenmp -pthread
 
 else
 
