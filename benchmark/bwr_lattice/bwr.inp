@@ -2,7 +2,7 @@
 mesh_file bwr.mesh
 boundary_conditions 0 0 0 0
 
-userxs bwr.xs
+userxs 1.0 bwr.xs
 
 [MATERIAL]
 name C1 C1 1.0
@@ -20,11 +20,15 @@ solver saaf_angle_power_iteration
 #solver saaf_angle_jacobi_power_iteration
 #solver saaf_angle_nda_slepc
 quadrature level_symmetric
-quad_order 4
+quad_order 8
 
 inner_abs_tol 0.0
 #inner_rel_tol 1e-6
 k_tol 1e-6
 phi_tol 1e-6
+
+restart_runtime 999
+
+max_scatter 10
 
 max_outer 100
