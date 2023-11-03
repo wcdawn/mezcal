@@ -99,6 +99,38 @@ AMGX_INCLUDE_DIR  = $(AMGX_DIR)/base/include
 AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
 AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
+else ifeq ($(MACH),ARCHBUILD_CPU)
+
+STD = c++17
+MPICXX=$(MPI_DIR)/bin/mpicxx
+H5_DIR=/usr/lib
+
+MPI_LIB = -L/usr/lib/openmpi -lmpi -lmpi_cxx
+
+CONTAINER=/home/wcdawn/projects/container_cpu
+
+MFEM_DIR=$(CONTAINER)/mfem-4.5
+HYPRE_DIR=$(CONTAINER)/hypre-2.26.0/src/hypre
+METIS_DIR=$(CONTAINER)/metis-5.1.0
+
+METIS_LIB=$(METIS_DIR)/lib/libmetis.a
+
+# TODO something about CUDA/GPU
+LD=$(MPICXX)
+
+PETSC_DIR=$(CONTAINER)/petsc-3.20.0
+PETSC_ARCH=arch-linux-c-debug
+PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/$(PETSC_ARCH)/include
+PETSC_LIB = -Wl,-rpath,$(PETSC_DIR)/$(PETSC_ARCH)/lib -L$(PETSC_DIR)/$(PETSC_ARCH)/lib -lpetsc -lHYPRE -llapack -lblas -lgfortran -lX11
+
+SLEPC_DIR=$(CONTAINER)/slepc-3.20.0
+SLEPC_INCLUDE=-I$(SLEPC_DIR)/$(PETSC_ARCH)/include -I$(SLEPC_DIR)/include
+SLEPC_LIB = -Wl,-rpath,/$(SLEPC_DIR)/$(PETSC_ARCH)/lib -L$(SLEPC_DIR)/$(PETSC_ARCH)/lib -lslepc
+SLEPC_LIB += $(PETSC_LIB) # double count
+
+CXXFLAGS += -DPETSC_AVAILABLE
+LDFLAGS += -fopenmp -pthread
+
 else ifeq ($(MACH),LASSEN)
 
 STD = c++11
