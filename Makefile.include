@@ -5,7 +5,7 @@ LDFLAGS = -std=$(STD)
 
 LD = nvcc
 
-ifeq ($(MACH),SUMMIT)
+ifeq ($(MEZCAL_MACH),SUMMIT)
 STD = c++11
 MPICXX = mpixlC
 H5_DIR = $(OLCF_HDF5_ROOT)/lib
@@ -35,7 +35,7 @@ GPU_ARCH = -arch=sm_70
 GPU_INCLUDE = -I$(CUDA_DIR)/include
 GPU_LIB = -L$(CUDA_DIR)/lib64 -lcudart -ldl -lrt -lcublas -lcusparse -lcusolver -lnvToolsExt -lcurand
 
-else ifeq ($(MACH),CRUSHER)
+else ifeq ($(MEZCAL_MACH),CRUSHER)
 
 STD = c++11
 MPICXX = hipcc
@@ -60,7 +60,7 @@ METIS_DIR = $(CONTAINER)/metis-5.1.0
 GPU_ARCH = --amdgpu-target=gfx90a
 GPU_LIB = -L/opt/rocm-4.5.0/lib -lrocsparse -lrocrand -lhipsparse
 
-else ifeq ($(MACH),ARCHBUILD)
+else ifeq ($(MEZCAL_MACH),ARCHBUILD)
 
 STD = c++17
 MPICXX = mpicxx
@@ -99,17 +99,18 @@ AMGX_INCLUDE_DIR  = $(AMGX_DIR)/base/include
 AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
 AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
-else ifeq ($(MACH),ARCHBUILD_CPU)
+else ifeq ($(MEZCAL_MACH),ARCHBUILD_CPU)
+
+CONTAINER=/home/wcdawn/projects/container_cpu
+MPI_DIR=$(CONTAINER)/mpich-install
 
 STD = c++17
 MPICXX=$(MPI_DIR)/bin/mpicxx
-H5_DIR=/usr/lib
+H5_DIR=$(CONTAINER)/hdf5-1.12.1/hdf5/lib
 
-MPI_LIB = -L/usr/lib/openmpi -lmpi -lmpi_cxx
+MPI_LIB = -L$(MPI_DIR)/lib -lmpi -lmpicxx
 
-CONTAINER=/home/wcdawn/projects/container_cpu
-
-MFEM_DIR=$(CONTAINER)/mfem-4.5
+MFEM_DIR=$(CONTAINER)/mfem
 HYPRE_DIR=$(CONTAINER)/hypre-2.26.0/src/hypre
 METIS_DIR=$(CONTAINER)/metis-5.1.0
 
@@ -131,7 +132,7 @@ SLEPC_LIB += $(PETSC_LIB) # double count
 CXXFLAGS += -DPETSC_AVAILABLE
 LDFLAGS += -fopenmp -pthread
 
-else ifeq ($(MACH),LASSEN)
+else ifeq ($(MEZCAL_MACH),LASSEN)
 
 STD = c++11
 MPICXX = mpicxx
@@ -170,7 +171,7 @@ AMGX_INCLUDE_DIR = $(AMGX_DIR)/base/include
 AMGX_INCLUDE = -I$(AMGX_DIR)/base/include
 AMGX_LIB = -L$(AMGX_DIR)/build -lamgx
 
-else ifeq ($(MACH),JEZEBEL)
+else ifeq ($(MEZCAL_MACH),JEZEBEL)
 
 STD = c++17
 
@@ -190,7 +191,7 @@ METIS_LIB = $(METIS_DIR)/build/Linux-x86_64/libmetis/libmetis.a
 
 LD = $(MPICXX)
 
-else ifeq ($(MACH),IAGO)
+else ifeq ($(MEZCAL_MACH),IAGO)
 
 CONTAINER=/users/william.dawn/projects/container
 
@@ -225,7 +226,7 @@ LDFLAGS += -fopenmp -pthread
 
 else
 
-$(error Invalid MACH)
+$(error Invalid MEZCAL_MACH)
 
 endif
 
@@ -238,7 +239,8 @@ endif
 MPICXXFLAGS = $(CXXFLAGS)
 
 # generated using "h5c++ -show"
-H5_LIB = -L$(H5_DIR) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
+#H5_LIB = -L$(H5_DIR) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
+H5_LIB = -L$(H5_DIR) -lhdf5_cpp -lhdf5
 
 MFEM_INCLUDE = -I$(MFEM_DIR)
 MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
