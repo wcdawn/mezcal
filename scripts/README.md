@@ -51,3 +51,10 @@ Finally, `cd ../mezcal/src && make`.
 
 You need to set the environmental variables to contain the PETSC and SLEPC paths since these are dynamically linked libraries.
 I won't know the path ahead of time, but you can use `make_environment.sh` to write a shell script `../enviroment.sh` that you should run/source before you want to run MEZCAL.
+
+The final run-line for running the "twomat" problem
+```
+$ cd ./mezcal/demo/twomat
+$ ../../../mpich-install/bin/mpirun -n 3 ../../src/mezcal.x -i ./twomat.inp
+```
+You should see something like `keff = 0.99390479860911451482`.
