@@ -1,0 +1,48 @@
+[CORE]
+
+mesh_file oneD_r0.mesh
+#mesh_file oneD_r1.mesh
+#mesh_file oneD_r2.mesh
+#mesh_file oneD_r3.mesh
+#mesh_file oneD_r4.mesh
+
+boundary_conditions 0 1
+userxs 300.0 twomat.xs
+
+# NOTE: this is a reference diffusion solution,
+# but I have to list a reference to get a csv file
+reference tworeg
+
+[MATERIAL]
+name m1 MAT1 1.0
+name m2 MAT2 1.0
+
+[STATE]
+
+solver saaf_angle_power_iteration
+
+restart_out f
+restart_runtime 6000
+restart_flux f
+
+quadrature level_symmetric
+quad_order 30
+
+max_outer 1000
+
+k_tol 1e-7
+phi_tol 1e-6
+
+linear_solver hypre_pcg
+max_inner 5000
+inner_rel_tol 1e-8
+inner_abs_tol 1e-8
+
+max_scatter 10
+scatter_tol 1e-5
+use_dsa t
+
+feedback off
+temp_boundary 300.
+
+rxpwr 1e3
