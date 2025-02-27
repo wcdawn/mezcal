@@ -1,0 +1,41 @@
+[CORE]
+
+mesh_file ./mesh/circle_r3.msh
+restart_mesh f
+
+boundary_conditions 1 1 1
+
+userxs 300.0 ganapol.xs
+
+[MATERIAL]
+
+name m1 MAT1 1.0 #exact_area_volume 4.3620606874363100
+name m2 MAT1 1.0 #exact_area_volume 4.3620606874363100
+
+[STATE]
+
+solver saaf_angle_power_iteration
+restart_out f # write restart files
+restart_runtime 2
+restart_flux f # dont run a restart problem
+
+quadrature level_symmetric
+quad_order 8
+
+linear_solver hypre_pcg
+max_outer 100
+k_tol 1e-10
+phi_tol 1e-10
+
+max_inner 5000
+inner_rel_tol 1e-8
+inner_abs_tol 1e-8
+
+max_scatter 10
+scatter_tol 1e-5
+use_dsa t
+
+feedback off
+temp_boundary 300.
+
+rxpwr 1e3
