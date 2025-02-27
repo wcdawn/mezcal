@@ -1,0 +1,17 @@
+-use_gpu_aware_mpi 0
+# output control
+-eps_monitor
+-eps_converged_reason
+
+# eigensolver control
+-eps_type gd
+
+# spectral transformation (linear solve/preconditioner)
+-st_type precond
+-st_ksp_type preonly
+
+# 1) HYPREBoomerAMG
+-st_pc_type hypre
+-st_pc_hypre_type boomeramg
+#-st_pc_hypre_boomeramg_numfunctions 40
+#-st_pc_hypre_boomeramg_max_iter 2

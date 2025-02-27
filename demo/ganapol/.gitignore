@@ -1,3 +1,7 @@
 ganapol.sum
 ganapol_STATE000
 ganapol.flux
+
+ganapol_slepc.sum
+ganapol_slepc_STATE000
+ganapol_slepc.flux
