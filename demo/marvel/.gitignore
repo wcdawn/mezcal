@@ -7,3 +7,8 @@ marvel_feedback.sum
 marvel_feedback_STATE000
 marvel_feedback_STATE000_coarse_energy
 marvel_feedback.flux
+
+marvel_slepc.sum
+marvel_slepc_STATE000
+marvel_slepc_STATE000_coarse_energy
+marvel_slepc.flux
