@@ -1,0 +1,123 @@
+[CORE]
+
+mesh_file ./mesh/marvel_2D_mod_qtr_r0.msh
+restart_mesh F
+
+boundary_conditions 0 0 1
+
+userxs 293.0 ./newlib/new-24.t293.xs
+userxs 600.0 ./newlib/new-24.t600.xs
+userxs 800.0 ./newlib/new-24.t800.xs
+
+pin  3.50000000 0.00000000 1.486
+pin  1.75000000 3.03108891 1.486
+pin  7.00000000 0.00000000 1.486
+pin  5.25000000 3.03108891 1.486
+pin  3.50000000 6.06217783 1.486
+pin  0.00000000 6.06217783 1.486
+pin 10.50000000 0.00000000 1.486
+pin  8.75000000 3.03108891 1.486
+pin  7.00000000 6.06217783 1.486
+pin  5.25000000 9.09326674 1.486
+pin  1.75000000 9.09326674 1.486
+
+#buckling 2.8353e-3 # 1/cm^2 # cylinder with height 59 cm
+
+# Material List:
+# comp mat
+# C1   1    fuel
+# C2   2    sodium bond
+# C3   3    fuel clad
+# C4   4    coolant (NaK)
+# C5   5    insert around fuel pins (Be metal)
+# C6   6    drum material (BeO)
+# C7   7    b4c
+# C8   8    air/void
+# C9   10   vessel material
+# C9   11   steel shield
+
+[MATERIAL]
+
+name C0 C1 1.0
+thermal_material UZrH
+
+name C1 C2 1.0
+thermal_material NaK78
+
+name C2 C3 1.0
+thermal_material SS316
+
+name C3 C4 0.95
+thermal_material NaK78
+
+name C4 C5 1.0
+thermal_material Be
+
+name C5 C6 1.0
+thermal_material BeO
+
+name C6 C7 1.0
+thermal_material B4C
+
+name C7 C8 1e2 # gas
+thermal_material air
+
+name C8 C4 1.0 # downcomer
+thermal_material NaK78
+
+name C9 C9 1.0
+thermal_material SS316
+
+name C10 C9 1.0
+thermal_material SS316
+
+[STATE]
+
+solver saaf_angle_power_iteration
+#solver multiphysics
+#solver saaf_true_slepc_vector
+#solver saaf_angle_jacobi_power_iteration
+quadrature level_symmetric
+quad_order 4
+
+restart_out f
+restart_runtime 30
+restart_flux f
+
+max_outer 100
+k_tol 1e-7
+phi_tol 1e-7
+
+linear_solver hypre_pcg
+linear_preconditioner amg
+max_inner 25
+inner_rel_tol 1e-8
+inner_abs_tol 1e-8
+
+max_scatter 10
+scatter_tol 1e-6
+use_dsa t
+
+feedback f
+temp_boundary 293.0
+heat_pipe_idx 4
+temp_max_outer 10
+temp_max_inner 25
+
+#### rxpwr 0.0000
+#### temp_heat_pipe 293.10
+
+#### rxpwr 98.0392
+#### temp_heat_pipe 384.40
+
+#### rxpwr 196.0784
+#### temp_heat_pipe 475.80
+
+#### rxpwr 294.1176
+#### temp_heat_pipe 567.20
+
+#### rxpwr 392.1569
+#### temp_heat_pipe 658.60
+
+#### rxpwr 490.1961
+#### temp_heat_pipe 750.0
