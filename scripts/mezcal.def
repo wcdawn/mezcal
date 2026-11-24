@@ -2,7 +2,7 @@ Bootstrap: docker
 From: rockylinux:9.9
 
 %environment
-  export MEZCAL_MACH=apptainer
+  export MEZCAL_MACH=APPTAINER
 # MPICH
   export PATH="/opt/mpich-install/bin:${PATH}"
   export LD_LIBRARY_PATH="/opt/mpich-install/lib:${LD_LIBRARY_PATH}"
@@ -15,11 +15,13 @@ From: rockylinux:9.9
 # SLEPC
   export SLEPC_DIR=/opt/slepc-${PETSC_VERSION}
   export LD_LIBRARY_PATH="/opt/slepc-${PETSC_VERSION}/${PETSC_ARCH}/lib/:${LD_LIBRARY_PATH}"
+# HDF5
+  export LD_LIBRARY_PATH="/opt/hdf5-1.12.1/hdf5/lib/:${LD_LIBRARY_PATH}"
 
 %post
   dnf install -y 'dnf-command(config-manager)'
   dnf config-manager --set-enabled crb
-  dnf install -y gcc g++ gfortran cmake make perl git diffutils lapack lapack-devel blas blas-devel
+  dnf install -y gcc g++ gfortran cmake make perl git diffutils lapack lapack-devel blas blas-devel vim
 
   mkdir -p /opt
   cd /opt

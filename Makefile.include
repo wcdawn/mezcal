@@ -233,28 +233,33 @@ MFEM_DIR=$(BASE)/mfem-4.5
 HYPRE_DIR=$(BASE)/hypre-2.26.0/src/hypre
 METIS_DIR=$(BASE)/metis-5.1.0
 
-METIS_LIB=$(BASE)/lib/libmetis.a
+METIS_LIB=$(METIS_DIR)/lib/libmetis.a
 
 STD = c++11
 MPICXX=mpicxx
+
 H5_DIR=$(BASE)/hdf5-1.12.1
 
 MPI_LIB = -L$(MPI_DIR)/lib -Wl,-rpath,$(MPI_DIR)/lib -lmpi -lmpicxx -lmpifort -ldl -lrt -lm -lpthread -lquadmath
 
 LD=$(MPICXX)
 
-PETSC_DIR=$(CONTAINER)/petsc-3.20.0
+PETSC_DIR=$(BASE)/petsc-3.20.0
 PETSC_ARCH=arch-linux-c-debug
 PETSC_INCLUDE = -I$(PETSC_DIR)/include -I$(PETSC_DIR)/$(PETSC_ARCH)/include
-PETSC_LIB = -Wl,-rpath,$(PETSC_DIR)/$(PETSC_ARCH)/lib -L$(PETSC_DIR)/$(PETSC_ARCH)/lib -lpetsc -lHYPRE -llapack -lblas -lgfortran -lX11
+PETSC_LIB = -Wl,-rpath,$(PETSC_DIR)/$(PETSC_ARCH)/lib -L$(PETSC_DIR)/$(PETSC_ARCH)/lib -lpetsc -lHYPRE -llapack -lblas -lgfortran
 
-SLEPC_DIR=$(CONTAINER)/slepc-3.20.0
+SLEPC_DIR=$(BASE)/slepc-3.20.0
 SLEPC_INCLUDE=-I$(SLEPC_DIR)/$(PETSC_ARCH)/include -I$(SLEPC_DIR)/include
 SLEPC_LIB = -Wl,-rpath,/$(SLEPC_DIR)/$(PETSC_ARCH)/lib -L$(SLEPC_DIR)/$(PETSC_ARCH)/lib -lslepc
 SLEPC_LIB += $(PETSC_LIB) # double count
 
+H5_INCLUDE=-I$(H5_DIR)/c++/src/ -I$(H5_DIR)/hdf5/include
+H5_LIB = -L$(H5_DIR)/hdf5/lib -l hdf5_cpp -l hdf5
+
 CXXFLAGS += -DPETSC_AVAILABLE
 LDFLAGS += -fopenmp -pthread
+
 else
 
 $(error Invalid MEZCAL_MACH)
@@ -271,7 +276,10 @@ MPICXXFLAGS = $(CXXFLAGS)
 
 # generated using "h5c++ -show"
 #H5_LIB = -L$(H5_DIR) -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 -L$(H5_DIR) -lz
-H5_LIB = -L$(H5_DIR) -lhdf5_cpp -lhdf5
+# only set if empty
+ifeq ($(H5_LIB),)
+H5_LIB := -L$(H5_DIR) -lhdf5_cpp -lhdf5
+endif
 
 MFEM_INCLUDE = -I$(MFEM_DIR)
 MFEM_HEADER = $(MFEM_DIR)/mfem.hpp
