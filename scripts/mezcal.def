@@ -1,0 +1,131 @@
+Bootstrap: docker
+From: rockylinux:9.9
+
+%environment
+  export MEZCAL_MACH=apptainer
+# MPICH
+  export PATH="/opt/mpich-install/bin:${PATH}"
+  export LD_LIBRARY_PATH="/opt/mpich-install/lib:${LD_LIBRARY_PATH}"
+  export MANPATH="/opt/mpich-install/share/man:${MANPATH}"
+# PETSC
+  export PETSC_VERSION=3.20.0
+  export PETSC_DIR=/opt/petsc-${PETSC_VERSION}
+  export PETSC_ARCH=arch-linux-c-debug
+  export LD_LIBRARY_PATH="/opt/petsc-${PETSC_VERSION}/${PETSC_ARCH}/lib/:${LD_LIBRARY_PATH}"
+# SLEPC
+  export SLEPC_DIR=/opt/slepc-${PETSC_VERSION}
+  export LD_LIBRARY_PATH="/opt/slepc-${PETSC_VERSION}/${PETSC_ARCH}/lib/:${LD_LIBRARY_PATH}"
+
+%post
+  dnf install -y gcc g++ gfortran cmake make perl git diffutils
+
+  mkdir -p /opt
+  cd /opt
+  mkdir -p /dev # for /dev/null
+
+  export NPROC=64
+
+# Download MPICH
+  export MPICH_VERSION=4.0.3
+  cd /opt
+  curl -v -L https://www.mpich.org/static/downloads/${MPICH_VERSION}/mpich-${MPICH_VERSION}.tar.gz > mpich_v${MPICH_VERSION}.tar.gz
+  tar -xzvf mpich_v${MPICH_VERSION}.tar.gz
+
+# Install MPICH
+  mkdir -p /opt/mpich-install
+  cd /opt/mpich-${MPICH_VERSION}
+  FFLAGS=-fallow-argument-mismatch FCFLAGS=-fallow-argument-mismatch ./configure --prefix=/opt/mpich-install 2>&1 | tee c.txt || exit 1
+  make -j${NPROC} 2>&1 | tee m.txt || exit 1
+  make install 2>&1 | tee mi.txt || exit 1
+
+  export CC=/opt/mpich-install/bin/mpicc
+  export CXX=/opt/mpich-install/bin/mpicxx
+  export FC=/opt/mpich-install/bin/mpifort
+
+# Download HDF5
+  export HDF5_VERSION=1.12.1
+  cd /opt
+  curl -v -L https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-${HDF5_VERSION}/src/hdf5-${HDF5_VERSION}.tar.gz > hdf5-${HDF5_VERSION}.tar.gz
+  tar -xzvf hdf5-${HDF5_VERSION}.tar.gz
+
+# Install HDF5
+  cd /opt/hdf5-${HDF5_VERSION}
+  CC=${CC} CXX=${CXX} ./configure --enable-cxx || exit 1
+  CC=${CC} CXX=${CXX} make -j${NPROC} || exit 1
+  CC=${CC} CXX=${CXX} make install || exit 1
+
+# Download METIS
+# this is the METIS version maintained by the MFEM developers
+# they recommend using this instead of the original one, mostly for stability of downloads
+# no really good reason for using v5, just seems fine...
+
+  export METIS_VERSION=5.1.0
+  cd /opt
+  curl -v -L https://github.com/mfem/tpls/raw/gh-pages/metis-${METIS_VERSION}.tar.gz > metis_v${METIS_VERSION}.tar.gz
+  tar -xzvf metis_v${METIS_VERSION}.tar.gz
+# upgrade CMake verison
+  sed -i 's/2\.8/3.5/g' /opt/metis-${METIS_VERSION}/CMakeLists.txt
+
+# Install METIS
+  cd /opt/metis-${METIS_VERSION}
+  CC=${CC} CXX=${CXX} make BUILDDIR=lib config || exit 1
+  CC=${CC} CXX=${CXX} make BUILDDIR=lib -j${NPROC} || exit 1
+  cp lib/libmetis/libmetis.a lib || exit 1
+
+# Download HYPRE
+  export HYPRE_VERSION=2.26.0 # October 2022
+  cd /opt
+  curl -v -L https://github.com/hypre-space/hypre/archive/refs/tags/v${HYPRE_VERSION}.tar.gz > hypre_v${HYPRE_VERSION}.tar.gz
+  tar -xzvf hypre_v${HYPRE_VERSION}.tar.gz
+
+# Install HYPRE
+  cd /opt/hypre-${HYPRE_VERSION}/src
+  CC=${CC} CXX=${CXX} ./configure --disable-fortran
+  CC=${CC} CXX=${CXX} make -j${NPROC}
+
+# Download PETSc
+  export PETSC_VERSION=3.20.0
+  cd /opt
+  curl -v -L https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-${PETSC_VERSION}.tar.gz > petsc_v${PETSC_VERSION}.tar.gz
+  tar -xzvf petsc_v${PETSC_VERSION}.tar.gz
+
+# Install PETSc
+  export PETSC_DIR=/opt/petsc-${PETSC_VERSION}
+  export PETSC_ARCH=arch-linux-c-debug
+  cd /opt/petsc-${PETSC_VERSION}
+  ./configure CC=${CC} CXX=${CXX} FC=${FC} \
+    --with-hypre-dir=../hypre-2.26.0/src/hypre \
+    --with-shared-libraries=0 --with-make-np=${NPROC} \
+    --with-fortran-bindings=0
+  CC=${CC} CXX=${CXX} FC=${FC} make -j${NPROC} PETSC_DIR=${PETSC_DIR} PETSC_ARCH=${PETSC_ARCH} all
+
+# Download SLEPc
+  export SLEPC_VERSION=3.20.0
+  cd /opt
+  curl -v -L https://slepc.upv.es/download/distrib/slepc-${SLEPC_VERSION}.tar.gz > slepc_v${SLEPC_VERSION}.tar.gz
+  tar -xzvf slepc_v${SLEPC_VERSION}.tar.gz
+
+# Install SLEPc
+  export SLEPC_DIR=/opt/slepc-${PETSC_VERSION}
+  cd /opt/slepc-${PETSC_VERSION}
+  CC=${CC} CXX=${CXX} PETSC_DIR=${PETSC_DIR} PETSC_ARCH=${PETSC_ARCH} ./configure
+  CC=${CC} CXX=${CXX} make -j${NPROC} PETSC_DIR=${PETSC_DIR} PETSC_ARCH=${PETSC_ARCH} SLEPC_DIR=${SLEPC_DIR} all
+
+# Download MFEM
+  export MFEM_VERSION=4.5
+  curl -v -L https://github.com/mfem/mfem/archive/refs/tags/v${MFEM_VERSION}.tar.gz > mfem_v${MFEM_VERSION}.tar.gz
+  tar -xzvf mfem_v${MFEM_VERSION}.tar.gz
+
+# Install MFEM
+  cd /opt/mfem-${MFEM_VERSION}
+  make config \
+    CC=${CC} CXX=${CXX} \
+    MFEM_USE_MPI=YES MPICXX=${CXX} \
+    MFEM_USE_METIS_5=YES METIS_DIR=${PWD}/../metis-${METIS_VERSION} \
+    HYPRE_DIR=${PWD}/../hypre-${HYPRE_VERSION}/src/hypre \
+    MFEM_USE_PETSC=YES \
+    PETSC_DIR=${PETSC_DIR}/${PETSC_ARCH} PETSC_ARCH=${PETSC_ARCH} \
+    MFEM_USE_SLEPC=YES SLEPC_DIR=${SLEPC_DIR} || exit 1
+  make -j${NPROC}
+  cd /opt
+  ln -sf ./mfem-${MFEM_VERSION} ./mfem
