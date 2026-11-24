@@ -17,7 +17,9 @@ From: rockylinux:9.9
   export LD_LIBRARY_PATH="/opt/slepc-${PETSC_VERSION}/${PETSC_ARCH}/lib/:${LD_LIBRARY_PATH}"
 
 %post
-  dnf install -y gcc g++ gfortran cmake make perl git diffutils
+  dnf install -y 'dnf-command(config-manager)'
+  dnf config-manager --set-enabled crb
+  dnf install -y gcc g++ gfortran cmake make perl git diffutils lapack lapack-devel blas blas-devel
 
   mkdir -p /opt
   cd /opt
