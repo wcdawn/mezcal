@@ -117,6 +117,7 @@ From: rockylinux:9.9
 
 # Download MFEM
   export MFEM_VERSION=4.5
+  cd /opt
   curl -v -L https://github.com/mfem/mfem/archive/refs/tags/v${MFEM_VERSION}.tar.gz > mfem_v${MFEM_VERSION}.tar.gz
   tar -xzvf mfem_v${MFEM_VERSION}.tar.gz
 
